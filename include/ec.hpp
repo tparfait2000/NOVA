@@ -218,9 +218,12 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         }
 
         ALWAYS_INLINE
-        inline void release (void (*c)())
+        inline void release (void (*c)(), bool abort = false)
         {
             cont = c;
+
+            if (abort) //XXX merge
+                cont = sys_finish<Sys_regs::BAD_CAP>;
 
             Lock_guard <Spinlock> guard (lock);
 
