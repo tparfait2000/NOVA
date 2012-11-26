@@ -39,7 +39,7 @@ Ec::Ec (Pd *own, void (*f)(), unsigned c) : Kobject (EC, static_cast<Space_obj *
     trace (TRACE_SYSCALL, "EC:%p created (PD:%p Kernel)", this, own);
 }
 
-Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u, mword s) : Kobject (EC, static_cast<Space_obj *>(own), sel, 0xd, free), cont (f), pd (p), cpu (static_cast<uint16>(c)), glb (!!f), evt (e), user_utcb(u)
+Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u, mword s) : Kobject (EC, static_cast<Space_obj *>(own), sel, 0xd, free, pre_free), cont (f), pd (p), cpu (static_cast<uint16>(c)), glb (!!f), evt (e), user_utcb(u)
 {
     // Make sure we have a PTAB for this CPU in the PD
     pd->Space_mem::init (c);
@@ -95,9 +95,7 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
 Ec::~Ec()
 {
     if (utcb) {
-        // XXX remove mapping in page table
-
-        // delete utcb;
+        delete utcb;
         return;
     }
 
