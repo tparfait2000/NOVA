@@ -58,6 +58,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         };
         unsigned const evt;
         Timeout_hypercall timeout;
+        mword          user_utcb;
 
         static Slab_cache cache;
 
@@ -106,9 +107,17 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         NOINLINE
         static void handle_hazard (mword, void (*)());
 
-        static void free (Rcu_elem * a)
+        static void pre_free (Rcu_elem * a)
         {
             Ec * e = static_cast<Ec *>(a);
+
+            assert(e);
+
+            // remove mapping in page table
+            if (e->user_utcb) {
+                e->pd->Space_mem::insert (e->user_utcb, 0, 0, 0);
+                e->user_utcb = 0;
+            }
 
             // XXX If e is on another CPU and there the fpowner - this check will fail.
             // XXX For now the destruction is delayed until somebody else grabs the FPU.
@@ -121,6 +130,11 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
                 fpowner      = nullptr;
                 Cpu::hazard |= HZD_FPU;
             }
+        }
+
+        static void free (Rcu_elem * a)
+        {
+            Ec * e = static_cast<Ec *>(a);
 
             if (!e->utcb) {
                 trace(0, "leaking memory - vCPU EC memory re-usage not supported");
