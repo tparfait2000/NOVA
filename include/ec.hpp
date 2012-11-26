@@ -53,6 +53,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
             uint32  xcpu;
         };
         unsigned const evt;
+        mword          user_utcb;
 
         static Slab_cache cache;
 
@@ -100,6 +101,15 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
         NOINLINE
         static void handle_hazard (mword, void (*)());
+
+        static void pre_free (Rcu_elem * a)
+        {
+            Ec * e = static_cast<Ec *>(a);
+
+            // remove mapping in page table
+            if (e && e->user_utcb)
+                e->pd->Space_mem::insert (e->user_utcb, 0, 0, 0);
+        }
 
         static void free (Rcu_elem * a)
         {
