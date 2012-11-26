@@ -39,12 +39,12 @@ Sc *Sc::list[Sc::priorities];
 
 unsigned Sc::prio_top;
 
-Sc::Sc (Pd *own, mword sel, Ec *e) : Kobject (SC, static_cast<Space_obj *>(own), sel, 0x1), ec (e), cpu (static_cast<unsigned>(sel)), prio (0), budget (Lapic::freq_tsc * 1000), left (0), prev (nullptr), next (nullptr)
+Sc::Sc (Pd *own, mword sel, Ec *e) : Kobject (SC, static_cast<Space_obj *>(own), sel, 0x1, free), ec (e), cpu (static_cast<unsigned>(sel)), prio (0), budget (Lapic::freq_tsc * 1000), left (0), prev (nullptr), next (nullptr)
 {
     trace (TRACE_SYSCALL, "SC:%p created (PD:%p Kernel)", this, own);
 }
 
-Sc::Sc (Pd *own, mword sel, Ec *e, unsigned c, unsigned p, unsigned q) : Kobject (SC, static_cast<Space_obj *>(own), sel, 0x1), ec (e), cpu (c), prio (p), budget (Lapic::freq_tsc / 1000 * q), left (0), prev (nullptr), next (nullptr)
+Sc::Sc (Pd *own, mword sel, Ec *e, unsigned c, unsigned p, unsigned q) : Kobject (SC, static_cast<Space_obj *>(own), sel, 0x1, free), ec (e), cpu (c), prio (p), budget (Lapic::freq_tsc / 1000 * q), left (0), prev (nullptr), next (nullptr)
 {
     trace (TRACE_SYSCALL, "SC:%p created (EC:%p CPU:%#x P:%#x Q:%#x)", this, e, c, p, q);
 }
@@ -53,6 +53,8 @@ void Sc::ready_enqueue (uint64 t)
 {
     assert (prio < priorities);
     assert (cpu == Cpu::id);
+
+    add_ref();
 
     if (prio > prio_top)
         prio_top = prio;
@@ -116,6 +118,9 @@ void Sc::schedule (bool suspend)
 
     Cpu::hazard &= ~HZD_SCHED;
 
+    if (EXPECT_FALSE(current->del_ref()))
+        delete current;
+    else
     if (EXPECT_TRUE (!suspend))
         current->ready_enqueue (t);
 
@@ -137,6 +142,8 @@ void Sc::remote_enqueue()
         ready_enqueue (rdtsc());
 
     else {
+        add_ref();
+
         Sc::Rq *r = remote (cpu);
 
         Lock_guard <Spinlock> guard (r->lock);
@@ -167,7 +174,10 @@ void Sc::rrq_handler()
 
         ptr = ptr->next == ptr ? nullptr : ptr->next;
 
-        sc->ready_enqueue (t);
+        if (EXPECT_FALSE(sc->del_ref()))
+            delete sc;
+        else
+            sc->ready_enqueue (t);
     }
 
     rq.queue = nullptr;
