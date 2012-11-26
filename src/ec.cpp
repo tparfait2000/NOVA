@@ -91,6 +91,19 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
     }
 }
 
+//De-constructor
+Ec::~Ec()
+{
+    if (utcb) {
+        // XXX remove mapping in page table
+
+        // delete utcb;
+        return;
+    }
+
+    /* vCPU cleanup missing ... */
+}
+
 void Ec::handle_hazard (mword hzd, void (*func)())
 {
     if (hzd & HZD_RCU)
