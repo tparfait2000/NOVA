@@ -47,6 +47,8 @@ class Space_mem : public Space
 
         static unsigned did_ctr;
 
+        Space_mem() : did(0) {}
+
         ALWAYS_INLINE
         inline size_t lookup (mword virt, Paddr &phys)
         {
