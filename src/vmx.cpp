@@ -39,6 +39,7 @@ Vmcs::vmx_ctrl_pin  Vmcs::ctrl_pin;
 Vmcs::vmx_ctrl_cpu  Vmcs::ctrl_cpu[2];
 Vmcs::vmx_ctrl_exi  Vmcs::ctrl_exi;
 Vmcs::vmx_ctrl_ent  Vmcs::ctrl_ent;
+Vmcs::vmx_ctrl_misc Vmcs::ctrl_misc;
 mword               Vmcs::fix_cr0_set, Vmcs::fix_cr0_clr;
 mword               Vmcs::fix_cr4_set, Vmcs::fix_cr4_clr;
 
@@ -48,8 +49,8 @@ Vmcs::Vmcs (mword esp, mword bmp, mword cr3, uint64 eptp) : rev (basic.revision)
 
     make_current();
 
-    uint32 pin = PIN_EXTINT | PIN_NMI | PIN_VIRT_NMI;
-    uint32 exi = EXI_INTA;
+    uint32 pin = PIN_EXTINT | PIN_NMI | PIN_VIRT_NMI | PIN_PTMR;
+    uint32 exi = EXI_INTA | EXI_SAVE_PTMR;
     uint32 ent = 0;
 
     write (PF_ERROR_MASK, 0);
@@ -112,6 +113,7 @@ void Vmcs::init()
     fix_cr4_clr = ~Msr::read<mword>(Msr::IA32_VMX_CR4_FIXED1);
 
     basic.val       = Msr::read<uint64>(Msr::IA32_VMX_BASIC);
+    ctrl_misc.val   = Msr::read<uint64>(Msr::IA32_VMX_CTRL_MISC);
     ctrl_exi.val    = Msr::read<uint64>(basic.ctrl ? Msr::IA32_VMX_TRUE_EXIT  : Msr::IA32_VMX_CTRL_EXIT);
     ctrl_ent.val    = Msr::read<uint64>(basic.ctrl ? Msr::IA32_VMX_TRUE_ENTRY : Msr::IA32_VMX_CTRL_ENTRY);
     ctrl_pin.val    = Msr::read<uint64>(basic.ctrl ? Msr::IA32_VMX_TRUE_PIN   : Msr::IA32_VMX_CTRL_PIN);

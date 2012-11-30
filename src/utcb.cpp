@@ -196,6 +196,9 @@ void Utcb::load_vmx (Cpu_regs *regs)
         efer = Vmcs::read (Vmcs::GUEST_EFER);
 #endif
 
+    if (m & Mtd::PTMR)
+        ptmr = static_cast<uint64>(Vmcs::read (Vmcs::PREEMPTION_TIMER)) << Vmcs::ctrl_misc.ptmr_bits;
+
     barrier();
     mtd = m;
     items = sizeof (Utcb_data) / sizeof (mword);
@@ -335,6 +338,9 @@ void Utcb::save_vmx (Cpu_regs *regs)
     if (mtd & Mtd::EFER)
         regs->write_efer<Vmcs> (efer);
 #endif
+
+    if (mtd & Mtd::PTMR)
+        Vmcs::write (Vmcs::PREEMPTION_TIMER, static_cast<mword>(ptmr >> Vmcs::ctrl_misc.ptmr_bits));
 }
 
 void Utcb::load_svm (Cpu_regs *regs)

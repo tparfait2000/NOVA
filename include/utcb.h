@@ -73,7 +73,7 @@ class Utcb_data
 #endif
                 uint64          qual[2];
                 uint32          ctrl[2];
-                uint64          reserved;
+                uint64          ptmr;
                 mword           cr0, cr2, cr3, cr4;
 #ifdef __x86_64__
                 mword           cr8, efer;
