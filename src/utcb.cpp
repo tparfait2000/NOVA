@@ -547,3 +547,5 @@ void Utcb::save_svm (Cpu_regs *regs)
         regs->write_efer<Vmcb> (efer);
 #endif
 }
+
+int Utcb::allocated = 0;

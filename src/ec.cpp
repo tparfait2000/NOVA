@@ -29,7 +29,7 @@
 #include "vtlb.hpp"
 
 INIT_PRIORITY (PRIO_SLAB)
-Slab_cache Ec::cache (sizeof (Ec), 32);
+Slab_cache Ec::cache ("Ec", sizeof (Ec), 32);
 
 Ec *Ec::current, *Ec::fpowner;
 
