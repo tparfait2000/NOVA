@@ -38,6 +38,20 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
         WARN_UNUSED_RESULT
         mword clamp (mword &, mword &, mword, mword, mword);
 
+        static void pre_free (Rcu_elem * a)
+        {
+            Pd * pd = static_cast <Pd *>(a);
+
+            Crd crd(Crd::MEM);
+            pd->revoke<Space_mem>(crd.base(), crd.order(), crd.attr(), true);
+
+            crd = Crd(Crd::PIO);
+            pd->revoke<Space_pio>(crd.base(), crd.order(), crd.attr(), true);
+
+            crd = Crd(Crd::OBJ);
+            pd->revoke<Space_obj>(crd.base(), crd.order(), crd.attr(), true);
+        }
+
         static void free (Rcu_elem * a) {
             Pd * pd = static_cast <Pd *>(a);
 
@@ -45,8 +59,10 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
                 trace (0, "PD %p could not be deleted, has dmar entry.", pd);
                 return;
             }
-            if (pd->del_ref())
+            if (pd->del_ref()) {
+                assert (pd != Pd::current);
                 delete pd;
+            }
         }
 
     public:
@@ -56,7 +72,7 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
         INIT
         Pd (Pd *);
 
-        Pd (Pd *own, mword sel, mword a) : Kobject (PD, static_cast<Space_obj *>(own), sel, a, free) {}
+        Pd (Pd *own, mword sel, mword a) : Kobject (PD, static_cast<Space_obj *>(own), sel, a, free, pre_free) {}
 
         ALWAYS_INLINE HOT
         inline void make_current()
