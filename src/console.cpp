@@ -23,6 +23,10 @@
 #include "lock_guard.h"
 #include "x86.h"
 
+#include "slab.h"
+#include "utcb.h"
+#include "pte.h"
+
 Console *Console::list;
 Spinlock Console::lock;
 
@@ -186,6 +190,7 @@ void Console::print (char const *format, ...)
 
 void Console::panic (char const *format, ...)
 {
+{
     Lock_guard <Spinlock> guard (lock);
 
     for (Console *c = list; c; c = c->next) {
@@ -194,6 +199,11 @@ void Console::panic (char const *format, ...)
         c->vprintf (format, args);
         va_end (args);
     }
+}
+    print("\nSlab_cache statistics:\n");
+    Slab_cache::print_all_stats();
+    print("Allocated UTCBs: %d KiB\n", Utcb::allocated*4);
+    print("Allocated pagetables: %d KiB\n", Pte_allocated*4);
 
     shutdown();
 }
