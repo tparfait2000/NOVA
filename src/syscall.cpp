@@ -31,6 +31,23 @@
 #include "utcb.h"
 #include "vectors.h"
 
+mword Ec::local_pt_id(const Ec * ec, const Pt * pt, const mword pt_sel)
+{
+    if (EXPECT_FALSE (ec->pd != pt->pd)) {
+        Crd crd = Crd(Crd::OBJ, pt_sel, 0);
+        ec->pd->xlt_crd(Pd::current, Crd(Crd::OBJ, 0), crd);
+        if (crd.type() == Crd::OBJ)
+            return crd.base();
+
+        trace(0, "----- call failed: %p:%#lx->%p:? "
+                 "base:order:attr:type %#lx:%#x:%#x:%u",
+                 Pd::current, pt_sel, &*ec->pd,
+                 crd.base(), crd.order(), crd.attr(), crd.type());
+        return ~0UL;
+    }
+    return pt->node_base;
+}
+
 template <Sys_regs::Status T>
 void Ec::sys_finish()
 {
@@ -93,7 +110,7 @@ void Ec::send_msg()
         current->set_partner (ec);
         current->regs.mtd = pt->mtd.val;
         ec->cont = recv_kern;
-        ec->regs.set_pt (pt->node_base);
+        ec->regs.set_pt (ec->local_pt_id(ec, pt, current->evt + r->dst_portal));
         ec->regs.set_ip (pt->ip);
         ec->make_current();
     }
@@ -122,7 +139,7 @@ void Ec::sys_call()
         current->set_partner (ec);
         ec->cont = recv_user;
         ec->regs.set_ip (pt->ip);
-        ec->regs.set_pt (pt->node_base);
+        ec->regs.set_pt (ec->local_pt_id(ec, pt, s->pt()));
         ec->make_current();
     }
 

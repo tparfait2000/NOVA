@@ -38,6 +38,7 @@ class Pt : public Kobject
         Refptr<Ec> const ec;
         Mtd        const mtd;
         mword      const ip;
+        Refptr<Pd> const pd;
 
         Pt (Pd *, mword, Ec *, Mtd, mword);
 

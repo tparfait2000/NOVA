@@ -30,6 +30,7 @@
 #include "tss.h"
 
 class Utcb;
+class Pt;
 
 class Ec : public Kobject, public Refcount, public Queue<Sc>
 {
@@ -155,6 +156,9 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
             regs.REG(sp) = regs.ARG_SP;
             regs.REG(ip) = regs.ARG_IP;
         }
+
+        ALWAYS_INLINE
+        inline mword local_pt_id(const Ec *, const Pt *, const mword);
 
     public:
         static Ec *current CPULOCAL_HOT;
