@@ -4,7 +4,7 @@
  * Copyright (C) 2009-2011 Udo Steinberg <udo@hypervisor.org>
  * Economic rights: Technische Universitaet Dresden (Germany)
  *
- * Copyright (C) 2012 Udo Steinberg, Intel Corporation.
+ * Copyright (C) 2012-2013 Udo Steinberg, Intel Corporation.
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -62,6 +62,9 @@ void Ec::vmx_exception()
             mword cr2 = Vmcs::read (Vmcs::EXI_QUALIFICATION);
 
             switch (Vtlb::miss (&current->regs, cr2, err)) {
+
+                case Vtlb::FAILURE:
+                    die ("vTLB addressing limit exceeded");
 
                 case Vtlb::GPA_HPA:
                     current->regs.dst_portal = Vmcs::VMX_EPT_VIOLATION;
