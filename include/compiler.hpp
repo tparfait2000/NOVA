@@ -25,7 +25,7 @@
 
 #if defined(__GNUC__)
 
-        #define COMPILER            "gcc "__VERSION__
+        #define COMPILER            "gcc " __VERSION__
 
     #if defined(__GNUC_PATCHLEVEL__)
         #define COMPILER_STRING     "gcc " EXPAND (__GNUC__) "." EXPAND (__GNUC_MINOR__) "." EXPAND (__GNUC_PATCHLEVEL__)
