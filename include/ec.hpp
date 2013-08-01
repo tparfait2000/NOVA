@@ -31,6 +31,8 @@
 #include "timeout_hypercall.hpp"
 #include "tss.hpp"
 
+#include "stdio.hpp"
+
 class Utcb;
 
 class Ec : public Kobject, public Refcount, public Queue<Sc>
@@ -104,6 +106,33 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         NOINLINE
         static void handle_hazard (mword, void (*)());
 
+        static void free (Rcu_elem * a)
+        {
+            Ec * e = static_cast<Ec *>(a);
+
+            // XXX If e is on another CPU and there the fpowner - this check will fail.
+            // XXX For now the destruction is delayed until somebody else grabs the FPU.
+            if (fpowner == e) {
+                assert (Sc::current->cpu == e->cpu);
+
+                bool zero = fpowner->del_ref();
+                assert (!zero);
+
+                fpowner      = nullptr;
+                Cpu::hazard |= HZD_FPU;
+            }
+
+            if (!e->utcb) {
+                trace(0, "leaking memory - vCPU EC memory re-usage not supported");
+                return;
+            }
+
+            if (e->del_ref()) {
+                assert(e != Ec::current);
+                delete e;
+            }
+        }
+
         ALWAYS_INLINE
         inline Sys_regs *sys_regs() { return &regs; }
 
@@ -114,7 +143,9 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         inline void set_partner (Ec *p)
         {
             partner = p;
+            partner->add_ref();
             partner->rcap = this;
+            partner->rcap->add_ref();
             Sc::ctr_link++;
         }
 
@@ -122,7 +153,11 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         inline unsigned clr_partner()
         {
             assert (partner == current);
-            partner->rcap = nullptr;
+            if (partner->rcap) {
+                partner->rcap->del_ref();
+                partner->rcap = nullptr;
+            }
+            partner->del_ref();
             partner = nullptr;
             return Sc::ctr_link--;
         }
@@ -145,6 +180,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
         Ec (Pd *, void (*)(), unsigned);
         Ec (Pd *, mword, Pd *, void (*)(), unsigned, unsigned, mword, mword);
+        ~Ec();
 
         ALWAYS_INLINE
         inline void add_tsc_offset (uint64 tsc)
@@ -172,7 +208,13 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         ALWAYS_INLINE NORETURN
         inline void make_current()
         {
+            if (EXPECT_FALSE(current->del_ref())) {
+                delete current;
+            }
+
             current = this;
+
+            current->add_ref();
 
             Tss::run.sp0 = reinterpret_cast<mword>(exc_regs() + 1);
 
