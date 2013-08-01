@@ -94,6 +94,9 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
 //De-constructor
 Ec::~Ec()
 {
+    if (fpu)
+        delete fpu;
+
     if (utcb) {
         delete utcb;
         return;
