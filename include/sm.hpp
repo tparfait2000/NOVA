@@ -76,12 +76,17 @@ class Sm : public Kobject, public Queue<Ec>
 
             {   Lock_guard <Spinlock> guard (lock);
 
+                loop:
+
                 if (!dequeue (ec = head())) {
                     counter++;
                     return;
                 }
 
-                ec->del_ref();
+                if (EXPECT_FALSE(ec->del_ref())) {
+                    delete ec;
+                    goto loop;
+                }
             }
 
             ec->release (c);
