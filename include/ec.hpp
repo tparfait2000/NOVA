@@ -106,9 +106,19 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         {
             Ec * e = static_cast<Ec *>(a);
 
+            assert(e);
+
             // remove mapping in page table
-            if (e && e->user_utcb)
+            if (e->user_utcb)
                 e->pd->Space_mem::insert (e->user_utcb, 0, 0, 0);
+
+            // XXX if e is on another CPU and there the fpowner - this check will fail
+            // XXX for now we have to wait until somebody else grabs the FPU so that e can get be deleted
+            if (fpowner == e) {
+                assert (Sc::current->cpu == e->cpu);
+                fpowner->del_ref();
+                fpowner = nullptr;
+             }
         }
 
         static void free (Rcu_elem * a)

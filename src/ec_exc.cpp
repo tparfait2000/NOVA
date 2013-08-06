@@ -40,7 +40,10 @@ void Ec::handle_exc_nm()
         if (fpowner->utcb == nullptr)
             fpowner->regs.fpu_ctrl (false);
 
-        fpowner->fpu->save();
+        if (fpowner->del_ref())
+            delete fpowner;
+        else
+            fpowner->fpu->save();
     }
 
     // For a vCPU, disable CR0.TS and #NM intercepts
@@ -55,6 +58,7 @@ void Ec::handle_exc_nm()
     }
 
     fpowner = current;
+    fpowner->add_ref();
 }
 
 bool Ec::handle_exc_ts (Exc_regs *r)
