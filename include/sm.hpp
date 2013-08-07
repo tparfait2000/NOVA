@@ -41,6 +41,10 @@ class Sm : public Kobject, public Queue<Ec>
 
     public:
         Sm (Pd *, mword, mword = 0);
+        ~Sm ()
+        {
+            while(!counter) up();
+        }
 
         ALWAYS_INLINE
         inline void dn (bool zero, uint64 t)
