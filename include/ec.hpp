@@ -6,6 +6,7 @@
  *
  * Copyright (C) 2012-2013 Udo Steinberg, Intel Corporation.
  * Copyright (C) 2014 Udo Steinberg, FireEye, Inc.
+ * Copyright (C) 2013-2014 Alexander Boettcher, Genode Labs GmbH
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -34,6 +35,7 @@
 #include "stdio.hpp"
 
 class Utcb;
+class Sm;
 
 class Ec : public Kobject, public Refcount, public Queue<Sc>
 {
@@ -59,6 +61,8 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         unsigned const evt;
         Timeout_hypercall timeout;
         mword          user_utcb;
+
+        Sm *         xcpu_sm;
 
         static Slab_cache cache;
 
@@ -136,7 +140,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         {
             Ec * e = static_cast<Ec *>(a);
 
-            if (!e->utcb) {
+            if (!e->utcb && !e->xcpu_sm) {
                 trace(0, "leaking memory - vCPU EC memory re-usage not supported");
                 return;
             }
@@ -194,6 +198,8 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
         Ec (Pd *, void (*)(), unsigned);
         Ec (Pd *, mword, Pd *, void (*)(), unsigned, unsigned, mword, mword);
+        Ec (Pd *, Pd *, void (*f)(), unsigned, Ec *);
+
         ~Ec();
 
         ALWAYS_INLINE
@@ -301,7 +307,11 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         NORETURN
         static void ret_user_vmrun();
 
+        NORETURN
+        static void ret_xcpu_reply();
+
         template <Sys_regs::Status S, bool T = false>
+
         NOINLINE NORETURN
         static void sys_finish();
 
@@ -367,7 +377,13 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         static void sys_assign_gsi();
 
         NORETURN
+        static void sys_xcpu_call();
+
+        NORETURN
         static void idle();
+
+        NORETURN
+        static void xcpu_return();
 
         NORETURN
         static void root_invoke();
