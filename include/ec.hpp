@@ -125,6 +125,11 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         {
             Ec * e = static_cast<Ec *>(a);
 
+            if (!e->utcb) {
+                trace(0, "leaking memory - vCPU Ec memory re-usage not supported");
+                return;
+            }
+
             if (e->del_ref()) {
                 assert(e != Ec::current);
                 delete e;
