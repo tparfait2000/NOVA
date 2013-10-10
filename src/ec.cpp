@@ -66,6 +66,8 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
 
     } else {
 
+        utcb = nullptr;
+
         regs.dst_portal = NUM_VMI - 2;
         regs.vtlb = new Vtlb;
 
