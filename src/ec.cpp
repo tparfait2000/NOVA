@@ -119,6 +119,8 @@ Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone) : Kobject (EC, stati
 //De-constructor
 Ec::~Ec()
 {
+    pre_free(this);
+
     if (fpu)
         delete fpu;
 

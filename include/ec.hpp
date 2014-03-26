@@ -113,13 +113,10 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
             assert(e);
 
             // remove mapping in page table
-            if (e->user_utcb)
+            if (e->user_utcb) {
                 e->pd->Space_mem::insert (e->user_utcb, 0, 0, 0);
-        }
-
-        static void free (Rcu_elem * a)
-        {
-            Ec * e = static_cast<Ec *>(a);
+                e->user_utcb = 0;
+            }
 
             // XXX If e is on another CPU and there the fpowner - this check will fail.
             // XXX For now the destruction is delayed until somebody else grabs the FPU.
@@ -132,6 +129,11 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
                 fpowner      = nullptr;
                 Cpu::hazard |= HZD_FPU;
             }
+        }
+
+        static void free (Rcu_elem * a)
+        {
+            Ec * e = static_cast<Ec *>(a);
 
             if (!e->utcb && !e->xcpu_sm) {
                 trace(0, "leaking memory - vCPU EC memory re-usage not supported");
