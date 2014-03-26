@@ -105,6 +105,8 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
 //De-constructor
 Ec::~Ec()
 {
+    pre_free(this);
+
     if (fpu)
         delete fpu;
 
