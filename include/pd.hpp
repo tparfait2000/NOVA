@@ -109,7 +109,7 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
         }
 
         template <typename>
-        void delegate (Pd *, mword, mword, mword, mword, mword = 0);
+        void delegate (Pd *, mword, mword, mword, mword, mword = 0, char const * = 0);
 
         template <typename>
         void revoke (mword, mword, mword, bool);
