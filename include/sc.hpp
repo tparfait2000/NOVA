@@ -55,7 +55,7 @@ class Sc : public Kobject, public Refcount
 
         static unsigned prio_top CPULOCAL;
 
-        void ready_enqueue (uint64);
+        void ready_enqueue (uint64, bool use_left = true);
         void ready_dequeue (uint64);
 
         static void free (Rcu_elem * a) {
@@ -91,7 +91,7 @@ class Sc : public Kobject, public Refcount
         static void rke_handler();
 
         NORETURN
-        static void schedule (bool = false);
+        static void schedule (bool = false, bool = true);
 
         ALWAYS_INLINE
         static inline void *operator new (size_t) { return cache.alloc(); }
