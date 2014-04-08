@@ -49,7 +49,7 @@ Sc::Sc (Pd *own, mword sel, Ec *e, unsigned c, unsigned p, unsigned q) : Kobject
     trace (TRACE_SYSCALL, "SC:%p created (EC:%p CPU:%#x P:%#x Q:%#x)", this, e, c, p, q);
 }
 
-void Sc::ready_enqueue (uint64 t)
+void Sc::ready_enqueue (uint64 t, bool use_left)
 {
     assert (prio < priorities);
     assert (cpu == Cpu::id);
@@ -63,13 +63,13 @@ void Sc::ready_enqueue (uint64 t)
         next = list[prio];
         prev = list[prio]->prev;
         next->prev = prev->next = this;
-        if (left)
+        if (use_left && left)
             list[prio] = this;
     }
 
     trace (TRACE_SCHEDULE, "ENQ:%p (%llu) PRIO:%#x TOP:%#x %s", this, left, prio, prio_top, prio > current->prio ? "reschedule" : "");
 
-    if (prio > current->prio || (this != current && prio == current->prio && left))
+    if (prio > current->prio || (this != current && prio == current->prio && (use_left && left)))
         Cpu::hazard |= HZD_SCHED;
 
     if (!left)
@@ -101,7 +101,7 @@ void Sc::ready_dequeue (uint64 t)
     tsc = t;
 }
 
-void Sc::schedule (bool suspend)
+void Sc::schedule (bool suspend, bool use_left)
 {
     Counter::print<1,16> (++Counter::schedule, Console_vga::COLOR_LIGHT_CYAN, SPN_SCH);
 
@@ -117,7 +117,7 @@ void Sc::schedule (bool suspend)
     Cpu::hazard &= ~HZD_SCHED;
 
     if (EXPECT_TRUE (!suspend))
-        current->ready_enqueue (t);
+        current->ready_enqueue (t, use_left);
 
     Sc *sc = list[prio_top];
     assert (sc);
