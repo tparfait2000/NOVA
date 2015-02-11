@@ -183,7 +183,23 @@ void Ec::reply (void (*c)())
 
     Ec *ec = current->rcap;
 
-    if (EXPECT_FALSE (!ec || !ec->clr_partner()))
+    if (EXPECT_FALSE (!ec))
+        Sc::current->ec->activate();
+
+    Sm *sm = nullptr;
+    Sys_sm_ctrl *r = static_cast<Sys_sm_ctrl *>(current->sys_regs());
+    if (EXPECT_FALSE(r->sm()) && !c) {
+        Capability cap = Space_obj::lookup (r->sm());
+        if (EXPECT_TRUE (cap.obj()->type() == Kobject::SM && (cap.prm() & 1UL << r->op())))
+            sm = static_cast<Sm *>(cap.obj());
+    }
+
+    bool clr = ec->clr_partner();
+
+    if (sm)
+        sm->dn (false, 0, ec, clr);
+
+    if (!clr)
         Sc::current->ec->activate();
 
     ec->make_current();
@@ -527,6 +543,7 @@ void Ec::sys_sm_ctrl()
         case 1:
             if (sm->space == static_cast<Space_obj *>(&Pd::kern))
                 Gsi::unmask (static_cast<unsigned>(sm->node_base - NUM_CPU));
+            current->cont = Ec::sys_finish<Sys_regs::SUCCESS, true>;
             sm->dn (r->zc(), r->time());
             break;
     }

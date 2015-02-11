@@ -48,10 +48,8 @@ class Sm : public Kobject, public Queue<Ec>
         }
 
         ALWAYS_INLINE
-        inline void dn (bool zero, uint64 t)
+        inline void dn (bool zero, uint64 t, Ec *ec = Ec::current, bool block = true)
         {
-            Ec *ec = Ec::current;
-
             {   Lock_guard <Spinlock> guard (lock);
 
                 if (counter) {
@@ -64,13 +62,16 @@ class Sm : public Kobject, public Queue<Ec>
                 enqueue (ec);
             }
 
+            if (!block)
+                Sc::schedule (false);
+
             ec->set_timeout (t, this);
 
             ec->block_sc();
         }
 
         ALWAYS_INLINE
-        inline void up(void (*c)() = Ec::sys_finish<Sys_regs::SUCCESS, true>)
+        inline void up(void (*c)() = nullptr)
         {
             Ec *ec;
 

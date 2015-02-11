@@ -283,7 +283,8 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         ALWAYS_INLINE
         inline void release (void (*c)())
         {
-            cont = c;
+            if (c)
+                cont = c;
 
             Lock_guard <Spinlock> guard (lock);
 
