@@ -24,17 +24,14 @@
 #include "cpu.hpp"
 #include "memory.hpp"
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
 #define trace(T,format,...)                                         \
 do {                                                                \
-    register mword __esp asm ("esp");                               \
+    mword __esp;                                                    \
     if (EXPECT_FALSE ((trace_mask & (T)) == (T)))                   \
         Console::print ("[%2ld] " format,                           \
-                static_cast<long>(((__esp - 1) & ~PAGE_MASK) ==     \
+                static_cast<long>(((reinterpret_cast<mword>(&__esp) - 1) & ~PAGE_MASK) ==     \
                 CPU_LOCAL_STCK ? Cpu::id : ~0UL), ## __VA_ARGS__);  \
 } while (0)
-#pragma GCC diagnostic pop
 
 /*
  * Definition of trace events
