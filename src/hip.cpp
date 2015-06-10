@@ -26,6 +26,7 @@
 #include "lapic.hpp"
 #include "multiboot.hpp"
 #include "space_obj.hpp"
+#include "pd.hpp"
 
 mword Hip::root_addr;
 mword Hip::root_size;
@@ -48,7 +49,7 @@ void Hip::build (mword addr)
     h->cfg_page   = PAGE_SIZE;
     h->cfg_utcb   = PAGE_SIZE;
 
-    Multiboot *mbi = static_cast<Multiboot *>(Hpt::remap (addr));
+    Multiboot *mbi = static_cast<Multiboot *>(Hpt::remap (Pd::kern.quota, addr));
 
     uint32 flags       = mbi->flags;
     uint32 cmdline     = mbi->cmdline;
@@ -75,7 +76,7 @@ void Hip::build (mword addr)
 
 void Hip::add_mem (Hip_mem *&mem, mword addr, size_t len)
 {
-    char *mmap_addr = static_cast<char *>(Hpt::remap (addr));
+    char *mmap_addr = static_cast<char *>(Hpt::remap (Pd::kern.quota, addr));
 
     for (char *ptr = mmap_addr; ptr < mmap_addr + len; mem++) {
 
@@ -92,7 +93,7 @@ void Hip::add_mem (Hip_mem *&mem, mword addr, size_t len)
 
 void Hip::add_mod (Hip_mem *&mem, mword addr, size_t count)
 {
-    Multiboot_module *mod = static_cast<Multiboot_module *>(Hpt::remap (addr));
+    Multiboot_module *mod = static_cast<Multiboot_module *>(Hpt::remap (Pd::kern.quota, addr));
 
     if (count) {
         root_addr = mod->s_addr;

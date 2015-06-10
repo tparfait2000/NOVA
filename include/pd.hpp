@@ -63,6 +63,8 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
         static Pd *current CPULOCAL_HOT;
         static Pd kern, root;
 
+        Quota quota;
+
         INIT
         Pd (Pd *);
         ~Pd();
@@ -127,7 +129,7 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
         void rev_crd (Crd, bool);
 
         ALWAYS_INLINE
-        static inline void *operator new (size_t) { return cache.alloc(); }
+        static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
 
         ALWAYS_INLINE
         static inline void operator delete (void *ptr) { cache.free (ptr); }

@@ -43,7 +43,7 @@ void Ec::save_fpu()
         regs.fpu_ctrl (false);
 
     if (EXPECT_FALSE (!fpu))
-        fpu = new Fpu;
+        fpu = new (pd->quota) Fpu;
 
     fpu->save();
 }
@@ -116,11 +116,11 @@ bool Ec::handle_exc_pf (Exc_regs *r)
     mword addr = r->cr2;
 
     if (r->err & Hpt::ERR_U)
-        return addr < USER_ADDR && Pd::current->Space_mem::loc[Cpu::id].sync_from (Pd::current->Space_mem::hpt, addr, USER_ADDR);
+        return addr < USER_ADDR && Pd::current->Space_mem::loc[Cpu::id].sync_from (Pd::current->quota, Pd::current->Space_mem::hpt, addr, USER_ADDR);
 
     if (addr < USER_ADDR) {
 
-        if (Pd::current->Space_mem::loc[Cpu::id].sync_from (Pd::current->Space_mem::hpt, addr, USER_ADDR))
+        if (Pd::current->Space_mem::loc[Cpu::id].sync_from (Pd::current->quota, Pd::current->Space_mem::hpt, addr, USER_ADDR))
             return true;
 
         if (fixup (r->REG(ip))) {
@@ -129,7 +129,7 @@ bool Ec::handle_exc_pf (Exc_regs *r)
         }
     }
 
-    if (addr >= LINK_ADDR && addr < CPU_LOCAL && Pd::current->Space_mem::loc[Cpu::id].sync_from (Hptp (reinterpret_cast<mword>(&PDBR)), addr, CPU_LOCAL))
+    if (addr >= LINK_ADDR && addr < CPU_LOCAL && Pd::current->Space_mem::loc[Cpu::id].sync_from (Pd::current->quota, Hptp (reinterpret_cast<mword>(&PDBR)), addr, CPU_LOCAL))
         return true;
 
     // Kernel fault in I/O space

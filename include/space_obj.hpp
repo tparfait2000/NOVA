@@ -37,7 +37,7 @@ class Space_obj : public Space
         ALWAYS_INLINE
         inline Space_mem *space_mem();
 
-        void update (mword, Capability);
+        void update (Quota &quota, mword, Capability);
 
     public:
         static unsigned const caps = (END_SPACE_LIM - SPC_LOCAL_OBJ) / sizeof (Capability);
@@ -50,11 +50,11 @@ class Space_obj : public Space
 
         size_t lookup (mword, Capability &);
 
-        Paddr walk (mword = 0);
+        Paddr walk (Quota &quoat, mword = 0);
 
-        void update (Mdb *, mword = 0);
+        void update (Quota &quota, Mdb *, mword = 0);
 
         static void page_fault (mword, mword);
 
-        static bool insert_root (Kobject *);
+        static bool insert_root (Quota &quota, Kobject *);
 };

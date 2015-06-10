@@ -252,8 +252,8 @@ void Ec::sys_create_pd()
         sys_finish<Sys_regs::BAD_CAP>();
     }
 
-    Pd *pd = new Pd (Pd::current, r->sel(), cap.prm());
-    if (!Space_obj::insert_root (pd)) {
+    Pd *pd = new (Pd::current->quota) Pd (Pd::current, r->sel(), cap.prm());
+    if (!Space_obj::insert_root (pd->quota, pd)) {
         trace (TRACE_ERROR, "%s: Non-NULL CAP (%#lx)", __func__, r->sel());
         delete pd;
         sys_finish<Sys_regs::BAD_CAP>();
@@ -288,14 +288,14 @@ void Ec::sys_create_ec()
     }
     Pd *pd = static_cast<Pd *>(cap.obj());
 
-    if (EXPECT_FALSE (r->utcb() >= USER_ADDR || r->utcb() & PAGE_MASK || !pd->insert_utcb (r->utcb()))) {
+    if (EXPECT_FALSE (r->utcb() >= USER_ADDR || r->utcb() & PAGE_MASK || !pd->insert_utcb (pd->quota, r->utcb()))) {
         trace (TRACE_ERROR, "%s: Invalid UTCB address (%#lx)", __func__, r->utcb());
         sys_finish<Sys_regs::BAD_PAR>();
     }
 
-    Ec *ec = new Ec (Pd::current, r->sel(), pd, r->flags() & 1 ? static_cast<void (*)()>(send_msg<ret_user_iret>) : nullptr, r->cpu(), r->evt(), r->utcb(), r->esp());
+    Ec *ec = new (pd->quota) Ec (Pd::current, r->sel(), pd, r->flags() & 1 ? static_cast<void (*)()>(send_msg<ret_user_iret>) : nullptr, r->cpu(), r->evt(), r->utcb(), r->esp());
 
-    if (!Space_obj::insert_root (ec)) {
+    if (!Space_obj::insert_root (pd->quota, ec)) {
         trace (TRACE_ERROR, "%s: Non-NULL CAP (%#lx)", __func__, r->sel());
         if (!pd->remove_utcb(r->utcb()))
         	trace (TRACE_ERROR, "%s: Cannot remove UTCB", __func__);
@@ -317,6 +317,7 @@ void Ec::sys_create_sc()
         trace (TRACE_ERROR, "%s: Non-PD CAP (%#lx)", __func__, r->pd());
         sys_finish<Sys_regs::BAD_CAP>();
     }
+    Pd *pd = static_cast<Pd *>(cap.obj());
 
     cap = Space_obj::lookup (r->ec());
     if (EXPECT_FALSE (cap.obj()->type() != Kobject::EC) || !(cap.prm() & 1UL << Kobject::SC)) {
@@ -335,8 +336,8 @@ void Ec::sys_create_sc()
         sys_finish<Sys_regs::BAD_PAR>();
     }
 
-    Sc *sc = new Sc (Pd::current, r->sel(), ec, ec->cpu, r->qpd().prio(), r->qpd().quantum());
-    if (!Space_obj::insert_root (sc)) {
+    Sc *sc = new (pd->quota) Sc (Pd::current, r->sel(), ec, ec->cpu, r->qpd().prio(), r->qpd().quantum());
+    if (!Space_obj::insert_root (pd->quota, sc)) {
         trace (TRACE_ERROR, "%s: Non-NULL CAP (%#lx)", __func__, r->sel());
         delete sc;
         sys_finish<Sys_regs::BAD_CAP>();
@@ -358,6 +359,7 @@ void Ec::sys_create_pt()
         trace (TRACE_ERROR, "%s: Non-PD CAP (%#lx)", __func__, r->pd());
         sys_finish<Sys_regs::BAD_CAP>();
     }
+    Pd *pd = static_cast<Pd *>(cap.obj());
 
     cap = Space_obj::lookup (r->ec());
     if (EXPECT_FALSE (cap.obj()->type() != Kobject::EC) || !(cap.prm() & 1UL << Kobject::PT)) {
@@ -371,8 +373,8 @@ void Ec::sys_create_pt()
         sys_finish<Sys_regs::BAD_CAP>();
     }
 
-    Pt *pt = new Pt (Pd::current, r->sel(), ec, r->mtd(), r->eip());
-    if (!Space_obj::insert_root (pt)) {
+    Pt *pt = new (pd->quota) Pt (Pd::current, r->sel(), ec, r->mtd(), r->eip());
+    if (!Space_obj::insert_root (pd->quota, pt)) {
         trace (TRACE_ERROR, "%s: Non-NULL CAP (%#lx)", __func__, r->sel());
         delete pt;
         sys_finish<Sys_regs::BAD_CAP>();
@@ -393,6 +395,7 @@ void Ec::sys_create_sm()
         sys_finish<Sys_regs::BAD_CAP>();
     }
 
+    Pd *pd = static_cast<Pd *>(cap.obj());
     Sm * sm;
 
     if (r->sm()) {
@@ -410,11 +413,11 @@ void Ec::sys_create_sm()
             sys_finish<Sys_regs::BAD_CAP>();
         }
 
-        sm = new Sm (Pd::current, r->sel(), 0, si, r->cnt());
+        sm = new (pd->quota) Sm (Pd::current, r->sel(), 0, si, r->cnt());
     } else
-        sm = new Sm (Pd::current, r->sel(), r->cnt());
+        sm = new (pd->quota) Sm (Pd::current, r->sel(), r->cnt());
 
-    if (!Space_obj::insert_root (sm)) {
+    if (!Space_obj::insert_root (pd->quota, sm)) {
         trace (TRACE_ERROR, "%s: Non-NULL CAP (%#lx)", __func__, r->sel());
         delete sm;
         sys_finish<Sys_regs::BAD_CAP>();
@@ -713,10 +716,10 @@ void Ec::sys_xcpu_call()
 
     enum { UNUSED = 0, CNT = 0 };
 
-    current->xcpu_sm = new Sm (Pd::current, UNUSED, CNT);
+    current->xcpu_sm = new (Pd::current->quota) Sm (Pd::current, UNUSED, CNT);
 
-    Ec *xcpu_ec = new Ec (Pd::current, Pd::current, Ec::sys_call, ec->cpu, current);
-    Sc *xcpu_sc = new Sc (Pd::current, xcpu_ec, xcpu_ec->cpu, Sc::current);
+    Ec *xcpu_ec = new (Pd::current->quota) Ec (Pd::current, Pd::current, Ec::sys_call, ec->cpu, current);
+    Sc *xcpu_sc = new (Pd::current->quota) Sc (Pd::current, xcpu_ec, xcpu_ec->cpu, Sc::current);
 
     xcpu_sc->remote_enqueue();
     current->xcpu_sm->dn (false, 0);

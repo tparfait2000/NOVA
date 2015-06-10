@@ -22,6 +22,7 @@
 #include "cmdline.hpp"
 #include "hpt.hpp"
 #include "string.hpp"
+#include "pd.hpp"
 
 bool Cmdline::iommu;
 bool Cmdline::keyb;
@@ -66,7 +67,7 @@ char *Cmdline::get_arg (char **line)
 
 void Cmdline::init (mword addr)
 {
-    char *arg, *line = static_cast<char *>(Hpt::remap (addr));
+    char *arg, *line = static_cast<char *>(Hpt::remap (Pd::kern.quota, addr));
 
     while ((arg = get_arg (&line)))
         for (unsigned i = 0; i < sizeof map / sizeof *map; i++)

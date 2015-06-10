@@ -37,14 +37,14 @@ Pd::Pd (Pd *own) : Kobject (PD, static_cast<Space_obj *>(own))
 
     Mtrr::init();
 
-    Space_mem::insert_root (0, reinterpret_cast<mword>(&LINK_P));
-    Space_mem::insert_root (reinterpret_cast<mword>(&LINK_E), 1ULL << 52);
+    Space_mem::insert_root (own->quota, 0, reinterpret_cast<mword>(&LINK_P));
+    Space_mem::insert_root (own->quota, reinterpret_cast<mword>(&LINK_E), 1ULL << 52);
 
     // HIP
-    Space_mem::insert_root (reinterpret_cast<mword>(&FRAME_H), reinterpret_cast<mword>(&FRAME_H) + PAGE_SIZE, 1);
+    Space_mem::insert_root (own->quota, reinterpret_cast<mword>(&FRAME_H), reinterpret_cast<mword>(&FRAME_H) + PAGE_SIZE, 1);
 
     // I/O Ports
-    Space_pio::addreg (0, 1UL << 16, 7);
+    Space_pio::addreg (own->quota, 0, 1UL << 16, 7);
 }
 
 template <typename S>
@@ -57,7 +57,7 @@ void Pd::delegate (Pd *snd, mword const snd_base, mword const rcv_base, mword co
         if ((o = clamp (mdb->node_base, b, mdb->node_order, ord)) == ~0UL)
             break;
 
-        Mdb *node = new Mdb (static_cast<S *>(this), b - mdb->node_base + mdb->node_phys, b - snd_base + rcv_base, o, 0, mdb->node_type, sub);
+        Mdb *node = new (this->quota) Mdb (static_cast<S *>(this), b - mdb->node_base + mdb->node_phys, b - snd_base + rcv_base, o, 0, mdb->node_type, sub);
 
         if (!S::tree_insert (node)) {
             delete node;
@@ -76,7 +76,7 @@ void Pd::delegate (Pd *snd, mword const snd_base, mword const rcv_base, mword co
             continue;
         }
 
-        S::update (node);
+        S::update (this->quota, node);
     }
 }
 
@@ -100,7 +100,7 @@ void Pd::revoke (mword const base, mword const ord, mword const attr, bool self)
                 demote = clamp (node->node_phys, p = b - mdb->node_base + mdb->node_phys, node->node_order, o) != ~0UL;
 
             if (demote && node->node_attr & attr) {
-                static_cast<S *>(node->space)->update (node, attr);
+                static_cast<S *>(node->space)->update (this->quota, node, attr);
                 node->demote_node (attr);
             }
 

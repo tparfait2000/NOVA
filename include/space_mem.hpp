@@ -58,25 +58,25 @@ class Space_mem : public Space
         }
 
         ALWAYS_INLINE
-        inline void insert (mword virt, unsigned o, mword attr, Paddr phys)
+        inline void insert (Quota &quota, mword virt, unsigned o, mword attr, Paddr phys)
         {
-            hpt.update (virt, o, phys, attr);
+            hpt.update (quota, virt, o, phys, attr);
         }
 
         ALWAYS_INLINE
-        inline Paddr replace (mword v, Paddr p)
+        inline Paddr replace (Quota &quota, mword v, Paddr p)
         {
-            return hpt.replace (v, p);
+            return hpt.replace (quota, v, p);
         }
 
         INIT
-        void insert_root (uint64, uint64, mword = 0x7);
+        void insert_root (Quota &quota, uint64, uint64, mword = 0x7);
 
-        bool insert_utcb (mword, mword = 0);
+        bool insert_utcb (Quota &quota, mword, mword = 0);
 
         bool remove_utcb (mword);
 
-        void update (Mdb *, mword = 0);
+        void update (Quota &quota, Mdb *, mword = 0);
 
         static void shootdown();
 

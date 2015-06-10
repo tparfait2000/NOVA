@@ -33,6 +33,7 @@
 #include "io.hpp"
 #include "stdio.hpp"
 #include "x86.hpp"
+#include "pd.hpp"
 
 Paddr       Acpi::dmar, Acpi::fadt, Acpi::hpet, Acpi::madt, Acpi::mcfg, Acpi::rsdt, Acpi::xsdt;
 Acpi_gas    Acpi::pm1a_sts, Acpi::pm1b_sts, Acpi::pm1a_ena, Acpi::pm1b_ena, Acpi::pm1a_cnt, Acpi::pm1b_cnt, Acpi::pm2_cnt, Acpi::pm_tmr, Acpi::reset_reg;
@@ -67,20 +68,20 @@ void Acpi::setup()
     Acpi_rsdp::parse();
 
     if (xsdt)
-        static_cast<Acpi_table_rsdt *>(Hpt::remap (xsdt))->parse (xsdt, sizeof (uint64));
+        static_cast<Acpi_table_rsdt *>(Hpt::remap (Pd::kern.quota, xsdt))->parse (xsdt, sizeof (uint64));
     else if (rsdt)
-        static_cast<Acpi_table_rsdt *>(Hpt::remap (rsdt))->parse (rsdt, sizeof (uint32));
+        static_cast<Acpi_table_rsdt *>(Hpt::remap (Pd::kern.quota, rsdt))->parse (rsdt, sizeof (uint32));
 
     if (fadt)
-        static_cast<Acpi_table_fadt *>(Hpt::remap (fadt))->parse();
+        static_cast<Acpi_table_fadt *>(Hpt::remap (Pd::kern.quota, fadt))->parse();
     if (hpet)
-        static_cast<Acpi_table_hpet *>(Hpt::remap (hpet))->parse();
+        static_cast<Acpi_table_hpet *>(Hpt::remap (Pd::kern.quota, hpet))->parse();
     if (madt)
-        static_cast<Acpi_table_madt *>(Hpt::remap (madt))->parse();
+        static_cast<Acpi_table_madt *>(Hpt::remap (Pd::kern.quota, madt))->parse();
     if (mcfg)
-        static_cast<Acpi_table_mcfg *>(Hpt::remap (mcfg))->parse();
+        static_cast<Acpi_table_mcfg *>(Hpt::remap (Pd::kern.quota, mcfg))->parse();
     if (dmar)
-        static_cast<Acpi_table_dmar *>(Hpt::remap (dmar))->parse();
+        static_cast<Acpi_table_dmar *>(Hpt::remap (Pd::kern.quota, dmar))->parse();
 
     if (!Acpi_table_madt::sci_overridden) {
         Acpi_intr sci_override;

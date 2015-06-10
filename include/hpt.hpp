@@ -79,13 +79,13 @@ class Hpt : public Pte<Hpt, mword, PTE_LEV, PTE_BPL, false>
             asm volatile ("mov %0, %%cr3" : : "r" (val | pcid) : "memory");
         }
 
-        bool sync_from (Hpt, mword, mword);
+        bool sync_from (Quota &quota, Hpt, mword, mword);
 
-        void sync_master_range (mword, mword);
+        void sync_master_range (Quota &quota, mword, mword);
 
-        Paddr replace (mword, mword);
+        Paddr replace (Quota &quota, mword, mword);
 
-        static void *remap (Paddr);
+        static void *remap (Quota &quota, Paddr);
 };
 
 class Hptp : public Hpt
