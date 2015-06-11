@@ -35,13 +35,6 @@ class Mdb : public Avl, public Rcu_elem
 
         bool alive() const { return prev->next == this && next->prev == this; }
 
-        static void free (Rcu_elem *e)
-        {
-            Mdb *m = static_cast<Mdb *>(e);
-            if (!m->invalid())
-                delete m;
-        }
-
     public:
         Spinlock        node_lock;
         uint16    const dpth;
@@ -66,7 +59,7 @@ class Mdb : public Avl, public Rcu_elem
         explicit Mdb (Space *s, mword p, mword b, mword a, void (*f)(Rcu_elem *), void (*pf)(Rcu_elem *) = nullptr) : Rcu_elem (f, pf), dpth (0), prev (this), next (this), prnt (nullptr), space (s), node_phys (p), node_base (b), node_order (0), node_attr (a), node_type (0), node_sub (0) {}
 
         NOINLINE
-        explicit Mdb (Space *s, mword p, mword b, mword o = 0, mword a = 0, mword t = 0, mword sub = 0, uint16 depth = 0) : Rcu_elem (free), dpth (depth), prev (this), next (this), prnt (nullptr), space (s), node_phys (p), node_base (b), node_order (o), node_attr (a), node_type (t), node_sub (sub) {}
+        explicit Mdb (Space *s, void (*f)(Rcu_elem *), mword p, mword b, mword o = 0, mword a = 0, mword t = 0, mword sub = 0, uint16 depth = 0) : Rcu_elem (f), dpth (depth), prev (this), next (this), prnt (nullptr), space (s), node_phys (p), node_base (b), node_order (o), node_attr (a), node_type (t), node_sub (sub) {}
 
         static Mdb *lookup (Avl *tree, mword base, bool next)
         {
@@ -93,7 +86,9 @@ class Mdb : public Avl, public Rcu_elem
         static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
 
         ALWAYS_INLINE
-        static inline void operator delete (void *ptr) { cache.free (ptr); }
+        static inline void destroy (Mdb *obj, Quota &quota) { obj->~Mdb(); cache.free (obj, quota); }
+
+        template <typename T> void destroy (T *, Quota &);
 
         ALWAYS_INLINE
         inline bool accessible() const { return !Avl::removed() && !Avl::invalid(); }

@@ -31,11 +31,11 @@
 mword Space_mem::did_c [4096 / 8 / sizeof(mword)];
 mword Space_mem::did_f = 0;
 
-void Space_mem::init (unsigned cpu)
+void Space_mem::init (Quota &quota, unsigned cpu)
 {
     if (cpus.set (cpu)) {
-        loc[cpu].sync_from (Pd::kern.quota, Pd::kern.loc[cpu], CPU_LOCAL, SPC_LOCAL);
-        loc[cpu].sync_master_range (Pd::kern.quota, LINK_ADDR, CPU_LOCAL);
+        loc[cpu].sync_from (quota, Pd::kern.loc[cpu], CPU_LOCAL, SPC_LOCAL);
+        loc[cpu].sync_master_range (quota, LINK_ADDR, CPU_LOCAL);
     }
 }
 
@@ -159,17 +159,26 @@ void Space_mem::insert_root (Quota &quota, uint64 s, uint64 e, mword a)
     }
 }
 
+static void free_mdb(Rcu_elem * e)
+{
+    Mdb       *mdb   = static_cast<Mdb *>(e);
+    Space_mem *space = static_cast<Space_mem *>(mdb->space);
+    Pd        *pd    = static_cast<Pd *>(space);
+
+    Mdb::destroy (mdb, pd->quota);
+}
+
 bool Space_mem::insert_utcb (Quota &quota, mword b, mword phys)
 {
     if (!b)
         return true;
 
-    Mdb *mdb = new (quota) Mdb (this, phys, b >> PAGE_BITS, 0, 0x3);
+    Mdb *mdb = new (quota) Mdb (this, free_mdb, phys, b >> PAGE_BITS, 0, 0x3);
 
     if (tree_insert (mdb))
         return true;
 
-    delete mdb;
+    Mdb::destroy (mdb, quota);
 
     return false;
 }

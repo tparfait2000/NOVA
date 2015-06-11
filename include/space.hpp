@@ -56,7 +56,7 @@ class Space
             Lock_guard <Spinlock> guard (lock);
 
             for (mword o; size; size -= 1UL << o, addr += 1UL << o)
-                Mdb::insert<Mdb> (&tree, new (quota) Mdb (nullptr, addr, addr, (o = max_order (addr, size)), attr, type));
+                Mdb::insert<Mdb> (&tree, new (quota) Mdb (nullptr, nullptr, addr, addr, (o = max_order (addr, size)), attr, type));
         }
 
         void delreg (Quota &quota, mword addr)
@@ -76,6 +76,6 @@ class Space
             addreg (quota, base, addr - base, node->node_attr, node->node_type);
             addreg (quota, next, last - next, node->node_attr, node->node_type);
 
-            delete node;
+            Mdb::destroy (node, quota);
         }
 };

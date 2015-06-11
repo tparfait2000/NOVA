@@ -100,7 +100,7 @@ void *Slab_cache::alloc(Quota &quota)
     return ret;
 }
 
-void Slab_cache::free (void *ptr)
+void Slab_cache::free (void *ptr, Quota &quota)
 {
     Lock_guard <Spinlock> guard (lock);
 
@@ -154,7 +154,7 @@ void Slab_cache::free (void *ptr)
             if (slab->prev->empty() || (head && head->empty())) {
                 // There are already empty slabs - delete current slab
                 assert(head != slab);
-                delete slab;
+                Slab::destroy (slab, quota);
             } else {
                 // There are partial slabs in front of us - requeue empty one
                 // Enqueue as head

@@ -120,13 +120,14 @@ class Vmcb
         }
 
         ALWAYS_INLINE
-        static inline void operator delete (void *ptr)
+        static inline void destroy(Vmcb *obj, Quota &quota)
         {
-            Buddy::allocator.free (reinterpret_cast<mword>(ptr));
+            Buddy::allocator.free (reinterpret_cast<mword>(Buddy::phys_to_ptr(static_cast<Paddr>(obj->base_msr))), quota);
+            obj->~Vmcb();
+            Buddy::allocator.free (reinterpret_cast<mword>(obj), quota);
         }
 
         Vmcb (Quota &quota, mword, mword);
-        ~Vmcb();
 
         ALWAYS_INLINE
         inline Vmcb()

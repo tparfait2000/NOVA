@@ -41,6 +41,7 @@ class Sm;
 class Ec : public Kobject, public Refcount, public Queue<Sc>
 {
     friend class Queue<Ec>;
+    friend class Sc;
 
     private:
         void        (*cont)() ALIGNED (16);
@@ -139,7 +140,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         }
 
         ALWAYS_INLINE
-        static inline void destroy (Ec *obj) { obj->~Ec(); cache.free (obj); }
+        static inline void destroy (Ec *obj, Quota &quota) { obj->~Ec(); cache.free (obj, quota); }
 
         static void free (Rcu_elem * a)
         {
@@ -152,7 +153,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
             if (e->del_ref()) {
                 assert(e != Ec::current);
-                Ec::destroy (e);
+                Ec::destroy (e, e->pd->quota);
             }
         }
 

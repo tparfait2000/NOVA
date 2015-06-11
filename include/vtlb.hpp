@@ -90,5 +90,5 @@ class Vtlb : public Pte<Vtlb, uint64, 3,  9, false>
         static inline void *operator new (size_t, Quota &quota) { return Buddy::allocator.alloc (0, quota, Buddy::NOFILL); }
 
         ALWAYS_INLINE
-        static inline void operator delete (void *ptr) { Buddy::allocator.free (reinterpret_cast<mword>(ptr)); }
+        static inline void destroy(Vtlb *obj, Quota &quota) { obj->~Vtlb(); Buddy::allocator.free (reinterpret_cast<mword>(obj), quota); }
 };

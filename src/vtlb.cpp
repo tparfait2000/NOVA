@@ -161,7 +161,7 @@ Vtlb::Reason Vtlb::miss (Exc_regs *regs, mword virt, mword &error)
             }
 
             if (!tlb->super())
-                delete static_cast<Vtlb *>(Buddy::phys_to_ptr (tlb->addr()));
+                Vtlb::destroy(static_cast<Vtlb *>(Buddy::phys_to_ptr (tlb->addr())), Pd::current->quota);
 
             attr |= TLB_S;
         }

@@ -17,9 +17,57 @@
 
 #pragma once
 
+#include "lock_guard.hpp"
+#include "util.hpp"
+
+class Buddy;
+
 class Quota
 {
-    private:
+    friend class Buddy;
 
-        mword amount;
+    private:
+        Spinlock lock;
+
+        mword used;
+        mword over;
+
+        mword upli;
+        mword notr;
+
+    public:
+
+        static Quota init;
+
+        Quota () : used(0), over(0), upli(0), notr(0) { }
+
+        void alloc(mword p)
+        {
+            Lock_guard <Spinlock> guard (lock);
+            used += p;
+        }
+
+        void free(mword p)
+        {
+            Lock_guard <Spinlock> guard (lock);
+
+            if (p <= used) {
+                used -= p;
+                return;
+            }
+
+            over += p - used;
+            upli += p - used;
+            used = 0;
+        }
+
+        mword usage() { return used; }
+
+        static void boot(Quota &kern, Quota &root)
+        {
+            kern.upli   = kern.used;
+            root.upli  -= kern.used;
+        }
+
+        void dump(void *, bool = true);
 };
