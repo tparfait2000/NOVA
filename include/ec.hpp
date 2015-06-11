@@ -41,6 +41,7 @@ class Sm;
 class Ec : public Kobject, public Refcount, public Queue<Sc>
 {
     friend class Queue<Ec>;
+    friend class Sc;
 
     private:
         void        (*cont)() ALIGNED (16);
@@ -413,5 +414,5 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
 
         ALWAYS_INLINE
-        static inline void operator delete (void *ptr) { cache.free (ptr); }
+        static inline void operator delete (void *ptr) { cache.free (ptr, static_cast<Ec *>(ptr)->pd->quota); }
 };

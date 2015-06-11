@@ -80,5 +80,5 @@ class Space_mem : public Space
 
         static void shootdown();
 
-        void init (unsigned);
+        void init (Quota &quota, unsigned);
 };

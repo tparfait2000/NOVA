@@ -41,8 +41,10 @@ Si::~Si()
         assert(r);
     }
 
-    if (sm->del_ref())
-        delete sm;
+    if (sm->del_ref()) {
+        Pd *pd = static_cast<Pd *>(static_cast<Space_obj *>(sm->space));
+        Sm::destroy(sm, pd->quota);
+    }
 }
 
 void Si::chain(Sm *si)

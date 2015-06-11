@@ -129,5 +129,5 @@ class Utcb : public Utcb_head, private Utcb_data
         static inline void *operator new (size_t, Quota &quota) { return Buddy::allocator.alloc (0, quota, Buddy::FILL_0); }
 
         ALWAYS_INLINE
-        static inline void operator delete (void *ptr) { Buddy::allocator.free (reinterpret_cast<mword>(ptr)); }
+        static inline void destroy(Utcb *obj, Quota &quota) { obj->~Utcb(); Buddy::allocator.free (reinterpret_cast<mword>(obj), quota); }
 };

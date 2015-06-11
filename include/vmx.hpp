@@ -360,9 +360,10 @@ class Vmcs
         }
 
         ALWAYS_INLINE
-        static inline void operator delete (void *ptr)
+        static inline void destroy(Vmcs *obj, Quota &quota)
         {
-            Buddy::allocator.free (reinterpret_cast<mword>(ptr));
+            obj->~Vmcs();
+            Buddy::allocator.free (reinterpret_cast<mword>(obj), quota);
         }
 
         Vmcs (mword, mword, mword, uint64);

@@ -34,7 +34,7 @@ Paddr Space_obj::walk (Quota &quota, mword idx)
         Paddr p = Buddy::ptr_to_phys (ptr = Buddy::allocator.alloc (0, quota, Buddy::FILL_0));
 
         if ((phys = space_mem()->replace (quota, virt, p | Hpt::HPT_NX | Hpt::HPT_D | Hpt::HPT_A | Hpt::HPT_W | Hpt::HPT_P)) != p)
-            Buddy::allocator.free (reinterpret_cast<mword>(ptr));
+            Buddy::allocator.free (reinterpret_cast<mword>(ptr), quota);
 
         phys |= virt & PAGE_MASK;
     }

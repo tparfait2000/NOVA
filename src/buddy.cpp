@@ -25,8 +25,12 @@
 #include "lock_guard.hpp"
 #include "stdio.hpp"
 #include "string.hpp"
+#include "pd.hpp"
 
 extern char _mempool_p, _mempool_l, _mempool_f, _mempool_e;
+
+INIT_PRIORITY (PRIO_BUDDY)
+Quota Quota::init;
 
 /*
  * Buddy Allocator
@@ -69,7 +73,10 @@ Buddy::Buddy (mword phys, mword virt, mword f_addr, size_t size)
         head[i].next = head[i].prev = head + i;
 
     for (mword i = f_addr; i < virt + size; i += PAGE_SIZE)
-        free (i);
+        free (i, Quota::init);
+
+    Quota::init.upli += Quota::init.freed;
+    Quota::init.freed = 0;
 }
 
 /*
@@ -109,8 +116,12 @@ void *Buddy::alloc (unsigned short ord, Quota &quota, Fill fill)
         if (fill)
             memset (reinterpret_cast<void *>(virt), fill == FILL_0 ? 0 : -1, 1ul << (block->ord + PAGE_BITS));
 
+        quota.alloc(1ul << ord);
+
         return reinterpret_cast<void *>(virt);
     }
+
+    quota.dump(Pd::current);
 
     Console::panic ("Out of memory");
 }
@@ -119,7 +130,7 @@ void *Buddy::alloc (unsigned short ord, Quota &quota, Fill fill)
  * Free physically contiguous memory region.
  * @param virt     Linear block base address
  */
-void Buddy::free (mword virt)
+void Buddy::free (mword virt, Quota &quota)
 {
     signed long idx = page_to_index (virt);
 
@@ -133,6 +144,8 @@ void Buddy::free (mword virt)
 
     // Ensure corresponding physical block is order-aligned
     assert ((virt_to_phys (virt) & ((1ul << (block->ord + PAGE_BITS)) - 1)) == 0);
+
+    quota.free(1ul << block->ord);
 
     Lock_guard <Spinlock> guard (lock);
 
@@ -170,4 +183,21 @@ void Buddy::free (mword virt)
     block->prev = h;
     block->next = h->next;
     block->next->prev = h->next = block;
+}
+
+
+void Quota::dump(void * pd, bool all)
+{
+    if (all) {
+        trace(0, "quota after boot Quota:init - amount=%lx freed=%lx limit %lx",
+              Quota::init.amount, Quota::init.freed, Quota::init.upli);
+
+        trace(0, "Pd::kern=%12p quota=%12p - amount=0x%012lx freed=0x%012lx in_use=%012lx limit=%lx not_for_transfer=%lx",
+              &Pd::kern, &Pd::kern.quota, Pd::kern.quota.amount, Pd::kern.quota.freed, Pd::kern.quota.usage(), Pd::root.quota.upli, Pd::kern.quota.notr);
+        trace(0, "Pd::root=%12p quota=%12p - amount=0x%012lx freed=0x%012lx in_use=%012lx limit=%lx not_for_transfer=%lx",
+              &Pd::root, &Pd::root.quota, Pd::root.quota.amount, Pd::root.quota.freed, Pd::root.quota.usage(), Pd::root.quota.upli, Pd::root.quota.notr);
+    }
+
+    trace(0, "Pd::this=%12p quota=%12p - amount=0x%012lx freed=0x%012lx in_use=%012lx limit=%lx not_for_transfer=%lx",
+          pd, &static_cast<Pd *>(pd)->quota, amount, freed, usage(), upli, notr);
 }

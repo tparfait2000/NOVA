@@ -43,7 +43,7 @@ P *Pte<P,E,L,B,F>::walk (Quota &quota, E v, unsigned long n, bool a)
                 return nullptr;
 
             if (!e->set (0, Buddy::ptr_to_phys (p = new (quota) P) | (l == L ? 0 : P::PTE_N)))
-                delete p;
+                Pte::destroy(p, quota);
         }
     }
 }
@@ -93,7 +93,7 @@ void Pte<P,E,L,B,F>::update (Quota &quota, E v, mword o, E p, mword a, Type t)
             continue;
 
         if (l && !e[i].super())
-            delete static_cast<P *>(Buddy::phys_to_ptr (e[i].addr()));
+            Pte::destroy(static_cast<P *>(Buddy::phys_to_ptr (e[i].addr())), quota);
     }
 
     if (F)
@@ -101,20 +101,20 @@ void Pte<P,E,L,B,F>::update (Quota &quota, E v, mword o, E p, mword a, Type t)
 }
 
 template <typename P, typename E, unsigned L, unsigned B, bool F>
-void Pte<P,E,L,B,F>::clear (bool all)
+void Pte<P,E,L,B,F>::clear (Quota &quota, bool all)
 {
     if (!val)
         return;
 
     P * e = static_cast<P *>(Buddy::phys_to_ptr (this->addr()));
 
-    e->free_up(L - 1, e, 0, all);
+    e->free_up(quota, L - 1, e, 0, all);
 
-    delete e;
+    Pte::destroy (e, quota);
 }
 
 template <typename P, typename E, unsigned L, unsigned B, bool F>
-void Pte<P,E,L,B,F>::free_up (unsigned l, P * e, mword v, bool all)
+void Pte<P,E,L,B,F>::free_up (Quota &quota, unsigned l, P * e, mword v, bool all)
 {
     if (!e)
         return;
@@ -128,10 +128,10 @@ void Pte<P,E,L,B,F>::free_up (unsigned l, P * e, mword v, bool all)
             mword virt = v + (i << (l * B + PAGE_BITS));
 
             if (l)
-                p->free_up(l - 1, p, virt, all);
+                p->free_up(quota, l - 1, p, virt, all);
 
             if (all || (!all && virt >= USER_ADDR && (l >= 3)))
-                delete p;
+                Pte::destroy(p, quota);
         }
     }
 }

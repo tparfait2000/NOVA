@@ -28,6 +28,7 @@ Slab_cache Pd::cache (sizeof (Pd), 32);
 
 Pd *Pd::current;
 
+INIT_PRIORITY (PRIO_BUDDY)
 ALIGNED(32) Pd Pd::kern (&Pd::kern);
 ALIGNED(32) Pd Pd::root (&Pd::root, NUM_EXC, 0x1f);
 
@@ -48,6 +49,16 @@ Pd::Pd (Pd *own) : Kobject (PD, static_cast<Space_obj *>(own))
 }
 
 template <typename S>
+static void free_mdb(Rcu_elem * e)
+{
+    Mdb  *mdb   = static_cast<Mdb *>(e);
+    S    *space = static_cast<S *>(mdb->space);
+    Pd   *pd    = static_cast<Pd *>(space);
+
+    Mdb::destroy (mdb, pd->quota);
+}
+
+template <typename S>
 void Pd::delegate (Pd *snd, mword const snd_base, mword const rcv_base, mword const ord, mword const attr, mword const sub, char const * deltype)
 {
     Mdb *mdb;
@@ -57,10 +68,10 @@ void Pd::delegate (Pd *snd, mword const snd_base, mword const rcv_base, mword co
         if ((o = clamp (mdb->node_base, b, mdb->node_order, ord)) == ~0UL)
             break;
 
-        Mdb *node = new (this->quota) Mdb (static_cast<S *>(this), b - mdb->node_base + mdb->node_phys, b - snd_base + rcv_base, o, 0, mdb->node_type, sub);
+        Mdb *node = new (this->quota) Mdb (static_cast<S *>(this), free_mdb<S>, b - mdb->node_base + mdb->node_phys, b - snd_base + rcv_base, o, 0, mdb->node_type, sub);
 
         if (!S::tree_insert (node)) {
-            delete node;
+            Mdb::destroy (node, this->quota);
 
             Mdb * x = S::tree_lookup(b - snd_base + rcv_base);
             if (!x || x->prnt != mdb)
@@ -71,7 +82,7 @@ void Pd::delegate (Pd *snd, mword const snd_base, mword const rcv_base, mword co
 
         if (!node->insert_node (mdb, attr)) {
             S::tree_remove (node);
-            delete node;
+            Mdb::destroy (node, this->quota);
             trace (0, "overmap attempt %s - node - PD:%p->%p SB:%#010lx RB:%#010lx O:%#04lx A:%#lx", deltype, snd, this, snd_base, rcv_base, ord, attr);
             continue;
         }
@@ -308,12 +319,12 @@ Pd::~Pd()
 {
     pre_free(this);
 
-    Space_mem::hpt.clear();
-    Space_mem::dpt.clear();
-    Space_mem::npt.clear();
+    Space_mem::hpt.clear(quota);
+    Space_mem::dpt.clear(quota);
+    Space_mem::npt.clear(quota);
     for (unsigned cpu = 0; cpu < NUM_CPU; cpu++)
         if (Hip::cpu_online (cpu))
-            Space_mem::loc[cpu].clear(false);
+            Space_mem::loc[cpu].clear(quota, false);
 }
 
 extern "C" int __cxa_atexit(void (*)(void *), void *, void *) { return 0; }

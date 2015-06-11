@@ -29,3 +29,10 @@ Pt::Pt (Pd *own, mword sel, Ec *e, Mtd m, mword addr) : Kobject (PT, static_cast
 {
     trace (TRACE_SYSCALL, "PT:%p created (EC:%p IP:%#lx)", this, e, ip);
 }
+
+void Pt::free (Rcu_elem * p)
+{
+    Pt *pt = static_cast<Pt *>(p);
+    Pd *pd = static_cast<Pd *>(static_cast<Space_obj *>(pt->space));
+    destroy(pt, pd->quota);
+}

@@ -191,3 +191,5 @@ void Sc::rke_handler()
     if (Pd::current->Space_mem::htlb.chk (Cpu::id))
         Cpu::hazard |= HZD_SCHED;
 }
+
+void Sc::operator delete (void *ptr) { cache.free (ptr, static_cast<Sc *>(ptr)->ec->pd->quota); }

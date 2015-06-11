@@ -36,9 +36,10 @@ class Sm : public Kobject, public Refcount, public Queue<Ec>, public Queue<Si>, 
         static void free (Rcu_elem * a) {
             Sm * sm = static_cast <Sm *>(a);
 
-            if (sm->del_ref())
-                delete sm;
-            else {
+            if (sm->del_ref()) {
+                Pd *pd = static_cast<Pd *>(static_cast<Space_obj *>(sm->space));
+                destroy(sm, pd->quota);
+            } else {
                 sm->rcu = false;
                 sm->up();
             }
@@ -155,5 +156,5 @@ class Sm : public Kobject, public Refcount, public Queue<Ec>, public Queue<Si>, 
         static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
 
         ALWAYS_INLINE
-        static inline void operator delete (void *ptr) { cache.free (ptr); }
+        static inline void destroy(Sm *obj, Quota &quota) { obj->~Sm(); cache.free (obj, quota); }
 };
