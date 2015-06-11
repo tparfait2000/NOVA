@@ -101,7 +101,7 @@ class Buddy
 
         void *alloc (unsigned short ord, Quota &quota, Fill fill);
 
-        void free (mword addr);
+        void free (mword addr, Quota &quota);
 
         ALWAYS_INLINE
         static inline void *phys_to_ptr (Paddr phys)

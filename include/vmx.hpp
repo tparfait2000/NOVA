@@ -362,9 +362,10 @@ class Vmcs
         }
 
         ALWAYS_INLINE
-        static inline void operator delete (void *ptr)
+        static inline void destroy(Vmcs *obj, Quota &quota)
         {
-            Buddy::allocator.free (reinterpret_cast<mword>(ptr));
+            obj->~Vmcs();
+            Buddy::allocator.free (reinterpret_cast<mword>(obj), quota);
         }
 
         Vmcs (mword, mword, mword, uint64);
@@ -471,9 +472,9 @@ struct Msr_area
     }
 
     ALWAYS_INLINE
-    static inline void destroy(Msr_area *obj)
+    static inline void destroy(Msr_area *obj, Quota &quota)
     {
-        Buddy::allocator.free (reinterpret_cast<mword>(obj));
+        Buddy::allocator.free (reinterpret_cast<mword>(obj), quota);
     }
 };
 
@@ -491,9 +492,9 @@ struct Virtual_apic_page
     }
 
     ALWAYS_INLINE
-    static inline void destroy(Virtual_apic_page *obj)
+    static inline void destroy(Virtual_apic_page *obj, Quota &quota)
     {
-        Buddy::allocator.free (reinterpret_cast<mword>(obj));
+        Buddy::allocator.free (reinterpret_cast<mword>(obj), quota);
     }
 
     uint32 vtpr() { return data[VTPR]; }

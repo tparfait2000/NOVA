@@ -136,7 +136,7 @@ class Space_mem : public Space
 
         static void shootdown(Pd *);
 
-        void init (unsigned);
+        void init (Quota &quota, unsigned);
 
         ALWAYS_INLINE
         inline mword sticky_sub(mword s) { return s & 0x4; }

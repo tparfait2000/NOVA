@@ -164,5 +164,11 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
         static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
 
         ALWAYS_INLINE
-        static inline void operator delete (void *ptr) { cache.free (ptr); }
+        static inline void operator delete (void *ptr)
+        {
+            Pd *pd_del = static_cast<Pd *>(ptr);
+            Pd *pd_to  = static_cast<Pd *>(static_cast<Space_obj *>(pd_del->space));
+
+            cache.free (ptr, pd_to->quota);
+        }
 };

@@ -300,7 +300,7 @@ void Ec::sys_create_ec()
         trace (TRACE_ERROR, "%s: Non-NULL CAP (%#lx)", __func__, r->sel());
         if (!pd->remove_utcb(r->utcb()))
         	trace (TRACE_ERROR, "%s: Cannot remove UTCB", __func__);
-        Ec::destroy (ec);
+        Ec::destroy (ec, ec->pd->quota);
         sys_finish<Sys_regs::BAD_CAP>();
     }
 
@@ -382,7 +382,7 @@ void Ec::sys_create_pt()
     Pt *pt = new (pd->quota) Pt (Pd::current, r->sel(), ec, r->mtd(), r->eip());
     if (!Space_obj::insert_root (pd->quota, pt)) {
         trace (TRACE_ERROR, "%s: Non-NULL CAP (%#lx)", __func__, r->sel());
-        delete pt;
+        Pt::destroy (pt, pd->quota);
         sys_finish<Sys_regs::BAD_CAP>();
     }
 
@@ -425,7 +425,7 @@ void Ec::sys_create_sm()
 
     if (!Space_obj::insert_root (pd->quota, sm)) {
         trace (TRACE_ERROR, "%s: Non-NULL CAP (%#lx)", __func__, r->sel());
-        delete sm;
+        Sm::destroy(sm, pd->quota);
         sys_finish<Sys_regs::BAD_CAP>();
     }
 
@@ -823,7 +823,7 @@ void Ec::ret_xcpu_reply()
 {
     assert (current->xcpu_sm);
 
-    delete current->xcpu_sm;
+    Sm::destroy(current->xcpu_sm, Pd::current->quota);
     current->xcpu_sm = nullptr;
 
     if (current->regs.status() != Sys_regs::SUCCESS) {

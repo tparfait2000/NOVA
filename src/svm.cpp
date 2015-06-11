@@ -37,11 +37,6 @@ Vmcb::Vmcb (Quota &quota, mword bmp, mword nptp) : base_io (bmp), asid (++asid_c
     base_msr = Buddy::ptr_to_phys (Buddy::allocator.alloc (1, quota, Buddy::FILL_1));
 }
 
-Vmcb::~Vmcb()
-{
-    Buddy::allocator.free (reinterpret_cast<mword>(Buddy::phys_to_ptr(static_cast<Paddr>(base_msr))));
-}
-
 void Vmcb::init()
 {
     if (!Cpu::feature (Cpu::FEAT_SVM)) {
