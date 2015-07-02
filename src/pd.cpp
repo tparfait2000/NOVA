@@ -21,6 +21,7 @@
 #include "mtrr.hpp"
 #include "pd.hpp"
 #include "stdio.hpp"
+#include "hip.hpp"
 
 INIT_PRIORITY (PRIO_SLAB)
 Slab_cache Pd::cache ("Pd", sizeof (Pd), 32);
@@ -306,8 +307,9 @@ Pd::~Pd()
     Space_mem::hpt.clear();
     Space_mem::dpt.clear();
     Space_mem::npt.clear();
-    for (unsigned i = 0; i < NUM_CPU; i++)
-        Space_mem::loc[i].clear(false);
+    for (unsigned cpu = 0; cpu < NUM_CPU; cpu++)
+        if (Hip::cpu_online (cpu))
+            Space_mem::loc[cpu].clear(false);
 }
 
 extern "C" int __cxa_atexit(void (*)(void *), void *, void *) { return 0; }

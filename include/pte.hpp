@@ -80,7 +80,7 @@ class Pte
         ALWAYS_INLINE
         static inline void operator delete (void *ptr) { Atomic::add(Pte_allocated, -1); Buddy::allocator.free (reinterpret_cast<mword>(ptr)); }
 
-        void free_up (unsigned l, P *);
+        void free_up (unsigned l, P *, mword, bool);
 
     public:
 
@@ -113,5 +113,5 @@ class Pte
 
         void update (E, mword, E, mword, Type = TYPE_UP);
 
-        void clear(bool all = true);
+        void clear (bool = true);
 };

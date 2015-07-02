@@ -108,16 +108,15 @@ void Pte<P,E,L,B,F>::clear (bool all)
 
     P * e = static_cast<P *>(Buddy::phys_to_ptr (this->addr()));
 
-    if (all)
-        e->free_up(L - 1, e);
+    e->free_up(L - 1, e, 0, all);
 
-    delete e; 
+    delete e;
 }
 
 template <typename P, typename E, unsigned L, unsigned B, bool F>
-void Pte<P,E,L,B,F>::free_up (unsigned l, P * e)
+void Pte<P,E,L,B,F>::free_up (unsigned l, P * e, mword v, bool all)
 {
-    if (!l || !val || !e || !e->val)
+    if (!e)
         return;
 
     for (unsigned long i = 0; i < (1 << B); i++) {
@@ -126,11 +125,14 @@ void Pte<P,E,L,B,F>::free_up (unsigned l, P * e)
 
         if (!e[i].super()) {
             P *p = static_cast<P *>(Buddy::phys_to_ptr (e[i].addr()));
-            p->free_up(l - 1, p);
-            delete p;
-        }
+            mword virt = v + (i << (l * B + PAGE_BITS));
 
-        e[i].val = 0;
+            if (l)
+                p->free_up(l - 1, p, virt, all);
+
+            if (all || (!all && virt >= USER_ADDR && (l >= 3)))
+                delete p;
+        }
     }
 }
 
