@@ -53,8 +53,10 @@ void Si::chain(Sm *si)
 
     Lock_guard <Spinlock> guard (lock);
 
-    if (sm)
-        Rcu::call(sm);
+    if (sm && sm->del_ref()) {
+        sm->add_ref();
+        sm->call_rcu();
+    }
 
     sm = si;
 

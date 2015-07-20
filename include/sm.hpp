@@ -29,17 +29,19 @@ class Sm : public Kobject, public Refcount, public Queue<Ec>, public Queue<Si>, 
 {
     private:
         mword counter;
+        bool  rcu;
 
         static Slab_cache cache;
 
         static void free (Rcu_elem * a) {
             Sm * sm = static_cast <Sm *>(a);
 
-            while (!sm->counter)
-                sm->up (Ec::sys_finish<Sys_regs::BAD_CAP, true>);
-
             if (sm->del_ref())
                 delete sm;
+            else {
+                sm->rcu = false;
+                sm->up();
+            }
         }
 
         mword reset() {
@@ -125,6 +127,28 @@ class Sm : public Kobject, public Refcount, public Queue<Ec>, public Queue<Si>, 
             }
 
             ec->release (Ec::sys_finish<Sys_regs::COM_TIM>);
+        }
+
+        ALWAYS_INLINE
+        inline void call_rcu(bool r = false)
+        {
+            if (ACCESS_ONCE(rcu))
+                return;
+
+            rcu = true;
+
+            if (r)
+                add_ref();
+
+            Rcu::call (this);
+        }
+
+        ALWAYS_INLINE
+        inline void add_to_rcu()
+        {
+            Lock_guard <Spinlock> guard (lock);
+
+            call_rcu(true);
         }
 
         ALWAYS_INLINE
