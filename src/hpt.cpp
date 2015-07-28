@@ -5,6 +5,7 @@
  * Economic rights: Technische Universitaet Dresden (Germany)
  *
  * Copyright (C) 2012-2013 Udo Steinberg, Intel Corporation.
+ * Copyright (C) 2015 Alexander Boettcher, Genode Labs GmbH
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -53,6 +54,7 @@ Paddr Hpt::replace (Quota &quota, mword v, mword p)
 
     do o = *e; while (o.val != p && !(o.attr() & HPT_W) && !e->set (o.val, p));
 
+    flush(v);
     return e->addr();
 }
 

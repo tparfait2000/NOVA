@@ -5,6 +5,7 @@
  * Economic rights: Technische Universitaet Dresden (Germany)
  *
  * Copyright (C) 2012-2013 Udo Steinberg, Intel Corporation.
+ * Copyright (C) 2015 Alexander Boettcher, Genode Labs GmbH
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -25,7 +26,7 @@
 
 class Ec;
 
-class Pt : public Kobject
+class Pt : public Kobject, public Refcount
 {
     private:
         static Slab_cache cache;

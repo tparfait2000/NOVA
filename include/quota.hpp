@@ -61,5 +61,90 @@ class Quota
             root.upli  -= kern.amount;
         }
 
+        void free_up(Quota &to)
+        {
+            mword l, a, f;
+            {
+                Lock_guard <Spinlock> guard (lock);
+                l = upli;
+                a = amount;
+                f = freed;
+                upli = amount = freed = 0;
+            }
+
+            Lock_guard <Spinlock> guard (to.lock);
+            to.upli += l;
+            to.amount += a;
+            to.freed += f;
+        }
+
+        bool hit_limit(mword free_space = 0)
+        {
+             if (free_space > upli)
+                 return true;
+
+             if (freed > amount)
+                  return freed - amount < free_space;
+
+             return amount - freed > upli - free_space;
+        }
+
+        bool transfer_to(Quota &to, mword transfer)
+        {
+             {
+                 Lock_guard <Spinlock> guard (lock);
+
+                 if (hit_limit()) return false;
+
+                 if (usage() + transfer > upli - notr) return false;
+
+                 upli -= transfer;
+             }
+
+             Lock_guard <Spinlock> guard (to.lock);
+             to.upli += transfer;
+             return true;
+        }
+
+        bool set_limit(mword l, mword h, Quota &from)
+        {
+            if (!from.transfer_to(*this, h))
+                return false;
+
+            notr = l;
+            return true;
+        }
+
+        mword limit() { return upli; }
+
         void dump(void *, bool = true);
+};
+
+class Quota_guard
+{
+    private:
+
+        Quota q;
+        Quota &r;
+
+    public:
+
+        Quota_guard(Quota &ref) : q(), r(ref) { }
+
+        bool check(mword req)
+        {
+            if (!q.hit_limit(req))
+                return true;
+
+            if (q.limit() <= q.usage())
+                req += q.usage() - q.limit();
+            else
+                req = q.limit() - q.usage();
+
+            return r.transfer_to(q, req);
+        }
+
+        operator Quota&() { return q; }
+
+        ~Quota_guard() { q.free_up(r); }
 };

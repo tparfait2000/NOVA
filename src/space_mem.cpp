@@ -5,6 +5,7 @@
  * Economic rights: Technische Universitaet Dresden (Germany)
  *
  * Copyright (C) 2012 Udo Steinberg, Intel Corporation.
+ * Copyright (C) 2015 Alexander Boettcher, Genode Labs GmbH
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -144,6 +145,9 @@ static void free_mdb(Rcu_elem * e)
 
 bool Space_mem::insert_utcb (Quota &quota, mword b, mword phys)
 {
+    if (!phys)
+       return true;
+
     if (!b)
         return true;
 
