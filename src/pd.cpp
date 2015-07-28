@@ -5,6 +5,7 @@
  * Economic rights: Technische Universitaet Dresden (Germany)
  *
  * Copyright (C) 2012 Udo Steinberg, Intel Corporation.
+ * Copyright (C) 2015 Alexander Boettcher, Genode Labs GmbH
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -22,6 +23,7 @@
 #include "pd.hpp"
 #include "stdio.hpp"
 #include "hip.hpp"
+#include "ec.hpp"
 
 INIT_PRIORITY (PRIO_SLAB)
 Slab_cache Pd::cache (sizeof (Pd), 32);
@@ -48,6 +50,14 @@ Pd::Pd (Pd *own) : Kobject (PD, static_cast<Space_obj *>(own))
     Space_pio::addreg (own->quota, 0, 1UL << 16, 7);
 }
 
+Pd::Pd (Pd *own, mword sel, mword a) : Kobject (PD, static_cast<Space_obj *>(own), sel, a, free, pre_free)
+{
+    if (this == &Pd::root) {
+        bool res = Quota::init.transfer_to(quota, Quota::init.limit());
+        assert(res);
+    }
+}
+
 template <typename S>
 static void free_mdb(Rcu_elem * e)
 {
@@ -67,6 +77,8 @@ bool Pd::delegate (Pd *snd, mword const snd_base, mword const rcv_base, mword co
 {
     bool s = false;
 
+    Quota_guard qg(this->quota);
+
     Mdb *mdb;
     for (mword addr = snd_base; (mdb = snd->S::tree_lookup (addr, true)); addr = mdb->node_base + (1UL << mdb->node_order)) {
 
@@ -74,14 +86,19 @@ bool Pd::delegate (Pd *snd, mword const snd_base, mword const rcv_base, mword co
         if ((o = clamp (mdb->node_base, b, mdb->node_order, ord)) == ~0UL)
             break;
 
-        Mdb *node = new (this->quota) Mdb (static_cast<S *>(this), free_mdb<S>, b - mdb->node_base + mdb->node_phys, b - snd_base + rcv_base, o, 0, mdb->node_type, S::sticky_sub(mdb->node_sub) | sub, static_cast<uint16>(mdb->dpth + 1));
+        if (quota.hit_limit(1)) {
+            Cpu::hazard |= HZD_OOM;
+            return s;
+        }
+
+        Mdb *node = new (qg) Mdb (static_cast<S *>(this), free_mdb<S>, b - mdb->node_base + mdb->node_phys, b - snd_base + rcv_base, o, 0, mdb->node_type, S::sticky_sub(mdb->node_sub) | sub, static_cast<uint16>(mdb->dpth + 1));
 
         if (!S::tree_insert (node)) {
-            Mdb::destroy (node, this->quota);
+            Mdb::destroy (node, qg);
 
             Mdb * x = S::tree_lookup(b - snd_base + rcv_base);
             if (!x || x->prnt != mdb || x->node_attr != attr)
-                trace (0, "overmap attempt %s - tree - PD:%p->%p SB:%#010lx RB:%#010lx O:%#04lx A:%#lx", deltype, snd, this, snd_base, rcv_base, ord, attr);
+                trace (0, "overmap attempt %s - tree - PD:%p->%p SB:%#010lx RB:%#010lx O:%#04lx A:%#lx SUB:%lx", deltype, snd, this, snd_base, rcv_base, ord, attr, sub);
 
             continue;
         }
@@ -97,8 +114,19 @@ bool Pd::delegate (Pd *snd, mword const snd_base, mword const rcv_base, mword co
             continue;
         }
 
-        s |= S::update (this->quota, node);
+        s |= S::update (qg, node);
+
+        if (Cpu::hazard & HZD_OOM) {
+            s |= S::update (qg, node, attr);
+            node->demote_node (attr);
+            if (node->remove_node() && S::tree_remove (node))
+                Rcu::call (node);
+            return s;
+        }
     }
+
+    if (!qg.check(0))
+        Cpu::hazard |= HZD_OOM;
 
     return s;
 }
@@ -115,8 +143,9 @@ void Pd::revoke (mword const base, mword const ord, mword const attr, bool self,
 
         /* keep in mapping database if requested and at least one child node exists */
         if (kim && (ACCESS_ONCE(mdb->next)->dpth > mdb->dpth)) {
+            Quota_guard qg(this->quota);
             if (mdb->node_attr & 0x1f) {
-                static_cast<S *>(mdb->space)->update (this->quota, mdb, 0x1f);
+                static_cast<S *>(mdb->space)->update (qg, mdb, 0x1f);
                 mdb->demote_node (0x1f);
             }
             static_cast<S *>(mdb->space)->tree_remove (mdb, Avl::State::KIM);
@@ -133,7 +162,8 @@ void Pd::revoke (mword const base, mword const ord, mword const attr, bool self,
                 demote = clamp (node->node_phys, p = b - mdb->node_base + mdb->node_phys, node->node_order, o) != ~0UL;
 
             if (demote && node->node_attr & attr) {
-                static_cast<S *>(node->space)->update (this->quota, node, attr);
+                Quota_guard qg(this->quota);
+                static_cast<S *>(node->space)->update (qg, node, attr);
                 node->demote_node (attr);
             }
 
@@ -326,7 +356,7 @@ void Pd::xfer_items (Pd *src, Crd xlt, Crd del, Xfer *s, Xfer *d, unsigned long 
     mword set_as_del;
 
     for (Crd crd; ti--; s--) {
-			
+
         crd = *s;
         set_as_del = 0;
 
@@ -346,6 +376,8 @@ void Pd::xfer_items (Pd *src, Crd xlt, Crd del, Xfer *s, Xfer *d, unsigned long 
             case 1: {
                 bool r = src == &root && s->flags() & 0x800;
                 del_crd (r? &kern : src, del, crd, (s->flags() >> 8) & (r ? 7 : 3), s->hotspot());
+                if (Cpu::hazard & HZD_OOM)
+                    return;
                 break;
             }
             default:

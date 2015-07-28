@@ -78,6 +78,14 @@ void Ec::delegate()
                          src->utcb->xfer(),
                          user ? dst->utcb->xfer() : nullptr,
                          src->utcb->ti());
+
+    if (Cpu::hazard & HZD_OOM) {
+        if (dst->pd->quota.hit_limit())
+            trace (TRACE_OOM, "warning: insufficient resources %lx/%lx", dst->pd->quota.usage(), dst->pd->quota.limit());
+
+        Cpu::hazard &= ~HZD_OOM;
+        current->oom_delegate(dst, ec, src, user, C);
+    }
 }
 
 template <void (*C)()>
@@ -203,16 +211,31 @@ void Ec::sys_reply()
 
     if (EXPECT_TRUE (ec)) {
 
-        Sys_reply *r = static_cast<Sys_reply *>(current->sys_regs());
-        if (EXPECT_FALSE (r->sm())) {
-            Capability cap = Space_obj::lookup (r->sm());
-            if (EXPECT_TRUE (cap.obj()->type() == Kobject::SM && (cap.prm() & 2))) {
-                sm = static_cast<Sm *>(cap.obj());
+        enum { SYSCALL_REPLY = 1 };
 
-                if (ec->cont == ret_user_sysexit)
-                    ec->cont = sys_call;
-                else if (ec->cont == xcpu_return)
-                    ec->regs.set_status (Sys_regs::BAD_HYP, false);
+        Sys_reply *r = static_cast<Sys_reply *>(current->sys_regs());
+
+        if (EXPECT_FALSE (current->cont == sys_reply && current->regs.status() != SYSCALL_REPLY)) {
+            sm = reinterpret_cast<Sm *>(r->sm_kern());
+            current->regs.set_pt(SYSCALL_REPLY);
+        } else {
+            if (EXPECT_FALSE (r->sm())) {
+                Capability cap = Space_obj::lookup (r->sm());
+                if (EXPECT_TRUE (cap.obj()->type() == Kobject::SM && (cap.prm() & 2)))
+                    sm = static_cast<Sm *>(cap.obj());
+            }
+        }
+
+        if (EXPECT_FALSE (sm)) {
+            if (ec->cont == ret_user_sysexit)
+                ec->cont = sys_call;
+            else if (ec->cont == xcpu_return)
+                ec->regs.set_status (Sys_regs::BAD_HYP, false);
+            else if (ec->cont == sys_reply) {
+                assert (ec->regs.status() == SYSCALL_REPLY);
+                ec->regs.set_pt(reinterpret_cast<mword>(sm));
+                assert (ec->regs.status() != SYSCALL_REPLY);
+                reply();
             }
         }
 
@@ -252,8 +275,19 @@ void Ec::sys_create_pd()
         trace (TRACE_ERROR, "%s: Non-PD CAP (%#lx)", __func__, r->pd());
         sys_finish<Sys_regs::BAD_CAP>();
     }
+    Pd * pd_src = static_cast<Pd *>(cap.obj());
+
+    if (r->limit_lower() > r->limit_upper())
+        sys_finish<Sys_regs::BAD_PAR>();
 
     Pd *pd = new (Pd::current->quota) Pd (Pd::current, r->sel(), cap.prm());
+
+    if (!pd->quota.set_limit(r->limit_lower(), r->limit_upper(), pd_src->quota)) {
+        trace (0, "Insufficient kernel memory for creating new PD");
+        delete pd;
+        sys_finish<Sys_regs::BAD_PAR>();
+    }
+
     if (!Space_obj::insert_root (pd->quota, pd)) {
         trace (TRACE_ERROR, "%s: Non-NULL CAP (%#lx)", __func__, r->sel());
         delete pd;
@@ -294,7 +328,10 @@ void Ec::sys_create_ec()
         sys_finish<Sys_regs::BAD_PAR>();
     }
 
-    Ec *ec = new (pd->quota) Ec (Pd::current, r->sel(), pd, r->flags() & 1 ? static_cast<void (*)()>(send_msg<ret_user_iret>) : nullptr, r->cpu(), r->evt(), r->utcb(), r->esp());
+    cap = Space_obj::lookup (r->sel() + 1);
+    Pt *pt = cap.obj()->type() == Kobject::PT ? static_cast<Pt *>(cap.obj()) : nullptr;
+
+    Ec *ec = new (pd->quota) Ec (Pd::current, r->sel(), pd, r->flags() & 1 ? static_cast<void (*)()>(send_msg<ret_user_iret>) : nullptr, r->cpu(), r->evt(), r->utcb(), r->esp(), pt);
 
     if (!Space_obj::insert_root (pd->quota, ec)) {
         trace (TRACE_ERROR, "%s: Non-NULL CAP (%#lx)", __func__, r->sel());
@@ -704,6 +741,37 @@ void Ec::sys_sm_ctrl()
     sys_finish<Sys_regs::SUCCESS>();
 }
 
+void Ec::sys_pd_ctrl()
+{
+    Sys_pd_ctrl *r = static_cast<Sys_pd_ctrl *>(current->sys_regs());
+
+    Capability cap = Space_obj::lookup (r->src());
+    if (EXPECT_FALSE (cap.obj()->type() != Kobject::PD)) {
+        trace (TRACE_ERROR, "%s: Bad src PD CAP (%#lx)", __func__, r->src());
+        sys_finish<Sys_regs::BAD_CAP>();
+    }
+    Pd *src = static_cast<Pd *>(cap.obj());
+
+    if (r->dbg()) {
+        r->dump(src->quota.limit(), src->quota.usage());
+        sys_finish<Sys_regs::SUCCESS>();
+    }
+
+    Capability cap_pd = Space_obj::lookup (r->dst());
+    if (EXPECT_FALSE (cap_pd.obj()->type() != Kobject::PD)) {
+        trace (TRACE_ERROR, "%s: Bad dst PD CAP (%#lx)", __func__, r->dst());
+        sys_finish<Sys_regs::BAD_CAP>();
+    }
+    Pd *dst = static_cast<Pd *>(cap_pd.obj());
+
+    if (!src->quota.transfer_to(dst->quota, r->tra())) {
+        trace (TRACE_ERROR, "%s: PD %p has insufficient kernel memory quota", __func__, src);
+        sys_finish<Sys_regs::BAD_PAR>();
+    }
+
+    sys_finish<Sys_regs::SUCCESS>();
+}
+
 void Ec::sys_assign_pci()
 {
     Sys_assign_pci *r = static_cast<Sys_assign_pci *>(current->sys_regs());
@@ -853,7 +921,7 @@ void (*const syscall[])() =
     &Ec::sys_sm_ctrl,
     &Ec::sys_assign_pci,
     &Ec::sys_assign_gsi,
-    &Ec::sys_finish<Sys_regs::BAD_HYP>,
+    &Ec::sys_pd_ctrl,
 };
 
 template void Ec::sys_finish<Sys_regs::COM_ABT>();

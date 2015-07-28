@@ -49,6 +49,12 @@ class Sys_create_pd : public Sys_regs
 
         ALWAYS_INLINE
         inline Crd crd() const { return Crd (ARG_3); }
+
+        ALWAYS_INLINE
+        inline unsigned long limit_lower() const { return ARG_4 & (~0UL >> (sizeof(mword) * 4)); }
+
+        ALWAYS_INLINE
+        inline unsigned long limit_upper() const { return ARG_4 >> (sizeof(mword) * 4); }
 };
 
 class Sys_create_ec : public Sys_regs
@@ -166,6 +172,9 @@ class Sys_reply : public Sys_regs
     public:
         ALWAYS_INLINE
         inline unsigned long sm() const { return ARG_1 >> 8; }
+
+        ALWAYS_INLINE
+        inline mword sm_kern() const { return ARG_1; }
 };
 
 class Sys_ec_ctrl : public Sys_regs
@@ -225,6 +234,29 @@ class Sys_sm_ctrl : public Sys_regs
 
         ALWAYS_INLINE
         inline uint64 time() const { return static_cast<uint64>(ARG_2) << 32 | ARG_3; }
+};
+
+class Sys_pd_ctrl : public Sys_regs
+{
+    public:
+        ALWAYS_INLINE
+        inline unsigned long src() const { return ARG_1 >> 8; }
+
+        ALWAYS_INLINE
+        inline unsigned dbg() const { return flags() & 0x2; }
+
+        ALWAYS_INLINE
+        inline unsigned long dst() const { return ARG_2; }
+
+        ALWAYS_INLINE
+        inline unsigned long tra() const { return ARG_3; }
+
+        ALWAYS_INLINE
+        inline void dump (mword l, mword u)
+        {
+            ARG_2 = l;
+            ARG_3 = u;
+        }
 };
 
 class Sys_assign_pci : public Sys_regs

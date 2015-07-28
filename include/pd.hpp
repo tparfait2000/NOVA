@@ -5,6 +5,7 @@
  * Economic rights: Technische Universitaet Dresden (Germany)
  *
  * Copyright (C) 2012 Udo Steinberg, Intel Corporation.
+ * Copyright (C) 2015 Alexander Boettcher, Genode Labs GmbH
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -98,7 +99,7 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
         Pd (Pd *);
         ~Pd();
 
-        Pd (Pd *own, mword sel, mword a) : Kobject (PD, static_cast<Space_obj *>(own), sel, a, free, pre_free) {}
+        Pd (Pd *own, mword sel, mword a);
 
         ALWAYS_INLINE HOT
         inline void make_current()
@@ -168,6 +169,8 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
         {
             Pd *pd_del = static_cast<Pd *>(ptr);
             Pd *pd_to  = static_cast<Pd *>(static_cast<Space_obj *>(pd_del->space));
+
+            pd_del->quota.free_up(pd_to->quota);
 
             cache.free (ptr, pd_to->quota);
         }

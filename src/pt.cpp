@@ -5,6 +5,7 @@
  * Economic rights: Technische Universitaet Dresden (Germany)
  *
  * Copyright (C) 2012-2013 Udo Steinberg, Intel Corporation.
+ * Copyright (C) 2015 Alexander Boettcher, Genode Labs GmbH
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -33,6 +34,10 @@ Pt::Pt (Pd *own, mword sel, Ec *e, Mtd m, mword addr) : Kobject (PT, static_cast
 void Pt::free (Rcu_elem * p)
 {
     Pt *pt = static_cast<Pt *>(p);
+
+    if (!pt->del_ref())
+        return;
+
     Pd *pd = static_cast<Pd *>(static_cast<Space_obj *>(pt->space));
     destroy(pt, pd->quota);
 }
