@@ -5,6 +5,7 @@
  * Economic rights: Technische Universitaet Dresden (Germany)
  *
  * Copyright (C) 2012 Udo Steinberg, Intel Corporation.
+ * Copyright (C) 2015 Alexander Boettcher, Genode Labs GmbH
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -65,6 +66,7 @@ unsigned const trace_mask =
                             TRACE_CPU       |
                             TRACE_IOMMU     |
 #ifdef DEBUG
+//                            TRACE_OOM       |
 //                            TRACE_APIC      |
 //                            TRACE_KEYB      |
                             TRACE_VMX       |

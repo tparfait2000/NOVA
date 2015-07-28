@@ -68,6 +68,7 @@ class Sys_regs
             BAD_FTR,
             BAD_CPU,
             BAD_DEV,
+            QUO_OOM,
         };
 
         ALWAYS_INLINE
