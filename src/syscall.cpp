@@ -44,6 +44,9 @@ void Ec::sys_finish()
     if (current->xcpu_sm)
         xcpu_return();
 
+    if (Pd::current->quota.hit_limit() && S != Sys_regs::QUO_OOM)
+        trace (TRACE_OOM, "warning: insufficient resources %lu/%lu", Pd::current->quota.usage(), Pd::current->quota.limit());
+
     ret_user_sysexit();
 }
 
@@ -128,6 +131,20 @@ void Ec::sys_call()
 
     Pt *pt = static_cast<Pt *>(obj);
     Ec *ec = pt->ec;
+
+    if (Pd::current->quota.hit_limit()) {
+
+        if (!current->pt_oom)
+            sys_finish<Sys_regs::QUO_OOM>();
+
+        if (current->xcpu_sm) {
+            current->regs.set_status (Sys_regs::QUO_OOM, false);
+            xcpu_return();
+        }
+
+        current->oom_call_cpu (current->pt_oom, current->pt_oom->id, sys_call, sys_call);
+        sys_finish<Sys_regs::QUO_OOM>();
+    }
 
     if (EXPECT_FALSE (current->cpu != ec->xcpu))
         Ec::sys_xcpu_call();
@@ -264,8 +281,23 @@ void Ec::sys_reply()
     reply(nullptr, sm);
 }
 
+template <void(*C)()>
+void Ec::check(mword r, bool call)
+{
+    if (Pd::current->quota.hit_limit(r)) {
+        trace(TRACE_OOM, "%s:%u - not enough resources %lu/%lu (%lu)", __func__, __LINE__, Pd::current->quota.usage(), Pd::current->quota.limit(), r);
+
+        if (Ec::current->pt_oom && call)
+            Ec::current->oom_call_cpu (Ec::current->pt_oom, Ec::current->pt_oom->id, C, C);
+
+        sys_finish<Sys_regs::QUO_OOM>();
+    }
+}
+
 void Ec::sys_create_pd()
 {
+    check<sys_create_pd>(0, false);
+
     Sys_create_pd *r = static_cast<Sys_create_pd *>(current->sys_regs());
 
     trace (TRACE_SYSCALL, "EC:%p SYS_CREATE PD:%#lx", current, r->sel());
@@ -279,6 +311,11 @@ void Ec::sys_create_pd()
 
     if (r->limit_lower() > r->limit_upper())
         sys_finish<Sys_regs::BAD_PAR>();
+
+    if (pd_src->quota.hit_limit(1)) {
+        trace(TRACE_OOM, "%s:%u - not enough resources %lu/%lu", __func__, __LINE__, pd_src->quota.usage(), pd_src->quota.limit());
+        sys_finish<Sys_regs::QUO_OOM>();
+    }
 
     Pd *pd = new (Pd::current->quota) Pd (Pd::current, r->sel(), cap.prm());
 
@@ -302,6 +339,8 @@ void Ec::sys_create_pd()
 
 void Ec::sys_create_ec()
 {
+    check<sys_create_ec>(0, false);
+
     Sys_create_ec *r = static_cast<Sys_create_ec *>(current->sys_regs());
 
     trace (TRACE_SYSCALL, "EC:%p SYS_CREATE EC:%#lx CPU:%#x UTCB:%#lx ESP:%#lx EVT:%#x", current, r->sel(), r->cpu(), r->utcb(), r->esp(), r->evt());
@@ -316,27 +355,30 @@ void Ec::sys_create_ec()
         sys_finish<Sys_regs::BAD_FTR>();
     }
 
-    Capability cap = Space_obj::lookup (r->pd());
-    if (EXPECT_FALSE (cap.obj()->type() != Kobject::PD) || !(cap.prm() & 1UL << Kobject::EC)) {
+    Capability cap_pd = Space_obj::lookup (r->pd());
+    if (EXPECT_FALSE (cap_pd.obj()->type() != Kobject::PD) || !(cap_pd.prm() & 1UL << Kobject::EC)) {
         trace (TRACE_ERROR, "%s: Non-PD CAP (%#lx)", __func__, r->pd());
         sys_finish<Sys_regs::BAD_CAP>();
     }
-    Pd *pd = static_cast<Pd *>(cap.obj());
+    Pd *pd = static_cast<Pd *>(cap_pd.obj());
+
+    if (pd->quota.hit_limit(7)) {
+        trace(TRACE_OOM, "%s:%u - not enough resources %lu/%lu", __func__, __LINE__, pd->quota.usage(), pd->quota.limit());
+        sys_finish<Sys_regs::QUO_OOM>();
+    }
 
     if (EXPECT_FALSE (r->utcb() >= USER_ADDR || r->utcb() & PAGE_MASK || !pd->insert_utcb (pd->quota, r->utcb()))) {
         trace (TRACE_ERROR, "%s: Invalid UTCB address (%#lx)", __func__, r->utcb());
         sys_finish<Sys_regs::BAD_PAR>();
     }
 
-    cap = Space_obj::lookup (r->sel() + 1);
-    Pt *pt = cap.obj()->type() == Kobject::PT ? static_cast<Pt *>(cap.obj()) : nullptr;
+    Capability cap_pt = Space_obj::lookup (r->sel() + 1);
+    Pt *pt = cap_pt.obj()->type() == Kobject::PT ? static_cast<Pt *>(cap_pt.obj()) : nullptr;
 
     Ec *ec = new (pd->quota) Ec (Pd::current, r->sel(), pd, r->flags() & 1 ? static_cast<void (*)()>(send_msg<ret_user_iret>) : nullptr, r->cpu(), r->evt(), r->utcb(), r->esp(), pt);
 
     if (!Space_obj::insert_root (pd->quota, ec)) {
         trace (TRACE_ERROR, "%s: Non-NULL CAP (%#lx)", __func__, r->sel());
-        if (!pd->remove_utcb(r->utcb()))
-        	trace (TRACE_ERROR, "%s: Cannot remove UTCB", __func__);
         Ec::destroy (ec, ec->pd->quota);
         sys_finish<Sys_regs::BAD_CAP>();
     }
@@ -346,6 +388,8 @@ void Ec::sys_create_ec()
 
 void Ec::sys_create_sc()
 {
+    check<sys_create_sc>(0, false);
+
     Sys_create_sc *r = static_cast<Sys_create_sc *>(current->sys_regs());
 
     trace (TRACE_SYSCALL, "EC:%p SYS_CREATE SC:%#lx EC:%#lx P:%#x Q:%#x", current, r->sel(), r->ec(), r->qpd().prio(), r->qpd().quantum());
@@ -357,12 +401,17 @@ void Ec::sys_create_sc()
     }
     Pd *pd = static_cast<Pd *>(cap.obj());
 
-    cap = Space_obj::lookup (r->ec());
-    if (EXPECT_FALSE (cap.obj()->type() != Kobject::EC) || !(cap.prm() & 1UL << Kobject::SC)) {
+    if (pd->quota.hit_limit(2)) {
+        trace(TRACE_OOM, "%s:%u - not enough resources %lu/%lu", __func__, __LINE__, pd->quota.usage(), pd->quota.limit());
+        sys_finish<Sys_regs::QUO_OOM>();
+    }
+
+    Capability cap_sc = Space_obj::lookup (r->ec());
+    if (EXPECT_FALSE (cap_sc.obj()->type() != Kobject::EC) || !(cap_sc.prm() & 1UL << Kobject::SC)) {
         trace (TRACE_ERROR, "%s: Non-EC CAP (%#lx)", __func__, r->ec());
         sys_finish<Sys_regs::BAD_CAP>();
     }
-    Ec *ec = static_cast<Ec *>(cap.obj());
+    Ec *ec = static_cast<Ec *>(cap_sc.obj());
 
     if (EXPECT_FALSE (!ec->glb)) {
         trace (TRACE_ERROR, "%s: Cannot bind SC", __func__);
@@ -388,6 +437,8 @@ void Ec::sys_create_sc()
 
 void Ec::sys_create_pt()
 {
+    check<sys_create_pt>(0, false);
+
     Sys_create_pt *r = static_cast<Sys_create_pt *>(current->sys_regs());
 
     trace (TRACE_SYSCALL, "EC:%p SYS_CREATE PT:%#lx EC:%#lx EIP:%#lx", current, r->sel(), r->ec(), r->eip());
@@ -404,12 +455,17 @@ void Ec::sys_create_pt()
     }
     Pd *pd = static_cast<Pd *>(cap.obj());
 
-    cap = Space_obj::lookup (r->ec());
-    if (EXPECT_FALSE (cap.obj()->type() != Kobject::EC) || !(cap.prm() & 1UL << Kobject::PT)) {
+    if (pd->quota.hit_limit(2)) {
+        trace(TRACE_OOM, "%s:%u - not enough resources %lu/%lu", __func__, __LINE__, pd->quota.usage(), pd->quota.limit());
+        sys_finish<Sys_regs::QUO_OOM>();
+    }
+
+    Capability cap_ec = Space_obj::lookup (r->ec());
+    if (EXPECT_FALSE (cap_ec.obj()->type() != Kobject::EC) || !(cap_ec.prm() & 1UL << Kobject::PT)) {
         trace (TRACE_ERROR, "%s: Non-EC CAP (%#lx)", __func__, r->ec());
         sys_finish<Sys_regs::BAD_CAP>();
     }
-    Ec *ec = static_cast<Ec *>(cap.obj());
+    Ec *ec = static_cast<Ec *>(cap_ec.obj());
 
     if (EXPECT_FALSE (ec->glb)) {
         trace (TRACE_ERROR, "%s: Cannot bind PT", __func__);
@@ -428,6 +484,8 @@ void Ec::sys_create_pt()
 
 void Ec::sys_create_sm()
 {
+    check<sys_create_sm>(0, false);
+
     Sys_create_sm *r = static_cast<Sys_create_sm *>(current->sys_regs());
 
     trace (TRACE_SYSCALL, "EC:%p SYS_CREATE SM:%#lx CNT:%lu", current, r->sel(), r->cnt());
@@ -437,8 +495,13 @@ void Ec::sys_create_sm()
         trace (TRACE_ERROR, "%s: Non-PD CAP (%#lx)", __func__, r->pd());
         sys_finish<Sys_regs::BAD_CAP>();
     }
-
     Pd *pd = static_cast<Pd *>(cap.obj());
+
+    if (pd->quota.hit_limit(1)) {
+        trace(TRACE_OOM, "%s:%u - not enough resources %lu/%lu", __func__, __LINE__, pd->quota.usage(), pd->quota.limit());
+        sys_finish<Sys_regs::QUO_OOM>();
+    }
+
     Sm * sm;
 
     if (r->sm()) {
@@ -515,6 +578,8 @@ void Ec::sys_revoke()
 
 void Ec::sys_lookup()
 {
+    check<sys_lookup>(2);
+
     Sys_lookup *s = static_cast<Sys_lookup *>(current->sys_regs());
 
     if (s->flags()) {
@@ -541,6 +606,11 @@ void Ec::sys_lookup()
                             nullptr,
                             current->utcb->ti());
 
+        if (Cpu::hazard & HZD_OOM) {
+           Cpu::hazard &= ~HZD_OOM;
+           sys_finish<Sys_regs::QUO_OOM>();
+        }
+
         sys_finish<Sys_regs::SUCCESS>();
     }
 
@@ -557,6 +627,8 @@ void Ec::sys_lookup()
 
 void Ec::sys_ec_ctrl()
 {
+    check<sys_ec_ctrl>(1);
+
     Sys_ec_ctrl *r = static_cast<Sys_ec_ctrl *>(current->sys_regs());
 
     switch (r->op()) {
@@ -666,6 +738,8 @@ void Ec::sys_ec_ctrl()
 
 void Ec::sys_sc_ctrl()
 {
+    check<sys_sc_ctrl>(1);
+
     Sys_sc_ctrl *r = static_cast<Sys_sc_ctrl *>(current->sys_regs());
 
     Capability cap = Space_obj::lookup (r->sc());
@@ -689,6 +763,8 @@ void Ec::sys_sc_ctrl()
 
 void Ec::sys_pt_ctrl()
 {
+    check<sys_pt_ctrl>(1);
+
     Sys_pt_ctrl *r = static_cast<Sys_pt_ctrl *>(current->sys_regs());
 
     Capability cap = Space_obj::lookup (r->pt());
@@ -706,8 +782,9 @@ void Ec::sys_pt_ctrl()
 
 void Ec::sys_sm_ctrl()
 {
-    Sys_sm_ctrl *r = static_cast<Sys_sm_ctrl *>(current->sys_regs());
+    check<sys_sm_ctrl>(1);
 
+    Sys_sm_ctrl *r = static_cast<Sys_sm_ctrl *>(current->sys_regs());
     Capability cap = Space_obj::lookup (r->sm());
 
     if (EXPECT_FALSE (cap.obj()->type() != Kobject::SM || !(cap.prm() & 1UL << r->op()))) {
@@ -743,6 +820,8 @@ void Ec::sys_sm_ctrl()
 
 void Ec::sys_pd_ctrl()
 {
+    check<sys_pd_ctrl>(1);
+
     Sys_pd_ctrl *r = static_cast<Sys_pd_ctrl *>(current->sys_regs());
 
     Capability cap = Space_obj::lookup (r->src());
@@ -774,6 +853,8 @@ void Ec::sys_pd_ctrl()
 
 void Ec::sys_assign_pci()
 {
+    check<sys_assign_pci>(4);
+
     Sys_assign_pci *r = static_cast<Sys_assign_pci *>(current->sys_regs());
 
     Kobject *obj = Space_obj::lookup (r->pd()).obj();
@@ -783,6 +864,11 @@ void Ec::sys_assign_pci()
     }
 
     Pd * pd = static_cast<Pd *>(obj);
+
+    if (pd->quota.hit_limit(4)) {
+        trace(TRACE_OOM, "%s:%u - not enough resources %lu/%lu", __func__, __LINE__, pd->quota.usage(), pd->quota.limit());
+        sys_finish<Sys_regs::QUO_OOM>();
+    }
 
     Paddr phys; unsigned rid;
     if (EXPECT_FALSE (!pd->Space_mem::lookup (r->dev(), phys) || (rid = Pci::phys_to_rid (phys)) == ~0U || rid >= 65536U)) {
@@ -803,6 +889,8 @@ void Ec::sys_assign_pci()
 
 void Ec::sys_assign_gsi()
 {
+    check<sys_assign_gsi>(2);
+
     Sys_assign_gsi *r = static_cast<Sys_assign_gsi *>(current->sys_regs());
 
     if (EXPECT_FALSE (!Hip::cpu_online (r->cpu()))) {

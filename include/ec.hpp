@@ -452,4 +452,10 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
         NORETURN
         void oom_call(Pt *, mword, mword, void (*)(), void (*)());
+
+        NORETURN
+        void oom_call_cpu(Pt *, mword, void (*)(), void (*)());
+
+        template <void(*C)()>
+        static void check(mword, bool = true);
 };

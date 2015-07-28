@@ -179,3 +179,24 @@ void Ec::sys_xcpu_call_oom()
     Pt       *pt = reinterpret_cast<Pt *>(s->ARG_1);
     current->oom_call(pt, s->ARG_2, s->ARG_3, oom_xcpu_return<ret_xcpu_reply_oom<C>>, sys_xcpu_call_oom<C>);
 }
+
+void Ec::oom_call_cpu(Pt * pt, mword src, void (*CC)(), void (*HELP)())
+{
+    enum { OOM_SEND = 1, OOM_REPLY = 2, OOM_SELF = 4 };
+    mword s = OOM_SEND | (this == pt->ec) ? OOM_SELF : 0;
+
+    if (this->cpu != pt->ec->xcpu) {
+        if (CC == sys_call) this->oom_xcpu<sys_call>(pt, src, s); else
+        if (CC == sys_lookup) this->oom_xcpu<sys_lookup>(pt, src, s); else
+        if (CC == sys_sm_ctrl) this->oom_xcpu<sys_sm_ctrl>(pt, src, s); else
+        if (CC == sys_ec_ctrl) this->oom_xcpu<sys_ec_ctrl>(pt, src, s); else
+        if (CC == sys_sc_ctrl) this->oom_xcpu<sys_sc_ctrl>(pt, src, s); else
+        if (CC == sys_pt_ctrl) this->oom_xcpu<sys_pt_ctrl>(pt, src, s); else
+        if (CC == sys_pd_ctrl) this->oom_xcpu<sys_pd_ctrl>(pt, src, s); else
+        if (CC == sys_assign_gsi) this->oom_xcpu<sys_assign_gsi>(pt, src, s); else
+        if (CC == sys_assign_pci) this->oom_xcpu<sys_assign_pci>(pt, src, s); else
+        die ("Unknown oom call");
+    }
+
+    oom_call(pt, src, s, CC, HELP);
+}
