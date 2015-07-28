@@ -37,6 +37,7 @@
 
 class Utcb;
 class Sm;
+class Pt;
 
 class Ec : public Kobject, public Refcount, public Queue<Sc>
 {
@@ -65,6 +66,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         mword          user_utcb;
 
         Sm *         xcpu_sm;
+        Pt *         pt_oom;
 
         static Slab_cache cache;
 
@@ -207,7 +209,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         static Ec *fpowner CPULOCAL;
 
         Ec (Pd *, void (*)(), unsigned);
-        Ec (Pd *, mword, Pd *, void (*)(), unsigned, unsigned, mword, mword);
+        Ec (Pd *, mword, Pd *, void (*)(), unsigned, unsigned, mword, mword, Pt *);
         Ec (Pd *, Pd *, void (*f)(), unsigned, Ec *);
 
         ~Ec();
@@ -334,6 +336,10 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         NORETURN
         static void ret_xcpu_reply();
 
+        template <void (*)()>
+        NORETURN
+        static void ret_xcpu_reply_oom();
+
         template <Sys_regs::Status S, bool T = false>
 
         NOINLINE NORETURN
@@ -395,6 +401,9 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         static void sys_sm_ctrl();
 
         NORETURN
+        static void sys_pd_ctrl();
+
+        NORETURN
         static void sys_assign_pci();
 
         NORETURN
@@ -403,11 +412,19 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         NORETURN
         static void sys_xcpu_call();
 
+        template <void (*)()>
+        NORETURN
+        static void sys_xcpu_call_oom();
+
         NORETURN
         static void idle();
 
         NORETURN
         static void xcpu_return();
+
+        template <void (*)()>
+        NORETURN
+        static void oom_xcpu_return();
 
         NORETURN
         static void root_invoke();
@@ -425,4 +442,14 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
         ALWAYS_INLINE
         static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
+
+        template <void (*)()>
+        NORETURN
+        void oom_xcpu(Pt *, mword, mword);
+
+        NORETURN
+        void oom_delegate(Ec *, Ec *, Ec *, bool, bool);
+
+        NORETURN
+        void oom_call(Pt *, mword, mword, void (*)(), void (*)());
 };

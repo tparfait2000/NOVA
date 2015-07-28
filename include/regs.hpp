@@ -5,6 +5,7 @@
  * Economic rights: Technische Universitaet Dresden (Germany)
  *
  * Copyright (C) 2012 Udo Steinberg, Intel Corporation.
+ * Copyright (C) 2015 Alexander Boettcher, Genode Labs GmbH
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -86,6 +87,9 @@ class Sys_regs
 
         ALWAYS_INLINE
         inline void set_pt (mword pt) { ARG_1 = pt; }
+
+        ALWAYS_INLINE
+        inline void set_pt (mword pt, mword pt2, mword s) { ARG_1 = pt; ARG_2 = pt2; ARG_3 = s; }
 
         ALWAYS_INLINE
         inline void set_ip (mword ip) { ARG_IP = ip; }

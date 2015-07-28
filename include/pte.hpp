@@ -110,4 +110,6 @@ class Pte
         bool update (Quota &quota, E, mword, E, mword, Type = TYPE_UP);
 
         void clear (Quota &quota, bool (*) (Paddr, mword, unsigned) = nullptr, bool (*) (unsigned, mword) = nullptr);
+
+        bool check(Quota_guard &qg, mword o) { return qg.check(o / (4096 / sizeof(E)) + L); }
 };

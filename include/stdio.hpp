@@ -53,6 +53,7 @@ enum {
     TRACE_REV       = 1UL << 19,
     TRACE_RCU       = 1UL << 20,
     TRACE_FPU       = 1UL << 23,
+    TRACE_OOM       = 1UL << 24,
     TRACE_SYSCALL   = 1UL << 30,
     TRACE_ERROR     = 1UL << 31,
 };

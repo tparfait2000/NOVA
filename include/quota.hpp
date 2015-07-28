@@ -69,5 +69,110 @@ class Quota
             root.upli  -= kern.used;
         }
 
+        void free_up(Quota &to)
+        {
+            mword l, u, o;
+            {
+                Lock_guard <Spinlock> guard (lock);
+                l = upli;
+                u = used;
+                o = over;
+                upli = over = used = 0;
+            }
+
+            Lock_guard <Spinlock> guard (to.lock);
+            to.used += u;
+            to.upli += l;
+            to.over += o;
+
+            if (to.over && to.used) {
+                mword s = min (to.used, to.over);
+                to.used -= s;
+                to.over -= s;
+                to.upli -= s;
+            }
+        }
+
+        bool hit_limit(mword free_space = 0)
+        {
+             if (free_space > upli)
+                 return true;
+
+             return usage() > upli - free_space;
+        }
+
+        bool transfer_to(Quota &to, mword transfer, bool check_notr = true)
+        {
+             mword o = 0;
+
+             {
+                 Lock_guard <Spinlock> guard (lock);
+
+                 if (hit_limit()) return false;
+
+                 mword not_for_transfer = check_notr ? notr : 0;
+
+                 if (usage() + transfer > upli - not_for_transfer) return false;
+
+                 upli -= transfer;
+
+                 o = min (over, transfer);
+                 if (o)
+                     over -= o;
+             }
+
+             Lock_guard <Spinlock> guard (to.lock);
+             to.upli += transfer;
+
+             if (to.used && o) {
+                mword u = min (to.used, o);
+                to.used -= u;
+                to.upli -= u;
+                to.over += o - u;
+             }
+
+             return true;
+        }
+
+        bool set_limit(mword l, mword h, Quota &from)
+        {
+            if (!from.transfer_to(*this, h))
+                return false;
+
+            notr = l;
+            return true;
+        }
+
+        mword limit() { return upli; }
+
         void dump(void *, bool = true);
+};
+
+class Quota_guard
+{
+    private:
+
+        Quota q;
+        Quota &r;
+
+    public:
+
+        Quota_guard(Quota &ref) : q(), r(ref) { }
+
+        bool check(mword req)
+        {
+            if (!q.hit_limit(req))
+                return true;
+
+            if (q.limit() <= q.usage())
+                req += q.usage() - q.limit();
+            else
+                req -= q.limit() - q.usage();
+
+            return r.transfer_to(q, req, false);
+        }
+
+        operator Quota&() { return q; }
+
+        ~Quota_guard() { q.free_up(r); }
 };
