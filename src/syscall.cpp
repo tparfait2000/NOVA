@@ -78,8 +78,6 @@ void Ec::delegate()
                          src->utcb->xfer(),
                          user ? dst->utcb->xfer() : nullptr,
                          src->utcb->ti());
-
-    C ? ret_user_sysexit() : reply();
 }
 
 template <void (*C)()>
@@ -174,7 +172,7 @@ void Ec::recv_user()
     ret_user_sysexit();
 }
 
-void Ec::reply (void (*c)())
+void Ec::reply (void (*c)(), Sm * sm)
 {
     current->cont = c;
 
@@ -185,14 +183,6 @@ void Ec::reply (void (*c)())
 
     if (EXPECT_FALSE (!ec))
         Sc::current->ec->activate();
-
-    Sm *sm = nullptr;
-    Sys_sm_ctrl *r = static_cast<Sys_sm_ctrl *>(current->sys_regs());
-    if (EXPECT_FALSE(r->sm()) && !c) {
-        Capability cap = Space_obj::lookup (r->sm());
-        if (EXPECT_TRUE (cap.obj()->type() == Kobject::SM && (cap.prm() & 1UL << r->op())))
-            sm = static_cast<Sm *>(cap.obj());
-    }
 
     bool clr = ec->clr_partner();
 
@@ -208,10 +198,27 @@ void Ec::reply (void (*c)())
 void Ec::sys_reply()
 {
     Ec *ec = current->rcap;
+    Sm *sm = nullptr;
 
     if (EXPECT_TRUE (ec)) {
 
+        Sys_reply *r = static_cast<Sys_reply *>(current->sys_regs());
+        if (EXPECT_FALSE (r->sm())) {
+            Capability cap = Space_obj::lookup (r->sm());
+            if (EXPECT_TRUE (cap.obj()->type() == Kobject::SM && (cap.prm() & 2))) {
+                sm = static_cast<Sm *>(cap.obj());
+
+                if (ec->cont == ret_user_sysexit)
+                    ec->cont = sys_call;
+                else if (ec->cont == xcpu_return)
+                    ec->regs.set_status (Sys_regs::BAD_HYP, false);
+            }
+        }
+
         Utcb *src = current->utcb;
+
+        if (EXPECT_FALSE (src->tcnt()))
+            delegate<false>();
 
         bool fpu = false;
 
@@ -228,12 +235,9 @@ void Ec::sys_reply()
 
         if (EXPECT_FALSE (fpu))
             current->transfer_fpu (ec);
-
-        if (EXPECT_FALSE (src->tcnt()))
-            delegate<false>();
     }
 
-    reply();
+    reply(nullptr, sm);
 }
 
 void Ec::sys_create_pd()
@@ -700,8 +704,13 @@ void Ec::ret_xcpu_reply()
     delete current->xcpu_sm;
     current->xcpu_sm = nullptr;
 
-    current->cont = ret_user_sysexit;
-    ret_user_sysexit();
+    if (current->regs.status() != Sys_regs::SUCCESS) {
+        current->cont = sys_call;
+        current->regs.set_status (Sys_regs::SUCCESS, false);
+    } else
+        current->cont = ret_user_sysexit;
+
+    current->make_current();
 }
 
 extern "C"
