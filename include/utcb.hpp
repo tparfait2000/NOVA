@@ -23,7 +23,6 @@
 #include "buddy.hpp"
 #include "crd.hpp"
 #include "util.hpp"
-#include "atomic.hpp"
 
 class Cpu_regs;
 
@@ -93,9 +92,8 @@ class Utcb : public Utcb_head, private Utcb_data
 {
     private:
         static mword const words = (PAGE_SIZE - sizeof (Utcb_head)) / sizeof (mword);
-        friend void panic (char const *format, ...);
+
     public:
-        static int allocated;
         WARN_UNUSED_RESULT bool load_exc (Cpu_regs *);
         WARN_UNUSED_RESULT bool load_vmx (Cpu_regs *);
         WARN_UNUSED_RESULT bool load_svm (Cpu_regs *);
@@ -128,8 +126,8 @@ class Utcb : public Utcb_head, private Utcb_data
         inline Xfer *xfer() { return reinterpret_cast<Xfer *>(this) + PAGE_SIZE / sizeof (Xfer) - 1; }
 
         ALWAYS_INLINE
-        static inline void *operator new (size_t) { Atomic::add(allocated, 1); return Buddy::allocator.alloc (0, Buddy::FILL_0); }
+        static inline void *operator new (size_t) { return Buddy::allocator.alloc (0, Buddy::FILL_0); }
 
         ALWAYS_INLINE
-        static inline void operator delete (void *ptr) { Atomic::add(allocated, -1); Buddy::allocator.free (reinterpret_cast<mword>(ptr)); }
+        static inline void operator delete (void *ptr) { Buddy::allocator.free (reinterpret_cast<mword>(ptr)); }
 };

@@ -24,13 +24,9 @@
 #include "buddy.hpp"
 #include "x86.hpp"
 
-extern int Pte_allocated;
-
-
 template <typename P, typename E, unsigned L, unsigned B, bool F>
 class Pte
 {
-        friend void panic (char const *format, ...);
     protected:
         E val;
 
@@ -73,12 +69,11 @@ class Pte
             if (F)
                 flush (p, PAGE_SIZE);
 
-            Atomic::add(Pte_allocated, 1);
             return p;
         }
 
         ALWAYS_INLINE
-        static inline void operator delete (void *ptr) { Atomic::add(Pte_allocated, -1); Buddy::allocator.free (reinterpret_cast<mword>(ptr)); }
+        static inline void operator delete (void *ptr) { Buddy::allocator.free (reinterpret_cast<mword>(ptr)); }
 
         void free_up (unsigned l, P *, mword, bool);
 
