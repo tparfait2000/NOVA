@@ -42,8 +42,9 @@ INIT_PRIORITY (PRIO_LOCAL) Rcu_list Rcu::done;
 
 void Rcu::invoke_batch()
 {
-    for (Rcu_elem *e = done.head, *n; e; e = n) {
+    for (Rcu_elem *e = done.head, *n = nullptr; n != done.head; e = n) {
         n = e->next;
+        e->next = nullptr;
         (e->func)(e);
     }
 
@@ -82,10 +83,10 @@ void Rcu::update()
         Counter::print<1,16> (l_batch, Console_vga::COLOR_LIGHT_GREEN, SPN_RCU);
     }
 
-    if (curr.head && complete (c_batch))
+    if (!curr.empty() && complete (c_batch))
         done.append (&curr);
 
-    if (!curr.head && next.head) {
+    if (curr.empty() && !next.empty()) {
         curr.append (&next);
 
         c_batch = l_batch + 1;
@@ -94,7 +95,7 @@ void Rcu::update()
     }
 
     /* XXX hack mack - poke other CPUs if a lot of elements are enqueued */
-    if ((curr.head && next.head && next.count > 2000) || (curr.count > 2000))
+    if ((!curr.empty() && !next.empty() && next.count > 2000) || (curr.count > 2000))
         for (unsigned cpu = 0; cpu < NUM_CPU; cpu++) {
 
             if (!Hip::cpu_online (cpu) || Cpu::id == cpu)
@@ -108,6 +109,6 @@ void Rcu::update()
                 pause();
         }
 
-    if (done.head)
+    if (!done.empty())
         invoke_batch();
 }

@@ -20,6 +20,7 @@
 
 #include "compiler.hpp"
 #include "types.hpp"
+#include "stdio.hpp"
 
 class Rcu_elem
 {
@@ -46,10 +47,15 @@ class Rcu_list
         inline void clear() { head = nullptr; tail = &head; count = 0;}
 
         ALWAYS_INLINE
+        inline bool empty() { return &head == tail || head == nullptr; }
+
+        ALWAYS_INLINE
         inline void append (Rcu_list *l)
         {
            *tail   = l->head;
             tail   = l->tail;
+           *tail   = head;
+
             count += l->count;
             l->clear();
         }
@@ -57,8 +63,13 @@ class Rcu_list
         ALWAYS_INLINE
         inline void enqueue (Rcu_elem *e)
         {
+            if (e->next || tail == &e->next) {
+                trace (0, "warning: rcu element already enqueued");
+                return;
+            }
+
             count ++;
-            e->next = nullptr;
+
            *tail = e;
             tail = &e->next;
         }
