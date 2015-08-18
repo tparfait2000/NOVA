@@ -61,7 +61,11 @@ void Pd::delegate (Pd *snd, mword const snd_base, mword const rcv_base, mword co
 
         if (!S::tree_insert (node)) {
             delete node;
-            trace (0, "overmap attempt %s - tree - PD:%p->%p SB:%#010lx RB:%#010lx O:%#04lx A:%#lx", deltype, snd, this, snd_base, rcv_base, ord, attr);
+
+            Mdb * x = S::tree_lookup(b - snd_base + rcv_base);
+            if (!x || x->prnt != mdb)
+                trace (0, "overmap attempt %s - tree - PD:%p->%p SB:%#010lx RB:%#010lx O:%#04lx A:%#lx", deltype, snd, this, snd_base, rcv_base, ord, attr);
+
             continue;
         }
 
