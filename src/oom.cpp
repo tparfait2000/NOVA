@@ -47,7 +47,7 @@ void Ec::oom_delegate(Ec * dst_ec, Ec * rep_ec, Ec * src_ec, bool user, bool C)
 
         Xfer *s = src_ec->utcb->xfer();
         for (unsigned long ti = src_ec->utcb->ti(); ti--; s--) {
-            if ((s->flags() >> 9) & 1)
+            if ((s->flags() >> 8) & 1)
                 continue;
             src_ec->pd->rev_crd (*s, false, false);
         }

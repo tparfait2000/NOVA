@@ -85,7 +85,7 @@ void Pd::delegate (Pd *snd, mword const snd_base, mword const rcv_base, mword co
         if ((o = clamp (mdb->node_base, b, mdb->node_order, ord)) == ~0UL)
             break;
 
-        Mdb *node = new (qg) Mdb (static_cast<S *>(this), free_mdb<S>, b - mdb->node_base + mdb->node_phys, b - snd_base + rcv_base, o, 0, mdb->node_type, sub);
+        Mdb *node = new (qg) Mdb (static_cast<S *>(this), free_mdb<S>, b - mdb->node_base + mdb->node_phys, b - snd_base + rcv_base, o, 0, mdb->node_type, S::sticky_sub(mdb->node_sub) | sub);
 
         if (!S::tree_insert (node)) {
             Mdb::destroy (node, qg);
@@ -328,7 +328,7 @@ void Pd::xfer_items (Pd *src, Crd xlt, Crd del, Xfer *s, Xfer *d, unsigned long 
                 set_as_del = 1;
 
             case 1:
-                del_crd (src == &root && s->flags() & 0x800 ? &kern : src, del, crd, s->flags() >> 9 & 3, s->hotspot());
+                del_crd (src == &root && s->flags() & 0x800 ? &kern : src, del, crd, s->flags() >> 8 & 7, s->hotspot());
                 if (Cpu::hazard & HZD_OOM)
                     return;
                 break;

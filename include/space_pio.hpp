@@ -55,4 +55,7 @@ class Space_pio : public Space
         void update (Quota &quota, Mdb *, mword = 0);
 
         static void page_fault (mword, mword);
+
+        ALWAYS_INLINE
+        inline mword sticky_sub(mword) { return 0; }
 };
