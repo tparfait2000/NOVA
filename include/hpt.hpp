@@ -49,6 +49,7 @@ class Hpt : public Pte<Hpt, mword, PTE_LEV, PTE_BPL, false>
             HPT_P   = 1UL << 0,
             HPT_W   = 1UL << 1,
             HPT_U   = 1UL << 2,
+            HPT_PWT = 1UL << 3,
             HPT_UC  = 1UL << 4,
             HPT_A   = 1UL << 5,
             HPT_D   = 1UL << 6,

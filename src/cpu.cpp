@@ -143,6 +143,16 @@ void Cpu::check_features()
     if (vendor == AMD)
         if (family > 0xf || (family == 0xf && model >= 0x40))
             Msr::write (Msr::AMD_IPMR, Msr::read<uint32>(Msr::AMD_IPMR) & ~(3ul << 27));
+
+    // enable PAT if available
+    cpuid (0x1, eax, ebx, ecx, edx);
+    if (edx & (1 << 16)) {
+        uint32 cr_pat = Msr::read<uint32>(Msr::IA32_CR_PAT) & 0xffff00ff;
+
+        cr_pat |= 1 << 8;
+        Msr::write<uint32>(Msr::IA32_CR_PAT, cr_pat);
+    } else
+        trace (0, "warning: no PAT support");
 }
 
 void Cpu::setup_thermal()

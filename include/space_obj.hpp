@@ -57,4 +57,7 @@ class Space_obj : public Space
         static void page_fault (mword, mword);
 
         static bool insert_root (Kobject *);
+
+        ALWAYS_INLINE
+        inline mword sticky_sub(mword) { return 0; }
 };
