@@ -45,7 +45,7 @@ void Ec::sys_finish()
         xcpu_return();
 
     if (Pd::current->quota.hit_limit() && S != Sys_regs::QUO_OOM)
-        trace (0, "warning: insufficient resources %lu/%lu rip=%p", Pd::current->quota.usage(), Pd::current->quota.limit(), __builtin_return_address(0));
+        trace (0, "warning: insufficient resources %lu/%lu", Pd::current->quota.usage(), Pd::current->quota.limit());
 
     ret_user_sysexit();
 }
