@@ -83,20 +83,19 @@ class Quota
              if (free_space > upli)
                  return true;
 
-             if (freed > amount)
-                  return freed - amount < free_space;
-
-             return amount - freed > upli - free_space;
+             return usage() > upli - free_space;
         }
 
-        bool transfer_to(Quota &to, mword transfer)
+        bool transfer_to(Quota &to, mword transfer, bool check_notr = true)
         {
              {
                  Lock_guard <Spinlock> guard (lock);
 
                  if (hit_limit()) return false;
 
-                 if (usage() + transfer > upli - notr) return false;
+                 mword not_for_transfer = check_notr ? notr : 0;
+
+                 if (usage() + transfer > upli - not_for_transfer) return false;
 
                  upli -= transfer;
              }
@@ -141,7 +140,7 @@ class Quota_guard
             else
                 req = q.limit() - q.usage();
 
-            return r.transfer_to(q, req);
+            return r.transfer_to(q, req, false);
         }
 
         operator Quota&() { return q; }

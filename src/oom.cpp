@@ -33,7 +33,7 @@ void Ec::oom_delegate(Ec * dst_ec, Ec * rep_ec, Ec * src_ec, bool user, bool C)
 
     if (user) {
         if (C) {
-             assert (rep_ec->cont == ret_user_sysexit);
+             assert (rep_ec->cont == ret_user_sysexit || rep_ec->cont == xcpu_return);
              assert (dst_ec->cont == recv_user);
         } else 
              assert (dst_ec->cont == ret_user_sysexit || dst_ec->cont == xcpu_return);
