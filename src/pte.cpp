@@ -92,6 +92,9 @@ void Pte<P,E,L,B,F>::update (Quota &quota, E v, mword o, E p, mword a, Type t)
         if (!e[i].val)
             continue;
 
+        if (t == TYPE_DF)
+            continue;
+
         if (l && !e[i].super())
             Pte::destroy(static_cast<P *>(Buddy::phys_to_ptr (e[i].addr())), quota);
     }
