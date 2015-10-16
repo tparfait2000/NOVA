@@ -76,7 +76,9 @@ bool Space_mem::update (Mdb *mdb, mword r)
     }
 
 
-    if (mdb->node_base + (1UL << o) > USER_ADDR >> PAGE_BITS)
+    if ((mdb->node_base >= USER_ADDR >> PAGE_BITS) ||
+        (mdb->node_base + (1UL << o) > USER_ADDR >> PAGE_BITS) ||
+        (mdb->node_base + (1UL << o) <= mdb->node_base))
         return false;
 
     mword ord = min (o, Hpt::ord);
