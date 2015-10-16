@@ -74,7 +74,9 @@ bool Space_mem::update (Quota &quota, Mdb *mdb, mword r)
     if (s & 4)
         a |= Hpt::HPT_PWT;
 
-    if (mdb->node_base + (1UL << o) > USER_ADDR >> PAGE_BITS)
+    if ((mdb->node_base >= USER_ADDR >> PAGE_BITS) ||
+        (mdb->node_base + (1UL << o) == 0UL) ||
+        (mdb->node_base + (1UL << o) > USER_ADDR >> PAGE_BITS))
         return false;
 
     mword ord = min (o, Hpt::ord);
