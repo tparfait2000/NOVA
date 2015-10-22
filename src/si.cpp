@@ -64,6 +64,11 @@ void Si::chain(Sm *si)
 
     if (sm)
         sm->add_ref();
+
+    mword c = kern_sm->reset(true);
+
+    for (unsigned i = 0; i < c; i++)
+        kern_sm->submit();
 }
 
 void Si::submit()

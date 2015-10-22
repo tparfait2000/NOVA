@@ -45,13 +45,16 @@ class Sm : public Kobject, public Refcount, public Queue<Ec>, public Queue<Si>, 
             }
         }
 
-        mword reset() {
+    public:
+
+        mword reset(bool l = false) {
+            if (l) lock.lock();
             mword c = counter;
             counter = 0;
+            if (l) lock.unlock();
             return c;
         }
 
-    public:
         Sm (Pd *, mword, mword = 0, Sm * = nullptr, mword = 0);
         ~Sm ()
         {
