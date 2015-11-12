@@ -93,7 +93,7 @@ bool Pd::delegate (Pd *snd, mword const snd_base, mword const rcv_base, mword co
             Mdb::destroy (node, qg);
 
             Mdb * x = S::tree_lookup(b - snd_base + rcv_base);
-            if (!x || x->prnt != mdb)
+            if (!x || x->prnt != mdb || x->node_attr != attr)
                 trace (0, "overmap attempt %s - tree - PD:%p->%p SB:%#010lx RB:%#010lx O:%#04lx A:%#lx SUB:%lx", deltype, snd, this, snd_base, rcv_base, ord, attr, sub);
 
             continue;
