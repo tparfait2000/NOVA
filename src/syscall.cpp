@@ -127,7 +127,7 @@ void Ec::sys_call()
 
     Kobject *obj = Space_obj::lookup (s->pt()).obj();
     if (EXPECT_FALSE (obj->type() != Kobject::PT)) {
-        trace (TRACE_ERROR, "%s: Bad PT CAP (%#lx)", __func__, s->pt());
+//        trace (TRACE_ERROR, "%s: Bad PT CAP (%#lx)", __func__, s->pt());
         sys_finish<Sys_regs::BAD_CAP>();
     }
 
@@ -699,7 +699,7 @@ void Ec::sys_sm_ctrl()
     Capability cap = Space_obj::lookup (r->sm());
 
     if (EXPECT_FALSE (cap.obj()->type() != Kobject::SM || !(cap.prm() & 1UL << r->op()))) {
-        trace (TRACE_ERROR, "%s: Bad SM CAP (%#lx)", __func__, r->sm());
+//        trace (TRACE_ERROR, "%s: Bad SM CAP (%#lx)", __func__, r->sm());
         sys_finish<Sys_regs::BAD_CAP>();
     }
 
