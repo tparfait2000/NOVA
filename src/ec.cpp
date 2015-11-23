@@ -409,6 +409,12 @@ void Ec::root_invoke()
     bool res = Pd::root.quota.set_limit ((1 * 1024 * 1024) >> 12, 0, Pd::root.quota);
     assert (res);
 
+    /* quirk for Lenovo X250 */
+    if (!strcmp("Intel(R) Core(TM) i5-5300U CPU @ 2.30GHz", reinterpret_cast<char *>(Cpu::name)) && Dpt::ord > 0x8) {
+       trace (0, "disabling super pages for DMAR");
+       Dpt::ord = 0x8;
+    }
+
     ret_user_sysexit();
 }
 
