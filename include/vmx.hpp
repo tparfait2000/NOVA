@@ -477,3 +477,26 @@ struct Msr_area
         Buddy::allocator.free (reinterpret_cast<mword>(obj), quota);
     }
 };
+
+struct Virtual_apic_page
+{
+    uint8 data[4096];
+
+    enum { VTPR = 0x80 };
+
+    ALWAYS_INLINE
+    static inline void *operator new (size_t, Quota &quota)
+    {
+        /* allocate one page */
+        return Buddy::allocator.alloc (0, quota, Buddy::FILL_0);
+    }
+
+    ALWAYS_INLINE
+    static inline void destroy(Virtual_apic_page *obj, Quota &quota)
+    {
+        Buddy::allocator.free (reinterpret_cast<mword>(obj), quota);
+    }
+
+    uint32 vtpr() { return *reinterpret_cast<uint32*>(&data[VTPR]); }
+    void vtpr(uint32 value) { *reinterpret_cast<uint32*>(&data[VTPR]) = value; }
+};

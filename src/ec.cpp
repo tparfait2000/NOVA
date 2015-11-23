@@ -110,6 +110,10 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
             Vmcs::write(Vmcs::EXI_MSR_ST_ADDR, guest_msr_area_phys);
             Vmcs::write(Vmcs::EXI_MSR_ST_CNT, Msr_area::MSR_COUNT);
 
+            /* allocate and register the virtual APIC page */
+            mword virtual_apic_page_phys = Buddy::ptr_to_phys(new (pd->quota) Virtual_apic_page);
+            Vmcs::write(Vmcs::APIC_VIRT_ADDR, virtual_apic_page_phys);
+
             regs.vmcs->clear();
             cont = send_msg<ret_user_vmresume>;
             trace (TRACE_SYSCALL, "EC:%p created (PD:%p VMCS:%p VTLB:%p)", this, p, regs.vmcs, regs.vtlb);
@@ -169,6 +173,11 @@ Ec::~Ec()
         mword guest_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_ST_ADDR);
         Msr_area *guest_msr_area = reinterpret_cast<Msr_area*>(Buddy::phys_to_ptr(guest_msr_area_phys));
         Msr_area::destroy(guest_msr_area, pd->quota);
+
+        mword virtual_apic_page_phys = Vmcs::read(Vmcs::APIC_VIRT_ADDR);
+        Virtual_apic_page *virtual_apic_page =
+            reinterpret_cast<Virtual_apic_page*>(Buddy::phys_to_ptr(virtual_apic_page_phys));
+        Virtual_apic_page::destroy(virtual_apic_page, pd->quota);
 
         Vmcs::destroy(regs.vmcs, pd->quota);
     } else if (Hip::feature() & Hip::FEAT_SVM)
