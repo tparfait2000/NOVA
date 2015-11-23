@@ -246,6 +246,14 @@ bool Utcb::load_vmx (Cpu_regs *regs)
         fmask = guest_msr_area->ia32_fmask.msr_data;
         kernel_gs_base = guest_msr_area->ia32_kernel_gs_base.msr_data;
     }
+
+    if (m & Mtd::TPR) {
+        mword virtual_apic_page_phys = Vmcs::read(Vmcs::APIC_VIRT_ADDR);
+        Virtual_apic_page *virtual_apic_page =
+            reinterpret_cast<Virtual_apic_page*>(Buddy::phys_to_ptr(virtual_apic_page_phys));
+        tpr = virtual_apic_page->vtpr();
+        tpr_threshold = static_cast<uint32>(Vmcs::read(Vmcs::TPR_THRESHOLD));
+    }
 #endif
 
     if (m & Mtd::PDPTE) {
@@ -427,6 +435,14 @@ bool Utcb::save_vmx (Cpu_regs *regs)
         guest_msr_area->ia32_lstar.msr_data = lstar;
         guest_msr_area->ia32_fmask.msr_data = fmask;
         guest_msr_area->ia32_kernel_gs_base.msr_data = kernel_gs_base;
+    }
+
+    if (mtd & Mtd::TPR) {
+        mword virtual_apic_page_phys = Vmcs::read(Vmcs::APIC_VIRT_ADDR);
+        Virtual_apic_page *virtual_apic_page =
+            reinterpret_cast<Virtual_apic_page*>(Buddy::phys_to_ptr(virtual_apic_page_phys));
+        virtual_apic_page->vtpr(tpr);
+        Vmcs::write(Vmcs::TPR_THRESHOLD, tpr_threshold);
     }
 #endif
 

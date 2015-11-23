@@ -82,6 +82,8 @@ class Utcb_data
                 uint64          lstar;
                 uint64          fmask;
                 uint64          kernel_gs_base;
+                uint32          tpr;
+                uint32          tpr_threshold;
 #endif
                 mword           dr7, sysenter_cs, sysenter_rsp, sysenter_rip;
                 Utcb_segment    es, cs, ss, ds, fs, gs, ld, tr, gd, id;
