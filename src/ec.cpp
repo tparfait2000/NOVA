@@ -396,6 +396,12 @@ void Ec::root_invoke()
     Space_obj::insert_root (Ec::current);
     Space_obj::insert_root (Sc::current);
 
+    /* quirk */
+    if (Dpt::ord != ~0UL && Dpt::ord > 0x8) {
+       trace (0, "disabling super pages for DMAR");
+       Dpt::ord = 0x8;
+    }
+
     ret_user_sysexit();
 }
 
