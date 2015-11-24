@@ -78,6 +78,10 @@ class Utcb_data
                 mword           pdpte[4];
 #ifdef __x86_64__
                 mword           cr8, efer;
+                uint64          star;
+                uint64          lstar;
+                uint64          fmask;
+                uint64          kernel_gs_base;
 #endif
                 mword           dr7, sysenter_cs, sysenter_rsp, sysenter_rip;
                 Utcb_segment    es, cs, ss, ds, fs, gs, ld, tr, gd, id;
