@@ -97,6 +97,19 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
                                               pd->ept.root(pd->quota));
 
             regs.nst_ctrl<Vmcs>();
+
+            /* allocate and register the host MSR area */
+            mword host_msr_area_phys = Buddy::ptr_to_phys(new (pd->quota) Msr_area);
+            Vmcs::write(Vmcs::EXI_MSR_LD_ADDR, host_msr_area_phys);
+            Vmcs::write(Vmcs::EXI_MSR_LD_CNT, Msr_area::MSR_COUNT);
+
+            /* allocate and register the guest MSR area */
+            mword guest_msr_area_phys = Buddy::ptr_to_phys(new (pd->quota) Msr_area);
+            Vmcs::write(Vmcs::ENT_MSR_LD_ADDR, guest_msr_area_phys);
+            Vmcs::write(Vmcs::ENT_MSR_LD_CNT, Msr_area::MSR_COUNT);
+            Vmcs::write(Vmcs::EXI_MSR_ST_ADDR, guest_msr_area_phys);
+            Vmcs::write(Vmcs::EXI_MSR_ST_CNT, Msr_area::MSR_COUNT);
+
             regs.vmcs->clear();
             cont = send_msg<ret_user_vmresume>;
             trace (TRACE_SYSCALL, "EC:%p created (PD:%p VMCS:%p VTLB:%p)", this, p, regs.vmcs, regs.vtlb);
@@ -148,9 +161,17 @@ Ec::~Ec()
     /* vCPU cleanup */
     Vtlb::destroy(regs.vtlb, pd->quota);
 
-    if (Hip::feature() & Hip::FEAT_VMX)
+    if (Hip::feature() & Hip::FEAT_VMX) {
+        mword host_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
+        Msr_area *host_msr_area = reinterpret_cast<Msr_area*>(Buddy::phys_to_ptr(host_msr_area_phys));
+        Msr_area::destroy(host_msr_area, pd->quota);
+
+        mword guest_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_ST_ADDR);
+        Msr_area *guest_msr_area = reinterpret_cast<Msr_area*>(Buddy::phys_to_ptr(guest_msr_area_phys));
+        Msr_area::destroy(guest_msr_area, pd->quota);
+
         Vmcs::destroy(regs.vmcs, pd->quota);
-    else if (Hip::feature() & Hip::FEAT_SVM)
+    } else if (Hip::feature() & Hip::FEAT_SVM)
         Vmcb::destroy(regs.vmcb, pd->quota);
 }
 
