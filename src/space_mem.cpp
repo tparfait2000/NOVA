@@ -71,8 +71,11 @@ bool Space_mem::update (Quota &quota, Mdb *mdb, mword r)
             gtlb.merge (cpus);
     }
 
-    if (s & 4)
-        a |= Hpt::HPT_PWT;
+    if (s & 4) {
+        if (a)
+            a |= Hpt::HPT_PWT;
+    }
+
 
     if ((mdb->node_base >= USER_ADDR >> PAGE_BITS) ||
         (mdb->node_base + (1UL << o) > USER_ADDR >> PAGE_BITS) ||
