@@ -94,19 +94,13 @@ void Rcu::update()
         start_batch (RCU_PND);
     }
 
-    /* XXX hack mack - poke other CPUs if a lot of elements are enqueued */
-    if ((!curr.empty() && !next.empty() && next.count > 2000) || (curr.count > 2000))
+    if (!curr.empty() && !next.empty() && (next.count > 2000 || curr.count > 2000))
         for (unsigned cpu = 0; cpu < NUM_CPU; cpu++) {
 
             if (!Hip::cpu_online (cpu) || Cpu::id == cpu)
                 continue;
 
-            unsigned ctr = Counter::remote (cpu, VEC_IPI_IDL - VEC_IPI);
-
             Lapic::send_ipi (cpu, VEC_IPI_IDL);
-
-            while (Counter::remote (cpu, VEC_IPI_IDL - VEC_IPI) == ctr)
-                pause();
         }
 
     if (!done.empty())
