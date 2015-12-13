@@ -5,6 +5,7 @@
  * Economic rights: Technische Universitaet Dresden (Germany)
  *
  * Copyright (C) 2012 Udo Steinberg, Intel Corporation.
+ * Copyright (C) 2015 Alexander Boettcher, Genode Labs GmbH
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -113,38 +114,36 @@ bool Pte<P,E,L,B,F>::update (Quota &quota, E v, mword o, E p, mword a, Type t)
 }
 
 template <typename P, typename E, unsigned L, unsigned B, bool F>
-void Pte<P,E,L,B,F>::clear (Quota &quota, bool all)
+void Pte<P,E,L,B,F>::clear (Quota &quota, bool (*d) (Paddr, mword, unsigned), bool (*il) (unsigned, mword))
 {
     if (!val)
         return;
 
     P * e = static_cast<P *>(Buddy::phys_to_ptr (this->addr()));
 
-    e->free_up(quota, L - 1, e, 0, all);
+    e->free_up(quota, L - 1, e, 0, d, il);
 
     Pte::destroy (e, quota);
 }
 
 template <typename P, typename E, unsigned L, unsigned B, bool F>
-void Pte<P,E,L,B,F>::free_up (Quota &quota, unsigned l, P * e, mword v, bool all)
+void Pte<P,E,L,B,F>::free_up (Quota &quota, unsigned l, P * e, mword v, bool (*d)(Paddr, mword, unsigned), bool (*il) (unsigned, mword))
 {
     if (!e)
         return;
 
     for (unsigned long i = 0; i < (1 << B); i++) {
-        if (!e[i].val)
+        if (!e[i].val || e[i].super())
             continue;
 
-        if (!e[i].super()) {
-            P *p = static_cast<P *>(Buddy::phys_to_ptr (e[i].addr()));
-            mword virt = v + (i << (l * B + PAGE_BITS));
+        P *p = static_cast<P *>(Buddy::phys_to_ptr (e[i].addr()));
+        mword virt = v + (i << (l * B + PAGE_BITS));
 
-            if (l)
-                p->free_up(quota, l - 1, p, virt, all);
+        if (il ? il(l, virt) : l > 1)
+            p->free_up(quota, l - 1, p, virt, d, il);
 
-            if (all || (!all && virt >= USER_ADDR && (l >= 3)))
-                Pte::destroy(p, quota);
-        }
+        if (!d || d(e[i].addr(), virt, l))
+            Pte::destroy(p, quota);
     }
 }
 
