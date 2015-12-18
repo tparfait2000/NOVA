@@ -166,6 +166,9 @@ Ec::~Ec()
     Vtlb::destroy(regs.vtlb, pd->quota);
 
     if (Hip::feature() & Hip::FEAT_VMX) {
+
+        regs.vmcs->make_current();
+
         mword host_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
         Msr_area *host_msr_area = reinterpret_cast<Msr_area*>(Buddy::phys_to_ptr(host_msr_area_phys));
         Msr_area::destroy(host_msr_area, pd->quota);
@@ -178,6 +181,8 @@ Ec::~Ec()
         Virtual_apic_page *virtual_apic_page =
             reinterpret_cast<Virtual_apic_page*>(Buddy::phys_to_ptr(virtual_apic_page_phys));
         Virtual_apic_page::destroy(virtual_apic_page, pd->quota);
+
+        regs.vmcs->clear();
 
         Vmcs::destroy(regs.vmcs, pd->quota);
     } else if (Hip::feature() & Hip::FEAT_SVM)
