@@ -415,7 +415,7 @@ void Ec::root_invoke()
     assert (res);
 
     /* quirk */
-    if (Dpt::ord > 0x8) {
+    if (Dpt::ord != ~0UL && Dpt::ord > 0x8) {
        trace (0, "disabling super pages for DMAR");
        Dpt::ord = 0x8;
     }
