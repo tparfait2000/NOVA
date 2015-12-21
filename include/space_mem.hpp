@@ -76,7 +76,7 @@ class Space_mem : public Space
 
         bool remove_utcb (mword);
 
-        bool update (Quota &quota, Mdb *, mword = 0);
+        bool update (Quota_guard &quota, Mdb *, mword = 0);
 
         static void shootdown();
 

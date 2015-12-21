@@ -39,7 +39,7 @@ void Space_mem::init (Quota &quota, unsigned cpu)
     }
 }
 
-bool Space_mem::update (Quota &quota, Mdb *mdb, mword r)
+bool Space_mem::update (Quota_guard &quota, Mdb *mdb, mword r)
 {
     assert (this == mdb->space && this != &Pd::kern);
 
@@ -53,19 +53,37 @@ bool Space_mem::update (Quota &quota, Mdb *mdb, mword r)
 
     if (s & 1 && Dpt::ord != ~0UL) {
         mword ord = min (o, Dpt::ord);
-        for (unsigned long i = 0; i < 1UL << (o - ord); i++)
+        for (unsigned long i = 0; i < 1UL << (o - ord); i++) {
+            if (!r && !dpt.check(quota, ord)) {
+                Cpu::hazard |= HZD_OOM;
+                return false;
+            }
+
             dpt.update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (Dpt::ord + PAGE_BITS)), a, r ? Dpt::TYPE_DN : Dpt::TYPE_UP);
+        }
     }
 
     if (s & 2) {
         if (Vmcb::has_npt()) {
             mword ord = min (o, Hpt::ord);
-            for (unsigned long i = 0; i < 1UL << (o - ord); i++)
+            for (unsigned long i = 0; i < 1UL << (o - ord); i++) {
+                if (!r && !npt.check(quota, ord)) {
+                    Cpu::hazard |= HZD_OOM;
+                    return false;
+                }
+
                 npt.update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), Hpt::hw_attr (a), r ? Hpt::TYPE_DN : Hpt::TYPE_UP);
+            }
         } else {
             mword ord = min (o, Ept::ord);
-            for (unsigned long i = 0; i < 1UL << (o - ord); i++)
+            for (unsigned long i = 0; i < 1UL << (o - ord); i++) {
+                if (!r && !ept.check(quota, ord)) {
+                    Cpu::hazard |= HZD_OOM;
+                    return false;
+                }
+
                 ept.update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), Ept::hw_attr (a, mdb->node_type), r ? Ept::TYPE_DN : Ept::TYPE_UP);
+            }
         }
         if (r)
             gtlb.merge (cpus);
@@ -85,8 +103,14 @@ bool Space_mem::update (Quota &quota, Mdb *mdb, mword r)
     mword ord = min (o, Hpt::ord);
     bool f = false;
 
-    for (unsigned long i = 0; i < 1UL << (o - ord); i++)
+    for (unsigned long i = 0; i < 1UL << (o - ord); i++) {
+        if (!r && !hpt.check(quota, ord)) {
+            Cpu::hazard |= HZD_OOM;
+            return f;
+        }
+
         f |= hpt.update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), Hpt::hw_attr (a), r ? Hpt::TYPE_DN : Hpt::TYPE_UP);
+    }
 
     if (r || f) {
 
@@ -94,8 +118,14 @@ bool Space_mem::update (Quota &quota, Mdb *mdb, mword r)
             if (!loc[j].addr())
                 continue;
 
-            for (unsigned long i = 0; i < 1UL << (o - ord); i++)
+            for (unsigned long i = 0; i < 1UL << (o - ord); i++) {
+                if (!r && !loc[j].check(quota, ord)) {
+                    Cpu::hazard |= HZD_OOM;
+                    return (r || f);
+                }
+
                 loc[j].update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), Hpt::hw_attr (a), Hpt::TYPE_DF);
+            }
         }
 
         htlb.merge (cpus);

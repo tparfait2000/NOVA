@@ -78,14 +78,14 @@ bool Pd::delegate (Pd *snd, mword const snd_base, mword const rcv_base, mword co
     Mdb *mdb;
     for (mword addr = snd_base; (mdb = snd->S::tree_lookup (addr, true)); addr = mdb->node_base + (1UL << mdb->node_order)) {
 
-        if (!qg.check(8)) {
-            Cpu::hazard |= HZD_OOM;
-            break;
-        }
-
         mword o, b = snd_base;
         if ((o = clamp (mdb->node_base, b, mdb->node_order, ord)) == ~0UL)
             break;
+
+        if (quota.hit_limit(1)) {
+            Cpu::hazard |= HZD_OOM;
+            return s;
+        }
 
         Mdb *node = new (qg) Mdb (static_cast<S *>(this), free_mdb<S>, b - mdb->node_base + mdb->node_phys, b - snd_base + rcv_base, o, 0, mdb->node_type, S::sticky_sub(mdb->node_sub) | sub);
 
@@ -107,6 +107,14 @@ bool Pd::delegate (Pd *snd, mword const snd_base, mword const rcv_base, mword co
         }
 
         s |= S::update (qg, node);
+
+        if (Cpu::hazard & HZD_OOM) {
+            S::update (qg, node, attr);
+            node->demote_node (attr);
+            if (node->remove_node() && S::tree_remove (node))
+                Rcu::call (node);
+            return s;
+        }
     }
 
     if (!qg.check(0))
@@ -135,7 +143,8 @@ void Pd::revoke (mword const base, mword const ord, mword const attr, bool self)
                 demote = clamp (node->node_phys, p = b - mdb->node_base + mdb->node_phys, node->node_order, o) != ~0UL;
 
             if (demote && node->node_attr & attr) {
-                static_cast<S *>(node->space)->update (this->quota, node, attr);
+                Quota_guard qg(this->quota);
+                static_cast<S *>(node->space)->update (qg, node, attr);
                 node->demote_node (attr);
             }
 
