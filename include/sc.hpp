@@ -26,7 +26,7 @@
 
 class Ec;
 
-class Sc : public Kobject, public Refcount
+class Sc : public Kobject, public Refex<~0U>
 {
     friend class Queue<Sc>;
 
