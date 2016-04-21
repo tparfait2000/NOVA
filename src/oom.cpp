@@ -183,7 +183,7 @@ void Ec::oom_call_cpu(Pt * pt, mword src, void (*CC)(), void (*HELP)())
         if (CC == sys_ec_ctrl) this->oom_xcpu<sys_ec_ctrl>(pt, src, s); else
         if (CC == sys_sc_ctrl) this->oom_xcpu<sys_sc_ctrl>(pt, src, s); else
         if (CC == sys_pt_ctrl) this->oom_xcpu<sys_pt_ctrl>(pt, src, s); else
-        if (CC == sys_pd_ctrl) this->oom_xcpu<sys_pt_ctrl>(pt, src, s); else
+        if (CC == sys_pd_ctrl) this->oom_xcpu<sys_pd_ctrl>(pt, src, s); else
         if (CC == sys_assign_gsi) this->oom_xcpu<sys_assign_gsi>(pt, src, s); else
         if (CC == sys_assign_pci) this->oom_xcpu<sys_assign_pci>(pt, src, s); else
         die ("Unknown oom call");
