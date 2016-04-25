@@ -88,8 +88,11 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
                 pcid |= static_cast<mword>(1ULL << 63);
             }
 
-            if (current->del_ref())
-                delete current;
+            Pd * del_pd = nullptr;
+            if (current->del_ref()) {
+                assert (current != this);
+                del_pd = current;
+            }
 
             current = this;
 
@@ -97,6 +100,8 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
 
             loc[Cpu::id].make_current (Cpu::feature (Cpu::FEAT_PCID) ? pcid : 0);
 
+            if (del_pd)
+                delete del_pd;
         }
 
         ALWAYS_INLINE
