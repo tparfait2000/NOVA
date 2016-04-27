@@ -74,9 +74,6 @@ Buddy::Buddy (mword phys, mword virt, mword f_addr, size_t size)
 
     for (mword i = f_addr; i < virt + size; i += PAGE_SIZE)
         free (i, Quota::init);
-
-    Quota::init.upli += Quota::init.freed;
-    Quota::init.freed = 0;
 }
 
 /*
@@ -189,15 +186,15 @@ void Buddy::free (mword virt, Quota &quota)
 void Quota::dump(void * pd, bool all)
 {
     if (all) {
-        trace(0, "quota after boot Quota:init - amount=%lx freed=%lx limit %lx",
-              Quota::init.amount, Quota::init.freed, Quota::init.upli);
+        trace(0, "quota after boot Quota:init - in_use=%lx limit %lx",
+              Quota::init.usage(), Quota::init.upli);
 
-        trace(0, "Pd::kern=%12p quota=%12p - amount=0x%012lx freed=0x%012lx in_use=%012lx limit=%lx not_for_transfer=%lx",
-              &Pd::kern, &Pd::kern.quota, Pd::kern.quota.amount, Pd::kern.quota.freed, Pd::kern.quota.usage(), Pd::root.quota.upli, Pd::kern.quota.notr);
-        trace(0, "Pd::root=%12p quota=%12p - amount=0x%012lx freed=0x%012lx in_use=%012lx limit=%lx not_for_transfer=%lx",
-              &Pd::root, &Pd::root.quota, Pd::root.quota.amount, Pd::root.quota.freed, Pd::root.quota.usage(), Pd::root.quota.upli, Pd::root.quota.notr);
+        trace(0, "Pd::kern=%12p quota=%12p - in_use=%012lx limit=%012lx not_for_transfer=%012lx overrun=%lx",
+              &Pd::kern, &Pd::kern.quota, Pd::kern.quota.usage(), Pd::root.quota.upli, Pd::kern.quota.notr, Pd::kern.quota.over);
+        trace(0, "Pd::root=%12p quota=%12p - in_use=%012lx limit=%012lx not_for_transfer=%012lx overrun=%lx",
+              &Pd::root, &Pd::root.quota, Pd::root.quota.usage(), Pd::root.quota.upli, Pd::root.quota.notr, Pd::root.quota.over);
     }
 
-    trace(0, "Pd::this=%12p quota=%12p - amount=0x%012lx freed=0x%012lx in_use=%012lx limit=%lx not_for_transfer=%lx",
-          pd, &static_cast<Pd *>(pd)->quota, amount, freed, usage(), upli, notr);
+    trace(0, "Pd::this=%12p quota=%12p - in_use=%012lx limit=%012lx not_for_transfer=%012lx overrun=%lx",
+          pd, &static_cast<Pd *>(pd)->quota, usage(), upli, notr, over);
 }

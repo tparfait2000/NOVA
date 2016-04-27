@@ -18,6 +18,7 @@
 #pragma once
 
 #include "lock_guard.hpp"
+#include "util.hpp"
 
 class Buddy;
 
@@ -26,11 +27,10 @@ class Quota
     friend class Buddy;
 
     private:
-
         Spinlock lock;
 
-        mword amount;
-        mword freed;
+        mword used;
+        mword over;
 
         mword upli;
         mword notr;
@@ -39,43 +39,58 @@ class Quota
 
         static Quota init;
 
-        Quota () : amount(0), freed(0), upli(0), notr(0) { }
+        Quota () : used(0), over(0), upli(0), notr(0) { }
 
         void alloc(mword p)
         {
             Lock_guard <Spinlock> guard (lock);
-            amount += p;
+            used += p;
         }
 
         void free(mword p)
         {
             Lock_guard <Spinlock> guard (lock);
-            freed += p;
+
+            if (p <= used) {
+                used -= p;
+                return;
+            }
+
+            over += p - used;
+            upli += p - used;
+            used = 0;
         }
 
-        mword usage() { return amount < freed ? 0 : amount - freed; }
+        mword usage() { return used; }
 
         static void boot(Quota &kern, Quota &root)
         {
-            kern.upli   = kern.amount;
-            root.upli  -= kern.amount;
+            kern.upli   = kern.used;
+            root.upli  -= kern.used;
         }
 
         void free_up(Quota &to)
         {
-            mword l, a, f;
+            mword l, u, o;
             {
                 Lock_guard <Spinlock> guard (lock);
                 l = upli;
-                a = amount;
-                f = freed;
-                upli = amount = freed = 0;
+                u = used;
+                o = over;
+                upli = over = used = 0;
             }
 
             Lock_guard <Spinlock> guard (to.lock);
+            to.used += u;
             to.upli += l;
-            to.amount += a;
-            to.freed += f;
+            to.over += o;
+
+            if (to.over && to.used) {
+                mword s = min (to.used, to.over);
+                to.used -= s;
+                to.over -= s;
+                to.upli -= s;
+            }
         }
 
         bool hit_limit(mword free_space = 0)
@@ -88,6 +103,8 @@ class Quota
 
         bool transfer_to(Quota &to, mword transfer, bool check_notr = true)
         {
+             mword o = 0;
+
              {
                  Lock_guard <Spinlock> guard (lock);
 
@@ -98,10 +115,22 @@ class Quota
                  if (usage() + transfer > upli - not_for_transfer) return false;
 
                  upli -= transfer;
+
+                 o = min (over, transfer);
+                 if (o)
+                     over -= o;
              }
 
              Lock_guard <Spinlock> guard (to.lock);
              to.upli += transfer;
+
+             if (to.used && o) {
+                mword u = min (to.used, o);
+                to.used -= u;
+                to.upli -= u;
+                to.over += o - u;
+             }
+
              return true;
         }
 
@@ -138,7 +167,7 @@ class Quota_guard
             if (q.limit() <= q.usage())
                 req += q.usage() - q.limit();
             else
-                req = q.limit() - q.usage();
+                req -= q.limit() - q.usage();
 
             return r.transfer_to(q, req, false);
         }
