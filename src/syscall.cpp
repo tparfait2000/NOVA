@@ -449,7 +449,7 @@ void Ec::sys_revoke()
     } else
         pd = reinterpret_cast<Pd *>(r->pd());
 
-    pd->rev_crd (r->crd(), r->self());
+    pd->rev_crd (r->crd(), r->self(), true, r->keep());
 
     current->cont = sys_finish<Sys_regs::SUCCESS>;
     r->rem(nullptr);

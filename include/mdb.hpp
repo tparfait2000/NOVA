@@ -38,7 +38,8 @@ class Mdb : public Avl, public Rcu_elem
         static void free (Rcu_elem *e)
         {
             Mdb *m = static_cast<Mdb *>(e);
-            delete m;
+            if (!m->invalid())
+                delete m;
         }
 
     public:
@@ -93,4 +94,10 @@ class Mdb : public Avl, public Rcu_elem
 
         ALWAYS_INLINE
         static inline void operator delete (void *ptr) { cache.free (ptr); }
+
+        ALWAYS_INLINE
+        inline bool accessible() const { return !Avl::removed() && !Avl::invalid(); }
+
+        ALWAYS_INLINE
+        inline bool invalid() const { return Avl::invalid(); }
 };
