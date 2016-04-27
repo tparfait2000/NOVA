@@ -85,7 +85,7 @@ bool Pd::delegate (Pd *snd, mword const snd_base, mword const rcv_base, mword co
 }
 
 template <typename S>
-void Pd::revoke (mword const base, mword const ord, mword const attr, bool self)
+void Pd::revoke (mword const base, mword const ord, mword const attr, bool self, bool kim)
 {
     Mdb *mdb;
     for (mword addr = base; (mdb = S::tree_lookup (addr, true)); addr = mdb->node_base + (1UL << mdb->node_order)) {
@@ -93,6 +93,16 @@ void Pd::revoke (mword const base, mword const ord, mword const attr, bool self)
         mword o, p, b = base;
         if ((o = clamp (mdb->node_base, b, mdb->node_order, ord)) == ~0UL)
             break;
+
+        /* keep in mapping database if requested and at least one child node exists */
+        if (kim && (ACCESS_ONCE(mdb->next)->dpth > mdb->dpth)) {
+            if (mdb->node_attr & 0x1f) {
+                static_cast<S *>(mdb->space)->update (mdb, 0x1f);
+                mdb->demote_node (0x1f);
+            }
+            static_cast<S *>(mdb->space)->tree_remove (mdb, Avl::State::KIM);
+            continue;
+        }
 
         Mdb *node = mdb;
 
@@ -185,7 +195,7 @@ void Pd::xlt_crd (Pd *pd, Crd xlt, Crd &crd)
         Mdb *mdb, *node;
 
         for (node = mdb = snd->tree_lookup (sb); node; node = node->prnt)
-            if (node->space == rcv && node != mdb)
+            if (node->space == rcv && node != mdb && node->accessible())
                 if ((ro = clamp (node->node_base, rb, node->node_order, ro)) != ~0UL)
                     break;
 
@@ -262,7 +272,7 @@ void Pd::del_crd (Pd *pd, Crd del, Crd &crd, mword sub, mword hot)
         shootdown();
 }
 
-void Pd::rev_crd (Crd crd, bool self, bool preempt)
+void Pd::rev_crd (Crd crd, bool self, bool preempt, bool kim)
 {
     if (preempt)
         Cpu::preempt_enable();
@@ -271,17 +281,17 @@ void Pd::rev_crd (Crd crd, bool self, bool preempt)
 
         case Crd::MEM:
             trace (TRACE_REV, "REV MEM PD:%p B:%#010lx O:%#04x A:%#04x %s", this, crd.base(), crd.order(), crd.attr(), self ? "+" : "-");
-            revoke<Space_mem>(crd.base(), crd.order(), crd.attr(), self);
+            revoke<Space_mem>(crd.base(), crd.order(), crd.attr(), self, kim);
             break;
 
         case Crd::PIO:
             trace (TRACE_REV, "REV I/O PD:%p B:%#010lx O:%#04x A:%#04x %s", this, crd.base(), crd.order(), crd.attr(), self ? "+" : "-");
-            revoke<Space_pio>(crd.base(), crd.order(), crd.attr(), self);
+            revoke<Space_pio>(crd.base(), crd.order(), crd.attr(), self, kim);
             break;
 
         case Crd::OBJ:
             trace (TRACE_REV, "REV OBJ PD:%p B:%#010lx O:%#04x A:%#04x %s", this, crd.base(), crd.order(), crd.attr(), self ? "+" : "-");
-            revoke<Space_obj>(crd.base(), crd.order(), crd.attr(), self);
+            revoke<Space_obj>(crd.base(), crd.order(), crd.attr(), self, kim);
             break;
     }
 

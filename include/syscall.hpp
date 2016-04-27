@@ -137,6 +137,9 @@ class Sys_revoke : public Sys_regs
         inline bool remote() const { return flags() & 0x2; }
 
         ALWAYS_INLINE
+        inline bool keep() const { return flags() & 0x4; }
+
+        ALWAYS_INLINE
         inline mword pd() const { return ARG_3; }
 
         ALWAYS_INLINE
