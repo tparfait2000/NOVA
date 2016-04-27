@@ -89,4 +89,10 @@ class Mdb : public Avl, public Rcu_elem
         static inline void destroy (Mdb *obj, Quota &quota) { obj->~Mdb(); cache.free (obj, quota); }
 
         template <typename T> void destroy (T *, Quota &);
+
+        ALWAYS_INLINE
+        inline bool accessible() const { return !Avl::removed() && !Avl::invalid(); }
+
+        ALWAYS_INLINE
+        inline bool invalid() const { return Avl::invalid(); }
 };

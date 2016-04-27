@@ -40,7 +40,7 @@ void Ec::oom_delegate(Ec * dst_ec, Ec * rep_ec, Ec * src_ec, bool user, bool C)
 
         assert(dst_ec->utcb);
 
-        dst_ec->pd->rev_crd (dst_ec->utcb->del, true, false);
+        dst_ec->pd->rev_crd (dst_ec->utcb->del, true, false, false);
     } else {
         assert(!C);
         assert(src_ec->utcb);
@@ -49,7 +49,7 @@ void Ec::oom_delegate(Ec * dst_ec, Ec * rep_ec, Ec * src_ec, bool user, bool C)
         for (unsigned long ti = src_ec->utcb->ti(); ti--; s--) {
             if ((s->flags() >> 8) & 1)
                 continue;
-            src_ec->pd->rev_crd (*s, false, false);
+            src_ec->pd->rev_crd (*s, false, false, false);
         }
     }
 

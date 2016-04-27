@@ -42,13 +42,13 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
             Pd * pd = static_cast <Pd *>(a);
 
             Crd crd(Crd::MEM);
-            pd->revoke<Space_mem>(crd.base(), crd.order(), crd.attr(), true);
+            pd->revoke<Space_mem>(crd.base(), crd.order(), crd.attr(), true, false);
 
             crd = Crd(Crd::PIO);
-            pd->revoke<Space_pio>(crd.base(), crd.order(), crd.attr(), true);
+            pd->revoke<Space_pio>(crd.base(), crd.order(), crd.attr(), true, false);
 
             crd = Crd(Crd::OBJ);
-            pd->revoke<Space_obj>(crd.base(), crd.order(), crd.attr(), true);
+            pd->revoke<Space_obj>(crd.base(), crd.order(), crd.attr(), true, false);
         }
 
         static void free (Rcu_elem * a) {
@@ -126,13 +126,13 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
         bool delegate (Pd *, mword, mword, mword, mword, mword = 0, char const * = nullptr);
 
         template <typename>
-        void revoke (mword, mword, mword, bool);
+        void revoke (mword, mword, mword, bool, bool);
 
         void xfer_items (Pd *, Crd, Crd, Xfer *, Xfer *, unsigned long);
 
         void xlt_crd (Pd *, Crd, Crd &);
         void del_crd (Pd *, Crd, Crd &, mword = 0, mword = 0);
-        void rev_crd (Crd, bool, bool = true);
+        void rev_crd (Crd, bool, bool, bool);
 
         ALWAYS_INLINE
         static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
