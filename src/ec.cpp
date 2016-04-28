@@ -396,6 +396,11 @@ void Ec::root_invoke()
     Space_obj::insert_root (Ec::current);
     Space_obj::insert_root (Sc::current);
 
+    /* setup PCID handling */
+    Space_mem::boot_init();
+    assert (Pd::kern.did == 0);
+    assert (Pd::root.did == 1);
+
     /* quirk */
     if (Dpt::ord != ~0UL && Dpt::ord > 0x8) {
        trace (0, "disabling super pages for DMAR");
