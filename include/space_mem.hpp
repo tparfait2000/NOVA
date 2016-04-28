@@ -45,10 +45,67 @@ class Space_mem : public Space
         Cpuset htlb;
         Cpuset gtlb;
 
-        static unsigned did_ctr;
+        static mword did_c [4096 / 8 / sizeof(mword)];
+        static mword did_f;
+
+        enum { LAST_PCID = sizeof(Space_mem::did_c) / sizeof(Space_mem::did_c [0]) - 1 };
+        enum { NO_PCID = 2 };
 
         ALWAYS_INLINE
-        inline Space_mem() : did (Atomic::add (did_ctr, 1U)) {}
+        static inline void boot_init()
+        {
+            bool res = !Atomic::test_set_bit (did_c[0], NO_PCID);
+            assert (res);
+        }
+
+        ALWAYS_INLINE
+        inline Space_mem()
+        {
+            for (mword i = ACCESS_ONCE(did_f), j = 0; j <= LAST_PCID; i++, j++)
+            {
+                i %= (LAST_PCID + 1);
+
+                if (ACCESS_ONCE(did_c[i]) == ~0UL)
+                    continue;
+
+                long b = bit_scan_forward (~did_c[i]);
+                if (b == -1) b = 0;
+
+                if (Atomic::test_set_bit (did_c[i], b)) {
+                    j--;
+                    i--;
+                    continue;
+                }
+
+                did = i * sizeof(did_c[0]) * 8 + b;
+
+                gtlb.merge (cpus);
+                htlb.merge (cpus);
+
+                if (did_c[i] != ~0UL && did_f != i)
+                    did_f = i;
+
+                return;
+            }
+
+            did = NO_PCID;
+        }
+
+        ALWAYS_INLINE
+        inline ~Space_mem()
+        {
+            if (did == NO_PCID)
+               return;
+
+            mword i = did / (sizeof(did_c[0]) * 8);
+            mword b = did % (sizeof(did_c[0]) * 8);
+
+            assert (!((i == 0 && b == 0) || (i == 0 && b == 1)));
+            assert (i <= LAST_PCID);
+
+            bool s = Atomic::test_clr_bit (did_c[i], b);
+            assert(s);
+        }
 
         ALWAYS_INLINE
         inline size_t lookup (mword virt, Paddr &phys)
