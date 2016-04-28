@@ -82,7 +82,8 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
                 if (EXPECT_TRUE (current == this))
                     return;
 
-                pcid |= static_cast<mword>(1ULL << 63);
+                if (pcid != NO_PCID)
+                    pcid |= static_cast<mword>(1ULL << 63);
             }
 
             if (current->del_rcu())

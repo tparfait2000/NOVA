@@ -28,7 +28,8 @@
 #include "svm.hpp"
 #include "vectors.hpp"
 
-unsigned Space_mem::did_ctr;
+mword Space_mem::did_c [4096 / 8 / sizeof(mword)];
+mword Space_mem::did_f = 0;
 
 void Space_mem::init (unsigned cpu)
 {
