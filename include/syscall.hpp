@@ -173,6 +173,9 @@ class Sys_ec_ctrl : public Sys_regs
 
         ALWAYS_INLINE
         inline unsigned op() const { return flags() & 0x3; }
+
+        ALWAYS_INLINE
+        inline bool state() const { return ARG_2 == 1; }
 };
 
 class Sys_sc_ctrl : public Sys_regs
