@@ -596,25 +596,70 @@ void Ec::sys_ec_ctrl()
 
     switch (r->op()) {
         case 0:
-{
-    Capability cap = Space_obj::lookup (r->ec());
-    if (EXPECT_FALSE (cap.obj()->type() != Kobject::EC || !(cap.prm() & 1UL << 0))) {
-        trace (TRACE_ERROR, "%s: Bad EC CAP (%#lx)", __func__, r->ec());
-        sys_finish<Sys_regs::BAD_CAP>();
-    }
+        {
+            Capability cap = Space_obj::lookup (r->ec());
+            if (EXPECT_FALSE (cap.obj()->type() != Kobject::EC || !(cap.prm() & 1UL << 0))) {
+               trace (TRACE_ERROR, "%s: Bad EC CAP (%#lx)", __func__, r->ec());
+               sys_finish<Sys_regs::BAD_CAP>();
+            }
 
-    Ec *ec = static_cast<Ec *>(cap.obj());
+            Ec *ec = static_cast<Ec *>(cap.obj());
 
-    if (!(ec->regs.hazard() & HZD_RECALL)) {
+            if (!(ec->regs.hazard() & HZD_RECALL)) {
 
-        ec->regs.set_hazard (HZD_RECALL);
+                ec->regs.set_hazard (HZD_RECALL);
 
-        if (Cpu::id != ec->cpu && Ec::remote (ec->cpu) == ec)
-            Lapic::send_ipi (ec->cpu, VEC_IPI_RKE);
+                if (Cpu::id != ec->cpu && Ec::remote (ec->cpu) == ec) {
+                    Lapic::send_ipi (ec->cpu, VEC_IPI_RKE);
+                    if (r->state())
+                        sys_finish<Sys_regs::COM_TIM>();
+                }
+            }
 
-    }
-}
+            if (!(r->state() && current->utcb))
+                break;
+
+            Cpu_regs regs(ec->regs);
+
+            regs.mtd = Mtd::GPR_ACDB |
+                       Mtd::GPR_BSD |
+#ifdef __x86_64__
+                       Mtd::GPR_R8_R15 |
+#endif
+                       Mtd::RSP |
+                       Mtd::RIP_LEN |
+                       Mtd::RFLAGS |
+                       Mtd::QUAL;
+
+            if (((ec->cont != ret_user_iret) && (ec->cont != recv_kern))) {
+                /* in syscall */
+                regs.REG(ip) = ec->regs.ARG_IP;
+                regs.REG(sp) = ec->regs.ARG_SP;
+            }
+
+            /*
+             * Find out if the EC is in exception handling state, which is the
+             * case if it has called an exception handler portal. The exception
+             * numbers in the comparison are the ones handled as exception in
+             * 'entry.S'. Page fault exceptions are not of interest for GDB,
+             * which is currently the only user of this status information.
+             */
+            if ((ec->cont == ret_user_iret) &&
+                (ec->partner != nullptr) && (ec->partner->cont == recv_kern) &&
+                ((regs.dst_portal <= 0x01) ||
+                 ((regs.dst_portal >= 0x03) && (regs.dst_portal <= 0x07)) ||
+                 ((regs.dst_portal >= 0x0a) && (regs.dst_portal <= 0x0d)) ||
+                 ((regs.dst_portal >= 0x10) && (regs.dst_portal <= 0x13)))) {
+                /* 'regs.err' will be transferred into utcb->qual[0] */
+                regs.err = 1;
+            } else
+                regs.err = 0;
+
+            bool fpu = current->utcb->load_exc (&regs);
+            /* we don't really reload state of different threads - ignore */
+            (void)fpu;
             break;
+        }
 
         case 1: /* yield */
             current->cont = sys_finish<Sys_regs::SUCCESS>;
