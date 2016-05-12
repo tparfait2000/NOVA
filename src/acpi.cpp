@@ -96,7 +96,7 @@ void Acpi::setup()
 
     Gsi::set (gsi = Gsi::irq_to_gsi (irq));
 
-    write (PM1_ENA, PM1_ENA_PWRBTN | PM1_ENA_GBL | PM1_ENA_TMR);
+    write (PM1_ENA, PM1_ENA_TMR);
 
     clear (GPE0_ENA, 0);
     clear (GPE1_ENA, 0);
@@ -227,9 +227,17 @@ void Acpi::hw_write (Acpi_gas *gas, unsigned val, bool prm)
 void Acpi::interrupt()
 {
     unsigned sts = read (PM1_STS);
+    unsigned ena = read (PM1_ENA);
 
     if (sts & PM1_STS_TMR)
         tmr_ovf++;
+
+    unsigned dis = (sts & ena);
+    if (dis & PM1_ENA_TMR)
+        dis ^= PM1_ENA_TMR;
+
+    if (dis)
+       write (PM1_ENA, ena ^ dis);
 
     write (PM1_STS, sts);
 }
