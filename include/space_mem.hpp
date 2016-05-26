@@ -59,7 +59,7 @@ class Space_mem : public Space
         }
 
         ALWAYS_INLINE
-        inline Space_mem()
+        inline Space_mem() : cpus(0), htlb(~0UL), gtlb(~0UL)
         {
             for (mword i = ACCESS_ONCE(did_f), j = 0; j <= LAST_PCID; i++, j++)
             {
@@ -78,9 +78,6 @@ class Space_mem : public Space
                 }
 
                 did = i * sizeof(did_c[0]) * 8 + b;
-
-                gtlb.merge (cpus);
-                htlb.merge (cpus);
 
                 if (did_c[i] != ~0UL && did_f != i)
                     did_f = i;
