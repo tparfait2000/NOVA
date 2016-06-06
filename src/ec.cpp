@@ -61,14 +61,15 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
 
     if (u) {
 
-        if (glb) {
-            regs.cs  = SEL_USER_CODE;
-            regs.ds  = SEL_USER_DATA;
-            regs.es  = SEL_USER_DATA;
-            regs.ss  = SEL_USER_DATA;
-            regs.REG(fl) = Cpu::EFL_IF;
+        regs.cs  = SEL_USER_CODE;
+        regs.ds  = SEL_USER_DATA;
+        regs.es  = SEL_USER_DATA;
+        regs.ss  = SEL_USER_DATA;
+        regs.REG(fl) = Cpu::EFL_IF;
+
+        if (glb)
             regs.REG(sp) = s;
-        } else
+        else
             regs.set_sp (s);
 
         utcb = new (pd->quota) Utcb;
