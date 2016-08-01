@@ -137,7 +137,8 @@ void Pd::revoke (mword const base, mword const ord, mword const attr, bool self,
         if ((o = clamp (mdb->node_base, b, mdb->node_order, ord)) == ~0UL)
             break;
 
-        if (kim) {
+        /* keep in mapping database if requested and at least one child node exists */
+        if (kim && (ACCESS_ONCE(mdb->next)->dpth > mdb->dpth)) {
             Quota_guard qg(this->quota);
             if (mdb->node_attr & 0x1f) {
                 static_cast<S *>(mdb->space)->update (qg, mdb, 0x1f);
