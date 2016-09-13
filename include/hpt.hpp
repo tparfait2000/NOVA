@@ -23,6 +23,8 @@
 
 #include "arch.hpp"
 #include "pte.hpp"
+#include "assert.hpp"
+#include "stdio.hpp"
 
 class Hpt : public Pte<Hpt, mword, PTE_LEV, PTE_BPL, false>
 {
@@ -66,6 +68,9 @@ class Hpt : public Pte<Hpt, mword, PTE_LEV, PTE_BPL, false>
         enum {
             PTE_P   = HPT_P,
             PTE_S   = HPT_S,
+            PTE_U   = HPT_U,
+            PTE_W   = HPT_W,
+            PTE_R   = HPT_A | HPT_P,
             PTE_N   = HPT_A | HPT_U | HPT_W | HPT_P,
         };
 

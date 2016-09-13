@@ -850,6 +850,9 @@ void Ec::sys_assign_pci()
 {
     check<sys_assign_pci>(4);
 
+    //Pd::current->loc[0].dump(Pd::current->quota);
+    //Pd::current->hpt.dump(Pd::current->quota);
+
     Sys_assign_pci *r = static_cast<Sys_assign_pci *>(current->sys_regs());
 
     Kobject *obj = Space_obj::lookup (r->pd()).obj();

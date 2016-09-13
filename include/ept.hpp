@@ -38,6 +38,9 @@ class Ept : public Pte<Ept, uint64, 4, 9, false>
 
             PTE_P   = EPT_R | EPT_W | EPT_X,
             PTE_S   = EPT_S,
+            PTE_U   = 0,
+            PTE_W   = EPT_W,
+            PTE_R   = EPT_R,
             PTE_N   = EPT_R | EPT_W | EPT_X,
         };
 

@@ -114,36 +114,71 @@ bool Pte<P,E,L,B,F>::update (Quota &quota, E v, mword o, E p, mword a, Type t)
 }
 
 template <typename P, typename E, unsigned L, unsigned B, bool F>
-void Pte<P,E,L,B,F>::clear (Quota &quota, bool (*d) (Paddr, mword, unsigned), bool (*il) (unsigned, mword))
+void Pte<P,E,L,B,F>::clear (Quota &quota, bool (*d) (Paddr, mword, unsigned), bool (*il) (unsigned, mword), bool show)
 {
     if (!val)
         return;
 
     P * e = static_cast<P *>(Buddy::phys_to_ptr (this->addr()));
 
-    e->free_up(quota, L - 1, e, 0, d, il);
+    e->free_up(quota, L - 1, e, 0, d, il, show);
 
-    Pte::destroy (e, quota);
+    if (!show)
+        Pte::destroy (e, quota);
 }
 
+#include <stdio.hpp>
 template <typename P, typename E, unsigned L, unsigned B, bool F>
-void Pte<P,E,L,B,F>::free_up (Quota &quota, unsigned l, P * e, mword v, bool (*d)(Paddr, mword, unsigned), bool (*il) (unsigned, mword))
+void Pte<P,E,L,B,F>::free_up (Quota &quota, unsigned l, P * e, mword v, bool (*d)(Paddr, mword, unsigned), bool (*il) (unsigned, mword), bool show)
 {
     if (!e)
         return;
 
     for (unsigned long i = 0; i < (1 << B); i++) {
-        if (!e[i].val || e[i].super())
+        mword virt = v + (i << (l * B + PAGE_BITS));
+        uint64 virt_e = v + ((0ULL + i+1) << (l * B + PAGE_BITS));
+
+        if (!e[i].val || e[i].super()) {
+            if (e[i].val)
+                trace (0, "%s l=%u %s %4lu/%4u virt [%13lx:%13llx) pte_addr=%#013lx %s%s%s%s%s attr=%lx",
+                       (l >= 3 ? "" : (l == 2 ? " " : (l == 1 ? "  " : "   "))),
+                       l,
+                       (l >= 3 ? "   " : (l == 2 ? "  " : (l == 1 ? " " : ""))),
+                       i, (1 << B),
+                       virt, virt_e, e[i].addr(),
+                       e[i].super() ? "s" : "-",
+                       e[i].present() ? "p" : "-",
+                       e[i].val & P::PTE_U ? "u" : "-",
+                       e[i].val & P::PTE_R ? "r" : "-",
+                       e[i].val & P::PTE_W ? "w" : "-",
+                       e[i].attr());
+
             continue;
+        }
 
         P *p = static_cast<P *>(Buddy::phys_to_ptr (e[i].addr()));
-        mword virt = v + (i << (l * B + PAGE_BITS));
 
-        if (il ? il(l, virt) : l > 1)
-            p->free_up(quota, l - 1, p, virt, d, il);
+        if (show) {
+           trace (0, "%s l=%u %s %4lu/%4u virt [%13lx,%13llx) pte_addr=%#013lx %s%s%s%s%s attr=%lx",
+                  (l >= 3 ? "" : (l == 2 ? " " : (l == 1 ? "  " : "   "))),
+                  l,
+                  (l >= 3 ? "   " : (l == 2 ? "  " : (l == 1 ? " " : ""))),
+                  i, (1 << B),
+                  virt, virt_e, e[i].addr(),
+                  e[i].super() ? "s" : "-",
+                  e[i].present() ? "p" : "-",
+                  e[i].val & P::PTE_U ? "u" : "-",
+                  e[i].val & P::PTE_R ? "r" : "-",
+                  e[i].val & P::PTE_W ? "w" : "-",
+                  e[i].attr());
+        }
+
+        if (il ? il(l, virt) : (!show ? l > 1 : l > 0))
+            p->free_up(quota, l - 1, p, virt, d, il, show);
 
         if (!d || d(e[i].addr(), virt, l))
-            Pte::destroy(p, quota);
+            if (!show)
+                Pte::destroy(p, quota);
     }
 }
 

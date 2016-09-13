@@ -76,7 +76,7 @@ class Pte
         ALWAYS_INLINE
         static inline void destroy(Pte *obj, Quota &quota) { obj->~Pte(); Buddy::allocator.free (reinterpret_cast<mword>(obj), quota); }
 
-        void free_up (Quota &quota, unsigned l, P *, mword, bool (*) (Paddr, mword, unsigned), bool (*) (unsigned, mword));
+        void free_up (Quota &quota, unsigned l, P *, mword, bool (*) (Paddr, mword, unsigned), bool (*) (unsigned, mword), bool = false);
 
     public:
 
@@ -109,7 +109,11 @@ class Pte
 
         bool update (Quota &quota, E, mword, E, mword, Type = TYPE_UP);
 
-        void clear (Quota &quota, bool (*) (Paddr, mword, unsigned) = nullptr, bool (*) (unsigned, mword) = nullptr);
+        void clear (Quota &quota, bool (*) (Paddr, mword, unsigned) = nullptr, bool (*) (unsigned, mword) = nullptr, bool = false);
+
+        void dump (Quota &quota) {
+            clear (quota, nullptr, nullptr, true);
+        }
 
         bool check(Quota_guard &qg, mword o) { return qg.check(o / (4096 / sizeof(E)) + L); }
 };

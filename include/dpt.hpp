@@ -35,6 +35,9 @@ class Dpt : public Pte<Dpt, uint64, 4, 9, true>
 
             PTE_P   = DPT_R | DPT_W,
             PTE_S   = DPT_S,
+            PTE_U   = 0,
+            PTE_W   = DPT_W,
+            PTE_R   = DPT_R,
             PTE_N   = DPT_R | DPT_W,
         };
 };
