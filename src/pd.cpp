@@ -117,7 +117,7 @@ bool Pd::delegate (Pd *snd, mword const snd_base, mword const rcv_base, mword co
         s |= S::update (qg, node);
 
         if (Cpu::hazard & HZD_OOM) {
-            S::update (qg, node, attr);
+            s |= S::update (qg, node, attr);
             node->demote_node (attr);
             if (node->remove_node() && S::tree_remove (node))
                 Rcu::call (node);
@@ -303,11 +303,15 @@ void Pd::del_crd (Pd *pd, Crd del, Crd &crd, mword sub, mword hot)
         case Crd::OBJ:
             o = clamp (sb, rb, so, ro, hot);
             trace (TRACE_DEL, "DEL OBJ PD:%p->%p SB:%#010lx RB:%#010lx O:%#04lx A:%#lx", pd, this, sb, rb, o, a);
-            delegate<Space_obj>(pd, sb, rb, o, a, 0, "OBJ");
+            s = delegate<Space_obj>(pd, sb, rb, o, a, 0, "OBJ");
             break;
     }
 
     crd = Crd (rt, rb, o, a);
+
+    if (s && rt == Crd::OBJ)
+        /* if FRAME_0 got replaced by real pages we have to tell all cpus, done below by shootdown */
+        this->htlb.merge (cpus);
 
     if (s)
         shootdown();
