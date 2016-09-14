@@ -91,7 +91,7 @@ bool Pd::delegate (Pd *snd, mword const snd_base, mword const rcv_base, mword co
             return s;
         }
 
-        Mdb *node = new (qg) Mdb (static_cast<S *>(this), free_mdb<S>, b - mdb->node_base + mdb->node_phys, b - snd_base + rcv_base, o, 0, mdb->node_type, S::sticky_sub(mdb->node_sub) | sub);
+        Mdb *node = new (qg) Mdb (static_cast<S *>(this), free_mdb<S>, b - mdb->node_base + mdb->node_phys, b - snd_base + rcv_base, o, 0, mdb->node_type, S::sticky_sub(mdb->node_sub) | sub, static_cast<uint16>(mdb->dpth + 1));
 
         if (!S::tree_insert (node)) {
             Mdb::destroy (node, qg);
@@ -104,8 +104,12 @@ bool Pd::delegate (Pd *snd, mword const snd_base, mword const rcv_base, mword co
         }
 
         if (!node->insert_node (mdb, attr)) {
-            S::tree_remove (node);
-            Mdb::destroy (node, qg);
+            assert (node->prev == node);
+            assert (node->next == node);
+
+            if (S::tree_remove (node))
+                Rcu::call (node);
+
             trace (0, "overmap attempt %s - node - PD:%p->%p SB:%#010lx RB:%#010lx O:%#04lx A:%#lx SUB:%lx", deltype, snd, this, snd_base, rcv_base, ord, attr, sub);
             continue;
         }
