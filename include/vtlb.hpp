@@ -28,67 +28,84 @@ class Exc_regs;
 #ifdef __i386__
 class Vtlb : public Pte<Vtlb, uint32, 2, 10, false>
 #else
-class Vtlb : public Pte<Vtlb, uint64, 3,  9, false>
+
+class Vtlb : public Pte<Vtlb, uint64, 3, 9, false>
 #endif
 {
-    private:
-        ALWAYS_INLINE
-        inline bool mark() const { return val & TLB_M; }
+private:
 
-        ALWAYS_INLINE
-        inline bool frag() const { return val & TLB_F; }
+    ALWAYS_INLINE
+    inline bool mark() const {
+        return val & TLB_M;
+    }
 
-        ALWAYS_INLINE
-        static inline bool mark_pte (uint32 *pte, uint32 old, uint32 bits)
-        {
-            return EXPECT_TRUE ((old & bits) == bits) || User::cmp_swap (pte, old, old | bits) == ~0UL;
-        }
+    ALWAYS_INLINE
+    inline bool frag() const {
+        return val & TLB_F;
+    }
 
-        void flush_ptab (bool);
+    ALWAYS_INLINE
+    static inline bool mark_pte(uint32 *pte, uint32 old, uint32 bits) {
+        return EXPECT_TRUE((old & bits) == bits) || User::cmp_swap(pte, old, old | bits) == ~0UL;
+    }
 
-    public:
-        static size_t gwalk (Exc_regs *, mword, mword &, mword &, mword &);
-        static size_t hwalk (mword, mword &, mword &, mword &);
+    void flush_ptab(bool);
 
-        enum
-        {
-            TLB_P   = 1UL << 0,
-            TLB_W   = 1UL << 1,
-            TLB_U   = 1UL << 2,
-            TLB_UC  = 1UL << 4,
-            TLB_A   = 1UL << 5,
-            TLB_D   = 1UL << 6,
-            TLB_S   = 1UL << 7,
-            TLB_G   = 1UL << 8,
-            TLB_F   = 1UL << 9,
-            TLB_M   = 1UL << 10,
+public:
+    static size_t gwalk(Exc_regs *, mword, mword &, mword &, mword &);
+    static size_t hwalk(mword, mword &, mword &, mword &);
 
-            PTE_P   = TLB_P,
-            PTE_S   = TLB_S,
-        };
+    enum {
+        TLB_P = 1UL << 0,
+        TLB_W = 1UL << 1,
+        TLB_U = 1UL << 2,
+        TLB_UC = 1UL << 4,
+        TLB_A = 1UL << 5,
+        TLB_D = 1UL << 6,
+        TLB_S = 1UL << 7,
+        TLB_G = 1UL << 8,
+        TLB_F = 1UL << 9,
+        TLB_M = 1UL << 10,
 
-        enum Reason
-        {
-            SUCCESS,
-            GLA_GPA,
-            GPA_HPA
-        };
+        TLB_COW = 1UL << 11,
 
-        ALWAYS_INLINE
-        inline Vtlb()
-        {
-            for (unsigned i = 0; i < 1UL << bpl(); i++)
-                this[i].val = TLB_S;
-        }
+        PTE_P = TLB_P,
+        PTE_S = TLB_S,
+        PTE_N = TLB_A | TLB_U | TLB_W | TLB_P,
+        PTE_COW = TLB_COW,
+        PTE_COW_IO = 1UL << 3,
+        PTE_W = TLB_W,
+        PTE_U = ~0ULL,
+    };
 
-        void flush (mword);
-        void flush (bool);
+    enum Reason {
+        SUCCESS_COW,
+        SUCCESS,
+        GLA_GPA,
+        GPA_HPA
+    };
 
-        static Reason miss (Exc_regs *, mword, mword &);
+    ALWAYS_INLINE
+    inline Vtlb() {
+        for (unsigned i = 0; i < 1UL << bpl(); i++)
+            this[i].val = TLB_S;
+    }
 
-        ALWAYS_INLINE
-        static inline void *operator new (size_t, Quota &quota) { return Buddy::allocator.alloc (0, quota, Buddy::NOFILL); }
+    void flush(mword);
+    void flush(bool);
 
-        ALWAYS_INLINE
-        static inline void destroy(Vtlb *obj, Quota &quota) { obj->~Vtlb(); Buddy::allocator.free (reinterpret_cast<mword>(obj), quota); }
+    static Reason miss(Exc_regs *, mword, mword &, mword &, Paddr &);
+    bool is_cow_fault(mword virt, mword gpa, Paddr hpa, mword err);
+    void update(mword, Paddr, mword);
+
+    ALWAYS_INLINE
+    static inline void *operator new (size_t, Quota &quota) {
+        return Buddy::allocator.alloc(0, quota, Buddy::NOFILL);
+    }
+
+    ALWAYS_INLINE
+    static inline void destroy(Vtlb *obj, Quota &quota) {
+        obj->~Vtlb();
+        Buddy::allocator.free(reinterpret_cast<mword> (obj), quota);
+    }
 };

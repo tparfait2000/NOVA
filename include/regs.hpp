@@ -199,6 +199,12 @@ class Exc_regs : public Sys_regs
 
         template <typename T> void nst_ctrl (bool = T::has_urg());
 
+        template <typename T> void disable_rdtsc ();
+        
+        template <typename T> void enable_rdtsc ();
+        
+        template <typename T> void resolve_rdtsc (uint64 );
+        
         template <typename T> void tlb_flush (bool) const;
         template <typename T> void tlb_flush (mword) const;
 

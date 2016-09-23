@@ -108,7 +108,7 @@ SECTIONS
 #endif
         _mempool_f = .;
 
-        . += 32M;
+        . += 128M;
         . = ALIGN(4M);
 
         PROVIDE (LINK_E = . - OFFSET);

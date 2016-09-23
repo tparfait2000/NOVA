@@ -270,6 +270,23 @@ void Pd::xlt_crd (Pd *pd, Crd xlt, Crd &crd)
     crd = Crd (0);
 }
 
+bool Pd::chunk_delegate(Pd* pd, mword sb, mword rb, mword ord, mword a, mword sub) {
+    if (ord < (sub & 2 ? 9 : 10)) {//if sub & 2 == 1: ept or npt mapping, else hpt mapping 
+        bool s = delegate<Space_mem>(pd, sb, rb, ord, a, sub, "MEM");
+//        Console::print("s in chunk %d", s);
+        return s;
+    } else {
+        ord--;
+        uint32 trans = 1U << ord;
+        bool chunk1 = chunk_delegate(pd, sb, rb, ord, a, sub);
+        bool chunk2 = chunk_delegate(pd, sb + trans, rb + trans, ord, a, sub);
+//        Console::print("chunk1 %d chunk1 %d", chunk1, chunk2);
+        /*TODO
+         * We must later handle when some succeed and other fail */
+        return ( chunk1 || chunk2); // because delegate return 0 if ok
+    }
+}
+
 void Pd::del_crd (Pd *pd, Crd del, Crd &crd, mword sub, mword hot)
 {
     Crd::Type st = crd.type(), rt = del.type();
@@ -287,7 +304,7 @@ void Pd::del_crd (Pd *pd, Crd del, Crd &crd, mword sub, mword hot)
         case Crd::MEM:
             o = clamp (sb, rb, so, ro, hot);
             trace (TRACE_DEL, "DEL MEM PD:%p->%p SB:%#010lx RB:%#010lx O:%#04lx A:%#lx", pd, this, sb, rb, o, a);
-            s = delegate<Space_mem>(pd, sb, rb, o, a, sub, "MEM");
+            s = chunk_delegate(pd, sb, rb, o, a, sub);
             break;
 
         case Crd::PIO:

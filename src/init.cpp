@@ -28,6 +28,7 @@
 #include "idt.hpp"
 #include "keyb.hpp"
 #include "pd.hpp"
+#include "cow.hpp"
 
 extern "C" INIT
 mword kern_ptab_setup()
@@ -73,4 +74,6 @@ void init (mword mbi)
     Console_vga::con.setup();
 
     Keyb::init();
+    Cow::initialize();
+    
 }

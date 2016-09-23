@@ -23,40 +23,51 @@
 #include "assert.hpp"
 #include "pte.hpp"
 
-class Ept : public Pte<Ept, uint64, 4, 9, false>
-{
-    public:
-        static mword ord;
+class Ept : public Pte<Ept, uint64, 4, 9, false> {
+public:
+    static mword ord;
 
-        enum
-        {
-            EPT_R   = 1UL << 0,
-            EPT_W   = 1UL << 1,
-            EPT_X   = 1UL << 2,
-            EPT_I   = 1UL << 6,
-            EPT_S   = 1UL << 7,
+    enum {
+        EPT_R = 1UL << 0,
+        EPT_W = 1UL << 1,
+        EPT_X = 1UL << 2,
+        EPT_I = 1UL << 6,
+        EPT_COW = 1ULL << 60,
+        EPT_S = 1UL << 7,
 
-            PTE_P   = EPT_R | EPT_W | EPT_X,
-            PTE_S   = EPT_S,
-            PTE_N   = EPT_R | EPT_W | EPT_X,
-        };
+        PTE_P = EPT_R | EPT_W | EPT_X,
+        PTE_S = EPT_S,
+        PTE_N = EPT_R | EPT_W | EPT_X,
+        PTE_COW = EPT_COW,
+        PTE_COW_IO = PTE_COW >> 1,
+        PTE_W = EPT_W,
+        PTE_U = ~0ULL,
+    };
 
-        ALWAYS_INLINE
-        static inline mword hw_attr (mword a, mword t) { return a ? t << 3 | a | EPT_I | EPT_R : 0; }
+    ALWAYS_INLINE
+    static inline mword hw_attr(mword a, mword t) {
+        return a ? t << 3 | a | EPT_I | EPT_R : 0;
+    }
 
-        ALWAYS_INLINE
-        inline mword order() const { return PAGE_BITS + (static_cast<mword>(val) >> 8 & 0xf); }
+    ALWAYS_INLINE
+    inline mword order() const {
+        return PAGE_BITS + (static_cast<mword> (val) >> 8 & 0xf);
+    }
 
-        ALWAYS_INLINE
-        static inline mword order (mword o) { return o << 8; }
+    ALWAYS_INLINE
+    static inline mword order(mword o) {
+        return o << 8;
+    }
 
-        ALWAYS_INLINE
-        inline void flush()
-        {
-            struct { uint64 eptp, rsvd; } desc = { addr() | (max() - 1) << 3 | 6, 0 };
+    ALWAYS_INLINE
+    inline void flush() {
 
-            bool ret;
-            asm volatile ("invept %1, %2; seta %0" : "=q" (ret) : "m" (desc), "r" (1UL) : "cc", "memory");
-            assert (ret);
-        }
+        struct {
+            uint64 eptp, rsvd;
+        } desc = {addr() | (max() - 1) << 3 | 6, 0};
+
+        bool ret;
+        asm volatile ("invept %1, %2; seta %0" : "=q" (ret) : "m" (desc), "r" (1UL) : "cc", "memory");
+        assert(ret);
+    }
 };

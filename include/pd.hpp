@@ -125,7 +125,7 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
 
         template <typename>
         bool delegate (Pd *, mword, mword, mword, mword, mword = 0, char const * = nullptr);
-
+        bool chunk_delegate(Pd *, mword, mword, mword, mword, mword = 0);
         template <typename>
         void revoke (mword, mword, mword, bool, bool);
 

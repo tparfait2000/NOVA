@@ -32,25 +32,34 @@
 #include "sm.hpp"
 #include "pt.hpp"
 
-INIT_PRIORITY (PRIO_SLAB)
-Slab_cache Ec::cache (sizeof (Ec), 32);
+INIT_PRIORITY(PRIO_SLAB)
+Slab_cache Ec::cache(sizeof (Ec), 32);
 
 Ec *Ec::current, *Ec::fpowner;
-
 // Constructors
-Ec::Ec (Pd *own, void (*f)(), unsigned c) : Kobject (EC, static_cast<Space_obj *>(own)), cont (f), utcb (nullptr), pd (own), partner (nullptr), prev (nullptr), next (nullptr), fpu (nullptr), cpu (static_cast<uint16>(c)), glb (true), evt (0), timeout (this), user_utcb (0), xcpu_sm (nullptr), pt_oom(nullptr)
-{
-    trace (TRACE_SYSCALL, "EC:%p created (PD:%p Kernel)", this, own);
+
+Ec::Ec(Pd *own, void (*f)(), unsigned c) : Kobject(EC, static_cast<Space_obj *> (own)), cont(f), utcb(nullptr), pd(own), partner(nullptr), prev(nullptr), next(nullptr), fpu(nullptr), cpu(static_cast<uint16> (c)), glb(true), evt(0), timeout(this), user_utcb(0), xcpu_sm(nullptr), pt_oom(nullptr) {
+    trace(TRACE_SYSCALL, "EC:%p created (PD:%p Kernel)", this, own);
 
     regs.vtlb = nullptr;
     regs.vmcs = nullptr;
     regs.vmcb = nullptr;
 }
 
-Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u, mword s, Pt *oom) : Kobject (EC, static_cast<Space_obj *>(own), sel, 0xd, free, pre_free), cont (f), pd (p), partner (nullptr), prev (nullptr), next (nullptr), fpu (nullptr), cpu (static_cast<uint16>(c)), glb (!!f), evt (e), timeout (this), user_utcb (u), xcpu_sm (nullptr), pt_oom (oom)
-{
+/**
+ * create en execution context 
+ * @param own
+ * @param sel : selector for the execution context
+ * @param p : protection domain which the execution context will be bound to
+ * @param f : pointer to the routine to be executed
+ * @param c : cpu
+ * @param e : event selector for this execution context
+ * @param u : user thread control block
+ * @param s : stack pointer
+ */
+Ec::Ec(Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u, mword s, Pt *oom) : Kobject(EC, static_cast<Space_obj *> (own), sel, 0xd, free, pre_free), cont(f), pd(p), partner(nullptr), prev(nullptr), next(nullptr), fpu(nullptr), cpu(static_cast<uint16> (c)), glb(!!f), evt(e), timeout(this), user_utcb(u), xcpu_sm(nullptr), pt_oom(oom) {
     // Make sure we have a PTAB for this CPU in the PD
-    pd->Space_mem::init (pd->quota, c);
+    pd->Space_mem::init(pd->quota, c);
 
     regs.vtlb = nullptr;
     regs.vmcs = nullptr;
@@ -59,31 +68,31 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
     if (pt_oom)
         pt_oom->add_ref();
 
-    if (u) {
-
-        regs.cs  = SEL_USER_CODE;
-        regs.ds  = SEL_USER_DATA;
-        regs.es  = SEL_USER_DATA;
-        regs.ss  = SEL_USER_DATA;
-        regs.REG(fl) = Cpu::EFL_IF;
-
-        if (glb)
+    if (u) { // if a user thread
+        //        Console::print("...user thread.");
+            regs.cs = SEL_USER_CODE;
+            regs.ds = SEL_USER_DATA;
+            regs.es = SEL_USER_DATA;
+            regs.ss = SEL_USER_DATA;
+            regs.REG(fl) = Cpu::EFL_IF;
+        if (glb) { // if global
             regs.REG(sp) = s;
-        else
-            regs.set_sp (s);
+        } else // local thread
+            regs.set_sp(s);
 
         utcb = new (pd->quota) Utcb;
 
-        pd->Space_mem::insert (pd->quota, u, 0, Hpt::HPT_U | Hpt::HPT_W | Hpt::HPT_P, Buddy::ptr_to_phys (utcb));
+        pd->Space_mem::insert(pd->quota, u, 0, Hpt::HPT_U | Hpt::HPT_W | Hpt::HPT_P, Buddy::ptr_to_phys(utcb));
 
         regs.dst_portal = NUM_EXC - 2;
 
-        trace (TRACE_SYSCALL, "EC:%p created (PD:%p CPU:%#x UTCB:%#lx ESP:%lx EVT:%#x)", this, p, c, u, s, e);
+        trace(TRACE_SYSCALL, "EC:%p created (PD:%p CPU:%#x UTCB:%#lx ESP:%lx EVT:%#x)", this, p, c, u, s, e);
 
         if (pd == &Pd::root)
-            pd->insert_utcb (pd->quota, u, Buddy::ptr_to_phys(utcb) >> 12);
+            pd->insert_utcb(pd->quota, u, Buddy::ptr_to_phys(utcb) >> 12);
 
-    } else {
+    } else { //virtual CPU
+        Console::print("...virtual CPU.");
 
         utcb = nullptr;
 
@@ -92,10 +101,10 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
 
         if (Hip::feature() & Hip::FEAT_VMX) {
 
-            regs.vmcs = new (pd->quota) Vmcs (reinterpret_cast<mword>(sys_regs() + 1),
-                                              pd->Space_pio::walk(pd->quota),
-                                              pd->loc[c].root(pd->quota),
-                                              pd->ept.root(pd->quota));
+            regs.vmcs = new (pd->quota) Vmcs(reinterpret_cast<mword> (sys_regs() + 1),
+                    pd->Space_pio::walk(pd->quota),
+                    pd->loc[c].root(pd->quota),
+                    pd->ept.root(pd->quota));
 
             regs.nst_ctrl<Vmcs>();
 
@@ -117,23 +126,25 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
 
             regs.vmcs->clear();
             cont = send_msg<ret_user_vmresume>;
-            trace (TRACE_SYSCALL, "EC:%p created (PD:%p VMCS:%p VTLB:%p)", this, p, regs.vmcs, regs.vtlb);
+            trace(TRACE_SYSCALL, "EC:%p created (PD:%p VMCS:%p VTLB:%p)", this, p, regs.vmcs, regs.vtlb);
 
         } else if (Hip::feature() & Hip::FEAT_SVM) {
 
-            regs.REG(ax) = Buddy::ptr_to_phys (regs.vmcb = new (pd->quota) Vmcb (pd->quota, pd->Space_pio::walk(pd->quota), pd->npt.root(pd->quota)));
+            regs.REG(ax) = Buddy::ptr_to_phys(regs.vmcb = new (pd->quota) Vmcb(pd->quota, pd->Space_pio::walk(pd->quota), pd->npt.root(pd->quota)));
 
             regs.nst_ctrl<Vmcb>();
+            vmcb_backup = regs.vmcb->clone();
+            vmcb1 = regs.vmcb->clone();
+            vmcb2 = regs.vmcb->clone();
             cont = send_msg<ret_user_vmrun>;
-            trace (TRACE_SYSCALL, "EC:%p created (PD:%p VMCB:%p VTLB:%p)", this, p, regs.vmcb, regs.vtlb);
+            trace(TRACE_SYSCALL, "EC:%p created (PD:%p VMCB:%p VTLB:%p)", this, p, regs.vmcb, regs.vtlb);
         }
     }
 }
 
-Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone) : Kobject (EC, static_cast<Space_obj *>(own), 0, 0xd, free, pre_free), cont (f), regs (clone->regs), rcap (clone), utcb (clone->utcb), pd (p), partner (nullptr), prev (nullptr), next (nullptr), fpu (clone->fpu), cpu (static_cast<uint16>(c)), glb (!!f), evt (clone->evt), timeout (this), user_utcb (0), xcpu_sm (clone->xcpu_sm), pt_oom(clone->pt_oom)
-{
+Ec::Ec(Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone) : Kobject(EC, static_cast<Space_obj *> (own), 0, 0xd, free, pre_free), cont(f), regs(clone->regs), rcap(clone), utcb(clone->utcb), pd(p), partner(nullptr), prev(nullptr), next(nullptr), fpu(clone->fpu), cpu(static_cast<uint16> (c)), glb(!!f), evt(clone->evt), timeout(this), user_utcb(0), xcpu_sm(clone->xcpu_sm), pt_oom(clone->pt_oom) {
     // Make sure we have a PTAB for this CPU in the PD
-    pd->Space_mem::init (pd->quota, c);
+    pd->Space_mem::init(pd->quota, c);
 
     regs.vtlb = nullptr;
     regs.vmcs = nullptr;
@@ -144,8 +155,8 @@ Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone) : Kobject (EC, stati
 }
 
 //De-constructor
-Ec::~Ec()
-{
+
+Ec::~Ec() {
     pre_free(this);
 
     if (pt_oom && pt_oom->del_ref())
@@ -171,16 +182,16 @@ Ec::~Ec()
         regs.vmcs->make_current();
 
         mword host_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
-        Msr_area *host_msr_area = reinterpret_cast<Msr_area*>(Buddy::phys_to_ptr(host_msr_area_phys));
+        Msr_area *host_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(host_msr_area_phys));
         Msr_area::destroy(host_msr_area, pd->quota);
 
         mword guest_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_ST_ADDR);
-        Msr_area *guest_msr_area = reinterpret_cast<Msr_area*>(Buddy::phys_to_ptr(guest_msr_area_phys));
+        Msr_area *guest_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(guest_msr_area_phys));
         Msr_area::destroy(guest_msr_area, pd->quota);
 
         mword virtual_apic_page_phys = Vmcs::read(Vmcs::APIC_VIRT_ADDR);
         Virtual_apic_page *virtual_apic_page =
-            reinterpret_cast<Virtual_apic_page*>(Buddy::phys_to_ptr(virtual_apic_page_phys));
+                reinterpret_cast<Virtual_apic_page*> (Buddy::phys_to_ptr(virtual_apic_page_phys));
         Virtual_apic_page::destroy(virtual_apic_page, pd->quota);
 
         regs.vmcs->clear();
@@ -190,8 +201,7 @@ Ec::~Ec()
         Vmcb::destroy(regs.vmcb, pd->quota);
 }
 
-void Ec::handle_hazard (mword hzd, void (*func)())
-{
+void Ec::handle_hazard(mword hzd, void (*func)()) {
     if (hzd & HZD_RCU)
         Rcu::quiet();
 
@@ -201,7 +211,7 @@ void Ec::handle_hazard (mword hzd, void (*func)())
     }
 
     if (hzd & HZD_RECALL) {
-        current->regs.clr_hazard (HZD_RECALL);
+        current->regs.clr_hazard(HZD_RECALL);
 
         if (func == ret_user_vmresume) {
             current->regs.dst_portal = NUM_VMI - 1;
@@ -221,7 +231,7 @@ void Ec::handle_hazard (mword hzd, void (*func)())
     }
 
     if (hzd & HZD_STEP) {
-        current->regs.clr_hazard (HZD_STEP);
+        current->regs.clr_hazard(HZD_STEP);
 
         if (func == ret_user_sysexit)
             current->redirect_to_iret();
@@ -231,12 +241,12 @@ void Ec::handle_hazard (mword hzd, void (*func)())
     }
 
     if (hzd & HZD_TSC) {
-        current->regs.clr_hazard (HZD_TSC);
+        current->regs.clr_hazard(HZD_TSC);
 
         if (func == ret_user_vmresume) {
             current->regs.vmcs->make_current();
-            Vmcs::write (Vmcs::TSC_OFFSET,    static_cast<mword>(current->regs.tsc_offset));
-            Vmcs::write (Vmcs::TSC_OFFSET_HI, static_cast<mword>(current->regs.tsc_offset >> 32));
+            Vmcs::write(Vmcs::TSC_OFFSET, static_cast<mword> (current->regs.tsc_offset));
+            Vmcs::write(Vmcs::TSC_OFFSET_HI, static_cast<mword> (current->regs.tsc_offset >> 32));
         } else
             current->regs.vmcb->tsc_offset = current->regs.tsc_offset;
     }
@@ -251,109 +261,123 @@ void Ec::handle_hazard (mword hzd, void (*func)())
             Fpu::disable();
 }
 
-void Ec::ret_user_sysexit()
-{
-    mword hzd = (Cpu::hazard | current->regs.hazard()) & (HZD_RECALL | HZD_STEP | HZD_RCU | HZD_FPU | HZD_DS_ES | HZD_SCHED);
-    if (EXPECT_FALSE (hzd))
-        handle_hazard (hzd, ret_user_sysexit);
+void Ec::ret_user_sysexit() {
+    if (current->is_idle()) {
+        mword hzd = (Cpu::hazard | current->regs.hazard()) & (HZD_RECALL | HZD_STEP | HZD_RCU | HZD_FPU | HZD_DS_ES | HZD_SCHED);
+        if (EXPECT_FALSE(hzd))
+            handle_hazard(hzd, ret_user_sysexit);
 
-    asm volatile ("lea %0," EXPAND (PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : "memory");
-
-    UNREACHED;
-}
-
-void Ec::ret_user_iret()
-{
-    // No need to check HZD_DS_ES because IRET will reload both anyway
-    mword hzd = (Cpu::hazard | current->regs.hazard()) & (HZD_RECALL | HZD_STEP | HZD_RCU | HZD_FPU | HZD_SCHED);
-    if (EXPECT_FALSE (hzd))
-        handle_hazard (hzd, ret_user_iret);
-
-    asm volatile ("lea %0," EXPAND (PREG(sp); LOAD_GPR LOAD_SEG RET_USER_EXC) : : "m" (current->regs) : "memory");
+        current->save_state();
+        current->launch_state = Ec::sysexit;
+    }
+    asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : "memory");
 
     UNREACHED;
 }
 
-void Ec::chk_kern_preempt()
-{
+void Ec::ret_user_iret() {
+    if (current->is_idle()) {
+        // No need to check HZD_DS_ES because IRET will reload both anyway
+        mword hzd = (Cpu::hazard | current->regs.hazard()) & (HZD_RECALL | HZD_STEP | HZD_RCU | HZD_FPU | HZD_SCHED);
+        if (EXPECT_FALSE(hzd))
+            handle_hazard(hzd, ret_user_iret);
+
+        current->save_state();
+        current->launch_state = Ec::iret;
+    }
+    asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR LOAD_SEG RET_USER_EXC) : : "m" (current->regs) : "memory");
+
+    UNREACHED;
+}
+
+void Ec::chk_kern_preempt() {
     if (!Cpu::preemption)
         return;
 
-    if (Cpu::hazard & HZD_SCHED) {
+    if (Ec::current->is_idle() && Cpu::hazard & HZD_SCHED) { // this may leak from the kernel without terminating a double_running.
         Cpu::preempt_disable();
         Sc::schedule();
     }
 }
 
-void Ec::ret_user_vmresume()
-{
-    mword hzd = (Cpu::hazard | current->regs.hazard()) & (HZD_RECALL | HZD_TSC | HZD_RCU | HZD_SCHED);
-    if (EXPECT_FALSE (hzd))
-        handle_hazard (hzd, ret_user_vmresume);
+void Ec::ret_user_vmresume() {
+    if (current->is_idle()) {
+        mword hzd = (Cpu::hazard | current->regs.hazard()) & (HZD_RECALL | HZD_TSC | HZD_RCU | HZD_SCHED);
+        if (EXPECT_FALSE(hzd))
+            handle_hazard(hzd, ret_user_vmresume);
 
-    current->regs.vmcs->make_current();
+        current->regs.vmcs->make_current();
 
-    if (EXPECT_FALSE (Pd::current->gtlb.chk (Cpu::id))) {
-        Pd::current->gtlb.clr (Cpu::id);
-        if (current->regs.nst_on)
-            Pd::current->ept.flush();
-        else
-            current->regs.vtlb->flush (true);
+        if (EXPECT_FALSE(Pd::current->gtlb.chk(Cpu::id))) {
+            Pd::current->gtlb.clr(Cpu::id);
+            if (current->regs.nst_on)
+                Pd::current->ept.flush();
+            else
+                current->regs.vtlb->flush(true);
+        }
+
+        if (EXPECT_FALSE(get_cr2() != current->regs.cr2))
+            set_cr2(current->regs.cr2);
+        current->save_state();
+        current->launch_state = Ec::vmresume;
     }
+    current->regs.disable_rdtsc<Vmcs>();
+    asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR)
+                "vmresume;"
+                "vmlaunch;"
+                "mov %1," EXPAND(PREG(sp);)
+                : : "m" (current->regs), "i" (CPU_LOCAL_STCK + PAGE_SIZE) : "memory");
 
-    if (EXPECT_FALSE (get_cr2() != current->regs.cr2))
-        set_cr2 (current->regs.cr2);
+    trace(0, "VM entry failed with error %#lx", Vmcs::read(Vmcs::VMX_INST_ERROR));
 
-    asm volatile ("lea %0," EXPAND (PREG(sp); LOAD_GPR)
-                  "vmresume;"
-                  "vmlaunch;"
-                  "mov %1," EXPAND (PREG(sp);)
-                  : : "m" (current->regs), "i" (CPU_LOCAL_STCK + PAGE_SIZE) : "memory");
-
-    trace (0, "VM entry failed with error %#lx", Vmcs::read (Vmcs::VMX_INST_ERROR));
-
-    die ("VMENTRY");
+    die("VMENTRY");
 }
 
-void Ec::ret_user_vmrun()
-{
-    mword hzd = (Cpu::hazard | current->regs.hazard()) & (HZD_RECALL | HZD_TSC | HZD_RCU | HZD_SCHED);
-    if (EXPECT_FALSE (hzd))
-        handle_hazard (hzd, ret_user_vmrun);
+void Ec::ret_user_vmrun() {
+    if (!Ec::current->hardening_started || current->is_idle()) {
+        mword hzd = (Cpu::hazard | current->regs.hazard()) & (HZD_RECALL | HZD_TSC | HZD_RCU | HZD_SCHED);
+        if (EXPECT_FALSE(hzd))
+            handle_hazard(hzd, ret_user_vmrun);
 
-    if (EXPECT_FALSE (Pd::current->gtlb.chk (Cpu::id))) {
-        Pd::current->gtlb.clr (Cpu::id);
+        current->svm_save_state();
+        current->launch_state = Ec::vmrun;
+    }
+    if (EXPECT_FALSE(Pd::current->gtlb.chk(Cpu::id))) {
+        Pd::current->gtlb.clr(Cpu::id);
         if (current->regs.nst_on)
             current->regs.vmcb->tlb_control = 1;
         else
-            current->regs.vtlb->flush (true);
+            current->regs.vtlb->flush(true);
     }
+    current->regs.disable_rdtsc<Vmcb>();
 
-    asm volatile ("lea %0," EXPAND (PREG(sp); LOAD_GPR)
-                  "clgi;"
-                  "sti;"
-                  "vmload;"
-                  "vmrun;"
-                  "vmsave;"
-                  EXPAND (SAVE_GPR)
-                  "mov %1," EXPAND (PREG(ax);)
-                  "mov %2," EXPAND (PREG(sp);)
-                  "vmload;"
-                  "cli;"
-                  "stgi;"
-                  "jmp svm_handler;"
-                  : : "m" (current->regs), "m" (Vmcb::root), "i" (CPU_LOCAL_STCK + PAGE_SIZE) : "memory");
+    //    if (current->debug) {
+    //        current->regs.enable_rdtsc<Vmcb>();
+    //    }
+    asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR)
+                "clgi;"
+                "sti;"
+                "vmload;"
+                "vmrun;"
+                "vmsave;"
+                EXPAND(SAVE_GPR)
+                "mov %1," EXPAND(PREG(ax);)
+                "mov %2," EXPAND(PREG(sp);)
+                "vmload;"
+                "cli;"
+                "stgi;"
+                "jmp svm_handler;"
+                : : "m" (current->regs), "m" (Vmcb::root), "i" (CPU_LOCAL_STCK + PAGE_SIZE) : "memory");
 
     UNREACHED;
 }
 
-void Ec::idle()
-{
+void Ec::idle() {
     for (;;) {
 
         mword hzd = Cpu::hazard & (HZD_RCU | HZD_SCHED);
-        if (EXPECT_FALSE (hzd))
-            handle_hazard (hzd, idle);
+        if (EXPECT_FALSE(hzd))
+            handle_hazard(hzd, idle);
 
         uint64 t1 = rdtsc();
         asm volatile ("sti; hlt; cli" : : : "memory");
@@ -363,45 +387,44 @@ void Ec::idle()
     }
 }
 
-void Ec::root_invoke()
-{
-    Eh *e = static_cast<Eh *>(Hpt::remap (Pd::kern.quota, Hip::root_addr));
+void Ec::root_invoke() {
+    Eh *e = static_cast<Eh *> (Hpt::remap(Pd::kern.quota, Hip::root_addr));
     if (!Hip::root_addr || e->ei_magic != 0x464c457f || e->ei_class != ELF_CLASS || e->ei_data != 1 || e->type != 2 || e->machine != ELF_MACHINE)
-        die ("No ELF");
+        die("No ELF");
 
     unsigned count = e->ph_count;
-    current->regs.set_pt (Cpu::id);
-    current->regs.set_ip (e->entry);
-    current->regs.set_sp (USER_ADDR - PAGE_SIZE);
+    current->regs.set_pt(Cpu::id);
+    current->regs.set_ip(e->entry);
+    current->regs.set_sp(USER_ADDR - PAGE_SIZE);
 
-    ELF_PHDR *p = static_cast<ELF_PHDR *>(Hpt::remap (Pd::kern.quota, Hip::root_addr + e->ph_offset));
+    ELF_PHDR *p = static_cast<ELF_PHDR *> (Hpt::remap(Pd::kern.quota, Hip::root_addr + e->ph_offset));
 
     for (unsigned i = 0; i < count; i++, p++) {
 
         if (p->type == 1) {
 
-            unsigned attr = !!(p->flags & 0x4) << 0 |   // R
-                            !!(p->flags & 0x2) << 1 |   // W
-                            !!(p->flags & 0x1) << 2;    // X
+            unsigned attr = !!(p->flags & 0x4) << 0 | // R
+                    !!(p->flags & 0x2) << 1 | // W
+                    !!(p->flags & 0x1) << 2; // X
 
             if (p->f_size != p->m_size || p->v_addr % PAGE_SIZE != p->f_offs % PAGE_SIZE)
-                die ("Bad ELF");
+                die("Bad ELF");
 
-            mword phys = align_dn (p->f_offs + Hip::root_addr, PAGE_SIZE);
-            mword virt = align_dn (p->v_addr, PAGE_SIZE);
-            mword size = align_up (p->f_size, PAGE_SIZE);
+            mword phys = align_dn(p->f_offs + Hip::root_addr, PAGE_SIZE);
+            mword virt = align_dn(p->v_addr, PAGE_SIZE);
+            mword size = align_up(p->f_size, PAGE_SIZE);
 
             for (unsigned long o; size; size -= 1UL << o, phys += 1UL << o, virt += 1UL << o)
-                Pd::current->delegate<Space_mem>(&Pd::kern, phys >> PAGE_BITS, virt >> PAGE_BITS, (o = min (max_order (phys, size), max_order (virt, size))) - PAGE_BITS, attr);
+                Pd::current->delegate<Space_mem>(&Pd::kern, phys >> PAGE_BITS, virt >> PAGE_BITS, (o = min(max_order(phys, size), max_order(virt, size))) - PAGE_BITS, attr);
         }
     }
 
     // Map hypervisor information page
-    Pd::current->delegate<Space_mem>(&Pd::kern, reinterpret_cast<Paddr>(&FRAME_H) >> PAGE_BITS, (USER_ADDR - PAGE_SIZE) >> PAGE_BITS, 0, 1);
+    Pd::current->delegate<Space_mem>(&Pd::kern, reinterpret_cast<Paddr> (&FRAME_H) >> PAGE_BITS, (USER_ADDR - PAGE_SIZE) >> PAGE_BITS, 0, 1);
 
-    Space_obj::insert_root (Pd::kern.quota, Pd::current);
-    Space_obj::insert_root (Pd::kern.quota, Ec::current);
-    Space_obj::insert_root (Pd::kern.quota, Sc::current);
+    Space_obj::insert_root(Pd::kern.quota, Pd::current);
+    Space_obj::insert_root(Pd::kern.quota, Ec::current);
+    Space_obj::insert_root(Pd::kern.quota, Sc::current);
 
     /* adjust root quota used by Pd::kern during bootstrap */
     Quota::boot(Pd::kern.quota, Pd::root.quota);
@@ -412,8 +435,8 @@ void Ec::root_invoke()
     assert(s);
 
     /* preserve for the root task memory that is not transferable */
-    bool res = Pd::root.quota.set_limit ((1 * 1024 * 1024) >> 12, 0, Pd::root.quota);
-    assert (res);
+    bool res = Pd::root.quota.set_limit((1 * 1024 * 1024) >> 12, 0, Pd::root.quota);
+    assert(res);
 
     /* setup PCID handling */
     Space_mem::boot_init();
@@ -422,20 +445,18 @@ void Ec::root_invoke()
 
     /* quirk */
     if (Dpt::ord != ~0UL && Dpt::ord > 0x8) {
-       trace (0, "disabling super pages for DMAR");
-       Dpt::ord = 0x8;
+        trace(0, "disabling super pages for DMAR");
+        Dpt::ord = 0x8;
     }
 
     ret_user_sysexit();
 }
 
-void Ec::handle_tss()
-{
-    Console::panic ("Task gate invoked");
+void Ec::handle_tss() {
+    Console::panic("Task gate invoked");
 }
 
-bool Ec::fixup (mword &eip)
-{
+bool Ec::fixup(mword &eip) {
     for (mword *ptr = &FIXUP_S; ptr < &FIXUP_E; ptr += 2)
         if (eip == *ptr) {
             eip = *++ptr;
@@ -445,38 +466,36 @@ bool Ec::fixup (mword &eip)
     return false;
 }
 
-void Ec::die (char const *reason, Exc_regs *r)
-{
+void Ec::die(char const *reason, Exc_regs *r) {
     if (current->utcb || current->pd == &Pd::kern) {
         if (strcmp(reason, "PT not found"))
-        trace (0, "Killed EC:%p SC:%p V:%#lx CS:%#lx EIP:%#lx CR2:%#lx ERR:%#lx (%s)",
-               current, Sc::current, r->vec, r->cs, r->REG(ip), r->cr2, r->err, reason);
+            trace(0, "Killed EC:%p SC:%p V:%#lx CS:%#lx EIP:%#lx CR2:%#lx ERR:%#lx (%s)",
+                current, Sc::current, r->vec, r->cs, r->REG(ip), r->cr2, r->err, reason);
     } else
-        trace (0, "Killed EC:%p SC:%p V:%#lx CR0:%#lx CR3:%#lx CR4:%#lx (%s)",
-               current, Sc::current, r->vec, r->cr0_shadow, r->cr3_shadow, r->cr4_shadow, reason);
+        trace(0, "Killed EC:%p SC:%p V:%#lx CR0:%#lx CR3:%#lx CR4:%#lx (%s)",
+            current, Sc::current, r->vec, r->cr0_shadow, r->cr3_shadow, r->cr4_shadow, reason);
 
     Ec *ec = current->rcap;
 
     if (ec)
-        ec->cont = ec->cont == ret_user_sysexit ? static_cast<void (*)()>(sys_finish<Sys_regs::COM_ABT>) : dead;
+        ec->cont = ec->cont == ret_user_sysexit ? static_cast<void (*)()> (sys_finish<Sys_regs::COM_ABT>) : dead;
 
-    reply (dead);
+    reply(dead);
 }
 
-void Ec::xcpu_return()
-{
-    assert (current->xcpu_sm);
-    assert (current->rcap);
-    assert (current->utcb);
-    assert (Sc::current->ec == current);
+void Ec::xcpu_return() {
+    assert(current->xcpu_sm);
+    assert(current->rcap);
+    assert(current->utcb);
+    assert(Sc::current->ec == current);
 
-    current->rcap->regs =  current->regs;
+    current->rcap->regs = current->regs;
 
-    current->xcpu_sm->up (ret_xcpu_reply);
+    current->xcpu_sm->up(ret_xcpu_reply);
 
-    current->rcap    = nullptr;
-    current->utcb    = nullptr;
-    current->fpu     = nullptr;
+    current->rcap = nullptr;
+    current->utcb = nullptr;
+    current->fpu = nullptr;
 
     Rcu::call(current);
     Rcu::call(Sc::current);
@@ -484,8 +503,166 @@ void Ec::xcpu_return()
     Sc::schedule(true);
 }
 
-void Ec::idl_handler()
-{
+void Ec::idl_handler() {
     if (Ec::current->cont == Ec::idle)
         Rcu::update();
+}
+
+void Ec::add_cow(Cow::cow_elt *ce) {
+    Lock_guard <Spinlock> guard(cow_lock);
+    Cow::cow_elt *tampon = cow_list;
+    cow_list = ce;
+    ce->next = tampon;
+}
+
+void Ec::restore_state() {
+    Lock_guard <Spinlock> guard(cow_lock);
+    Cow::cow_elt *cow = current->cow_list;
+    if (user_utcb) {
+        Quota quota = Pd::current->quota;
+        while (cow != nullptr) {
+            mword v = cow->page_addr_or_gpa;
+            Pd::current->Space_mem::loc[Cpu::id].update(quota, v, 0, cow->new_phys[1]->phys_addr, cow->attr | Hpt::HPT_W, Hpt::TYPE_UP, true);
+            Hpt::cow_flush(v);
+            cow = cow->next;
+        }
+    } else {
+        memcpy(vmcb1, regs.vmcb, PAGE_SIZE);
+        memcpy(regs_0.vmcb, vmcb_backup, PAGE_SIZE);
+        Vtlb *tlb = regs.vtlb;
+        while (cow != nullptr) {
+            mword v = cow->gla;
+            tlb->update(v, cow->new_phys[1]->phys_addr, cow->attr | Vtlb::TLB_W);
+            cow = cow->next;
+        }
+    }
+    regs = regs_0;
+
+}
+
+void Ec::rollback() {
+    regs = regs_0;
+    Lock_guard <Spinlock> guard(cow_lock);
+    Cow::cow_elt *cow = current->cow_list;
+    Hpt hpt = Pd::current->Space_mem::loc[Cpu::id];
+    Quota quota = Pd::current->quota;
+    if (user_utcb) {
+        while (cow != nullptr) {
+            Paddr old_phys = cow->old_phys;
+            mword v = cow->page_addr_or_gpa;
+            hpt.update(quota, v, 0, old_phys, cow->attr & ~Hpt::HPT_W, Hpt::TYPE_UP, true);
+            Hpt::cow_flush(v);
+            Cow::free_cow_elt(cow);
+            cow = cow->next;
+        }
+    } else {
+        memcpy(regs.vmcb, vmcb_backup, PAGE_SIZE);
+        Vtlb *tlb = regs.vtlb;
+        while (cow != nullptr) {
+            Paddr old_phys = cow->old_phys;
+            mword v = cow->gla;
+            tlb->update(v, old_phys, cow->attr & ~Vtlb::TLB_W);
+            v = cow->page_addr_or_gpa;
+            hpt.update(quota, v, 0, old_phys, cow->attr & ~Hpt::HPT_W, Hpt::TYPE_UP, true);
+            Hpt::cow_flush(v);
+            Cow::free_cow_elt(cow);
+            cow = cow->next;
+        }
+    }
+}
+
+bool Ec::compare_and_commit() {
+    Lock_guard <Spinlock> guard(cow_lock);
+    Cow::cow_elt *cow = current->cow_list;
+    Quota quota = Pd::current->quota;
+    Hpt hpt = Pd::current->Space_mem::loc[Cpu::id];
+    if (user_utcb) {
+        while (cow != nullptr) {
+            const void *ptr1 = reinterpret_cast<const void*> (Hpt::remap_cow(quota, cow->new_phys[0]->phys_addr)),
+                    *ptr2 = reinterpret_cast<const void*> (cow->page_addr_or_gpa);
+            if (memcmp(ptr1, ptr2, PAGE_SIZE)) {
+                Console::print("Ec: %p  Pd: %p  ptr1: %p  "
+                        "ptr2: %p", current, current->pd.operator->(), ptr1, ptr2);
+                //                return false;
+            }
+            Paddr old_phys = cow->old_phys;
+            mword v = cow->page_addr_or_gpa;
+            void *ptr = Hpt::remap_cow(quota, old_phys);
+            memcpy(ptr, reinterpret_cast<const void*> (v), PAGE_SIZE);
+            hpt.update(quota, v, 0, old_phys, cow->attr & ~Hpt::HPT_W, Hpt::TYPE_UP, true); // the old frame may have been released; so we have to retain it
+            Hpt::cow_flush(v);
+            Cow::free_cow_elt(cow);
+            cow = cow->next;
+        }
+    } else {
+        Vtlb *tlb = regs.vtlb;
+        while (cow != nullptr) {
+            Paddr old_phys = cow->old_phys;
+            mword v = cow->page_addr_or_gpa;
+            hpt.update(quota, v, 0, cow->new_phys[1]->phys_addr, cow->attr, Hpt::TYPE_UP, true);
+            Hpt::cow_flush(v);
+            const void *ptr1 = reinterpret_cast<const void*> (Hpt::remap_cow(quota, cow->new_phys[0]->phys_addr)),
+                    *ptr2 = reinterpret_cast<const void*> (v);
+            if (memcmp(ptr1, ptr2, PAGE_SIZE)) {
+                Console::print("old_phys: %08lx  v: %08lx  new_phys[0]: %08lx  new_phys[1]: %08lx  ptr1: %p  "
+                        "ptr2: %p", old_phys, v, cow->new_phys[0]->phys_addr, cow->new_phys[1]->phys_addr, ptr1, ptr2);
+                //                if (nb_fail > 0) {
+                current->debug = true;
+                return false;
+                //                } else
+                //                    nb_fail++;
+            }
+            void *ptr = Hpt::remap_cow(quota, old_phys);
+            memcpy(ptr, reinterpret_cast<const void*> (v), PAGE_SIZE);
+            hpt.update(quota, v, 0, old_phys, cow->attr, Hpt::TYPE_UP, true);
+            Hpt::cow_flush(v);
+            tlb->update(cow->gla, old_phys, cow->attr & ~Vtlb::TLB_W);
+            Cow::free_cow_elt(cow);
+            cow = cow->next;
+        }
+    }
+    return true;
+}
+
+bool Ec::is_mapped_elsewhere(Paddr phys, Cow::cow_elt* cow) {
+    Lock_guard <Spinlock> guard(cow_lock);
+    bool is_mapped = false;
+    Cow::cow_elt *c = Ec::current->cow_list;
+    while ((c != nullptr) && (c != cow)) {
+        if (c->old_phys == phys) {//frame already mapped elsewhere
+            cow->old_phys = phys;
+            cow->new_phys[0] = c->new_phys[0];
+            cow->new_phys[1] = c->new_phys[1];
+            is_mapped = true;
+        }
+        if (c->new_phys[0] && c->new_phys[0]->phys_addr == phys) {//mapping created before subtitute(v)
+            cow->old_phys = c->old_phys;
+            cow->new_phys[0] = c->new_phys[0];
+            cow->new_phys[1] = c->new_phys[1];
+            is_mapped = true;
+        }
+
+        c = c->next;
+    }
+    if (is_mapped)
+        return true;
+    else
+        return false;
+}
+
+Cow::cow_elt* Ec::find_cow_elt(mword gpa) {
+    int n = 0;
+    Lock_guard <Spinlock> guard(cow_lock);
+    Cow::cow_elt *c = Ec::current->cow_list, *result = nullptr;
+    while (c != nullptr) {
+        if (c->old_phys == (gpa & ~PAGE_MASK)) {
+            result = c;
+            n++;
+        }
+    }
+    if (n != 1) {
+        die("Cow elt not find");
+        Console::print("Cow elt not find");
+    }
+    return result;
 }

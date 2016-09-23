@@ -26,29 +26,34 @@
 #include "stdio.hpp"
 #include "svm.hpp"
 #include "pd.hpp"
+#include "string.hpp"
 
-Paddr       Vmcb::root;
-unsigned    Vmcb::asid_ctr;
-uint32      Vmcb::svm_version;
-uint32      Vmcb::svm_feature;
+Paddr Vmcb::root;
+unsigned Vmcb::asid_ctr;
+uint32 Vmcb::svm_version;
+uint32 Vmcb::svm_feature;
 
-Vmcb::Vmcb (Quota &quota, mword bmp, mword nptp) : base_io (bmp), asid (++asid_ctr), int_control (1ul << 24), npt_cr3 (nptp), efer (Cpu::EFER_SVME), g_pat (0x7040600070406ull)
-{
-    base_msr = Buddy::ptr_to_phys (Buddy::allocator.alloc (1, quota, Buddy::FILL_1));
+Vmcb::Vmcb(Quota &quota, mword bmp, mword nptp) : base_io(bmp), asid(++asid_ctr), int_control(1ul << 24), npt_cr3(nptp), efer(Cpu::EFER_SVME), g_pat(0x7040600070406ull) {
+    base_msr = Buddy::ptr_to_phys(Buddy::allocator.alloc(1, quota, Buddy::FILL_1));
 }
 
-void Vmcb::init()
-{
-    if (!Cpu::feature (Cpu::FEAT_SVM)) {
-        Hip::clr_feature (Hip::FEAT_SVM);
+Vmcb* Vmcb::clone() {
+    Vmcb *vmcb = new (Pd::kern.quota) Vmcb;
+    memcpy(vmcb, this, PAGE_SIZE);
+    return vmcb;
+}
+
+void Vmcb::init() {
+    if (!Cpu::feature(Cpu::FEAT_SVM)) {
+        Hip::clr_feature(Hip::FEAT_SVM);
         return;
     }
 
     if (Cmdline::vtlb)
         svm_feature &= ~1;
 
-    Msr::write (Msr::IA32_EFER, Msr::read<uint32>(Msr::IA32_EFER) | Cpu::EFER_SVME);
-    Msr::write (Msr::AMD_SVM_HSAVE_PA, root = Buddy::ptr_to_phys (new (Pd::kern.quota) Vmcb));
+    Msr::write(Msr::IA32_EFER, Msr::read<uint32>(Msr::IA32_EFER) | Cpu::EFER_SVME);
+    Msr::write(Msr::AMD_SVM_HSAVE_PA, root = Buddy::ptr_to_phys(new (Pd::kern.quota) Vmcb));
 
-    trace (TRACE_SVM, "VMCB:%#010lx REV:%#x NPT:%d", root, svm_version, has_npt());
+    trace(TRACE_SVM, "VMCB:%#010lx REV:%#x NPT:%d", root, svm_version, has_npt());
 }

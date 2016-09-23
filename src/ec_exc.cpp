@@ -23,36 +23,33 @@
 #include "mca.hpp"
 #include "stdio.hpp"
 
-void Ec::load_fpu()
-{
+void Ec::load_fpu() {
     if (!utcb)
-        regs.fpu_ctrl (true);
+        regs.fpu_ctrl(true);
 
-    if (EXPECT_FALSE (!fpu))
+    if (EXPECT_FALSE(!fpu))
         Fpu::init();
     else
         fpu->load();
 }
 
-void Ec::save_fpu()
-{
-    if (EXPECT_FALSE (!this))
+void Ec::save_fpu() {
+    if (EXPECT_FALSE(!this))
         return;
 
     if (!utcb)
-        regs.fpu_ctrl (false);
+        regs.fpu_ctrl(false);
 
-    if (EXPECT_FALSE (!fpu))
+    if (EXPECT_FALSE(!fpu))
         fpu = new (pd->quota) Fpu;
 
     fpu->save();
 }
 
-void Ec::transfer_fpu (Ec *ec)
-{
+void Ec::transfer_fpu(Ec *ec) {
     if ((!utcb && !regs.fpu_on) ||
-        (!ec->utcb && !ec->regs.fpu_on))
-      return;
+            (!ec->utcb && !ec->regs.fpu_on))
+        return;
 
     if (!(Cpu::hazard & HZD_FPU)) {
 
@@ -71,8 +68,7 @@ void Ec::transfer_fpu (Ec *ec)
     fpowner->add_ref();
 }
 
-void Ec::handle_exc_nm()
-{
+void Ec::handle_exc_nm() {
     Fpu::enable();
 
     if (current == fpowner)
@@ -88,8 +84,7 @@ void Ec::handle_exc_nm()
     fpowner->add_ref();
 }
 
-bool Ec::handle_exc_ts (Exc_regs *r)
-{
+bool Ec::handle_exc_ts(Exc_regs *r) {
     if (r->user())
         return false;
 
@@ -99,8 +94,7 @@ bool Ec::handle_exc_ts (Exc_regs *r)
     return true;
 }
 
-bool Ec::handle_exc_gp (Exc_regs *)
-{
+bool Ec::handle_exc_gp(Exc_regs *) {
     if (Cpu::hazard & HZD_TR) {
         Cpu::hazard &= ~HZD_TR;
         Gdt::unbusy_tss();
@@ -111,44 +105,42 @@ bool Ec::handle_exc_gp (Exc_regs *)
     return false;
 }
 
-bool Ec::handle_exc_pf (Exc_regs *r)
-{
+bool Ec::handle_exc_pf(Exc_regs *r) {
     mword addr = r->cr2;
 
     if (r->err & Hpt::ERR_U)
-        return addr < USER_ADDR && Pd::current->Space_mem::loc[Cpu::id].sync_from (Pd::current->quota, Pd::current->Space_mem::hpt, addr, USER_ADDR);
+        return addr < USER_ADDR && Pd::current->Space_mem::loc[Cpu::id].sync_from(Pd::current->quota, Pd::current->Space_mem::hpt, addr, USER_ADDR);
 
     if (addr < USER_ADDR) {
 
-        if (Pd::current->Space_mem::loc[Cpu::id].sync_from (Pd::current->quota, Pd::current->Space_mem::hpt, addr, USER_ADDR))
+        if (Pd::current->Space_mem::loc[Cpu::id].sync_from(Pd::current->quota, Pd::current->Space_mem::hpt, addr, USER_ADDR))
             return true;
 
-        if (fixup (r->REG(ip))) {
+        if (fixup(r->REG(ip))) {
             r->REG(ax) = addr;
             return true;
         }
     }
 
-    if (addr >= LINK_ADDR && addr < CPU_LOCAL && Pd::current->Space_mem::loc[Cpu::id].sync_from (Pd::current->quota, Hptp (reinterpret_cast<mword>(&PDBR)), addr, CPU_LOCAL))
+    if (addr >= LINK_ADDR && addr < CPU_LOCAL && Pd::current->Space_mem::loc[Cpu::id].sync_from(Pd::current->quota, Hptp(reinterpret_cast<mword> (&PDBR)), addr, CPU_LOCAL))
         return true;
 
     // Kernel fault in I/O space
     if (addr >= SPC_LOCAL_IOP && addr <= SPC_LOCAL_IOP_E) {
-        Space_pio::page_fault (addr, r->err);
+        Space_pio::page_fault(addr, r->err);
         return true;
     }
 
     // Kernel fault in OBJ space
     if (addr >= SPC_LOCAL_OBJ) {
-        Space_obj::page_fault (addr, r->err);
+        Space_obj::page_fault(addr, r->err);
         return true;
     }
 
-    die ("#PF (kernel)", r);
+    die("#PF (kernel)", r);
 }
 
-void Ec::handle_exc (Exc_regs *r)
-{
+void Ec::handle_exc(Exc_regs *r) {
     Counter::exc[r->vec]++;
 
     switch (r->vec) {
@@ -158,17 +150,17 @@ void Ec::handle_exc (Exc_regs *r)
             return;
 
         case Cpu::EXC_TS:
-            if (handle_exc_ts (r))
+            if (handle_exc_ts(r))
                 return;
             break;
 
         case Cpu::EXC_GP:
-            if (handle_exc_gp (r))
+            if (handle_exc_gp(r))
                 return;
             break;
 
         case Cpu::EXC_PF:
-            if (handle_exc_pf (r))
+            if (handle_exc_pf(r))
                 return;
             break;
 
@@ -180,5 +172,73 @@ void Ec::handle_exc (Exc_regs *r)
     if (r->user())
         send_msg<ret_user_iret>();
 
-    die ("EXC", r);
+    die("EXC", r);
+}
+
+void Ec::check_memory(mword from) {
+    //    if (!current->user_utcb) {
+    //        current->debug = true;
+    //    }
+    if ((Ec::current->is_idle()) || (Ec::current->cow_list == nullptr)) {
+        current->run_number = 0;
+        current->launch_state = Ec::unlaunched;
+        return;
+    }
+    if (!current->user_utcb && current->hardening_started) {
+//        if (from == 0x60) {
+            Console::print(".....  Checking memory from %lx.", from);
+//        }
+    }
+
+    if (Ec::current->one_run_ok()) {
+        //        Console::print("Tour 2 Ec: %p  Pd: %p", current, current->pd.operator->());
+        if (Ec::current->compare_and_commit()) {
+            current->cow_list = nullptr;
+            current->run_number = 0;
+            current->launch_state = Ec::unlaunched;
+            return;
+        } else {
+            Console::print("Checking failed");
+            Ec::current->rollback();
+            current->run_number = 0;
+            current->cow_list = nullptr;
+            switch (current->launch_state) {
+                case Ec::sysexit:
+                    Ec::ret_user_sysexit();
+                    break;
+                case Ec::iret:
+                    Ec::ret_user_iret();
+                case Ec::vmresume:
+                    Ec::ret_user_vmresume();
+                case Ec::vmrun:
+                    Ec::ret_user_vmrun();
+                case Ec::unlaunched:
+                    Console::print("Bad Run");
+                    Ec::die("Bad Run");
+            }
+        }
+    } else {
+        //        Console::print("Tour 1 Ec: %p  Pd: %p", current, current->pd.operator->());
+        Ec::current->restore_state();
+        current->run_number++;
+        switch (current->launch_state) {
+            case Ec::sysexit:
+                Ec::ret_user_sysexit();
+                break;
+            case Ec::iret:
+                Ec::ret_user_iret();
+            case Ec::vmresume:
+                Ec::ret_user_vmresume();
+            case Ec::vmrun:
+                Ec::ret_user_vmrun();
+            case Ec::unlaunched:
+                Console::print("Bad Run");
+                Ec::die("Bad Run");
+        }
+    }
+
+    //        /*when atomic sequence is executed in parallel, it is an other EC which 
+    //         should be picked. Make sure this is respected*/
+    //        Sc::schedule();
+    return;
 }

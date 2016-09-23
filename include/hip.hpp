@@ -24,103 +24,122 @@
 #include "atomic.hpp"
 #include "config.hpp"
 #include "extern.hpp"
+#include "cpu.hpp"
 
-class Hip_cpu
-{
-    public:
-        uint8   flags;
-        uint8   thread;
-        uint8   core;
-        uint8   package;
-        uint8   acpi_id;
-        uint8   reserved[3];
+class Hip_cpu {
+public:
+    uint8 flags;
+    uint8 thread;
+    uint8 core;
+    uint8 package;
+    uint8 acpi_id;
+    uint8 reserved[3];
 };
 
-class Hip_mem
-{
-    public:
-        enum {
-            HYPERVISOR  = -1u,
-            MB_MODULE   = -2u
-        };
+class Hip_mem {
+public:
 
-        uint64  addr;
-        uint64  size;
-        uint32  type;
-        uint32  aux;
+    enum {
+        HYPERVISOR = -1u,
+        MB_MODULE = -2u
+    };
+
+    uint64 addr;
+    uint64 size;
+    uint32 type;
+    uint32 aux;
 };
 
-class Hip
-{
-    private:
-        uint32  signature;              // 0x0
-        uint16  checksum;               // 0x4
-        uint16  length;                 // 0x6
-        uint16  cpu_offs;               // 0x8
-        uint16  cpu_size;               // 0xa
-        uint16  mem_offs;               // 0xc
-        uint16  mem_size;               // 0xe
-        uint32  api_flg;                // 0x10
-        uint32  api_ver;                // 0x14
-        uint32  sel_num;                // 0x18
-        uint32  sel_exc;                // 0x1c
-        uint32  sel_vmi;                // 0x20
-        uint32  sel_gsi;                // 0x24
-        uint32  cfg_page;               // 0x28
-        uint32  cfg_utcb;               // 0x2c
-        uint32  freq_tsc;               // 0x30
-        uint32  reserved;               // 0x34
-        Hip_cpu cpu_desc[NUM_CPU];
-        Hip_mem mem_desc[];
+class Hip {
+private:
+    uint32 signature; // 0x0
+    uint16 checksum; // 0x4
+    uint16 length; // 0x6
+    uint16 cpu_offs; // 0x8
+    uint16 cpu_size; // 0xa
+    uint16 mem_offs; // 0xc
+    uint16 mem_size; // 0xe
+    uint32 api_flg; // 0x10
+    uint32 api_ver; // 0x14
+    uint32 sel_num; // 0x18
+    uint32 sel_exc; // 0x1c
+    uint32 sel_vmi; // 0x20
+    uint32 sel_gsi; // 0x24
+    uint32 cfg_page; // 0x28
+    uint32 cfg_utcb; // 0x2c
+    uint32 freq_tsc; // 0x30
+    uint32 reserved; // 0x34
+    Hip_cpu cpu_desc[NUM_CPU];
+    Hip_mem mem_desc[];
 
-    public:
-        enum Feature {
-            FEAT_IOMMU  = 1U << 0,
-            FEAT_VMX    = 1U << 1,
-            FEAT_SVM    = 1U << 2,
-        };
+public:
 
-        static mword root_addr;
-        static mword root_size;
+    enum Feature {
+        FEAT_IOMMU = 1U << 0,
+        FEAT_VMX = 1U << 1,
+        FEAT_SVM = 1U << 2,
+    };
 
-        ALWAYS_INLINE
-        static inline Hip *hip()
-        {
-            return reinterpret_cast<Hip *>(&PAGE_H);
-        }
+    static mword root_addr;
+    static mword root_size;
 
-        static uint32 feature()
-        {
-            return hip()->api_flg;
-        }
+    ALWAYS_INLINE
+    static inline Hip *hip() {
+        return reinterpret_cast<Hip *> (&PAGE_H);
+    }
 
-        static void set_feature (Feature f)
-        {
-            Atomic::set_mask (hip()->api_flg, static_cast<typeof hip()->api_flg>(f));
-        }
+    static uint32 feature() {
+        return hip()->api_flg;
+    }
 
-        static void clr_feature (Feature f)
-        {
-            Atomic::clr_mask (hip()->api_flg, static_cast<typeof hip()->api_flg>(f));
-        }
+    static void set_feature(Feature f) {
+        Atomic::set_mask(hip()->api_flg, static_cast<typeof hip()->api_flg> (f));
+    }
 
-        static bool cpu_online (unsigned long cpu)
-        {
-            return cpu < NUM_CPU && hip()->cpu_desc[cpu].flags & 1;
-        }
+    static void clr_feature(Feature f) {
+        Atomic::clr_mask(hip()->api_flg, static_cast<typeof hip()->api_flg> (f));
+    }
 
-        INIT
-        static void build (mword);
+    static bool cpu_online(unsigned long cpu) {
+        return cpu < NUM_CPU && hip()->cpu_desc[cpu].flags & 1;
+    }
 
-        INIT
-        static void add_mem (Hip_mem *&, mword, size_t);
+    static bool cpu_next() {
+        unsigned id = Cpu::id + 1;
+        unsigned n = sizeof (hip()->cpu_desc) / sizeof (*hip()->cpu_desc);
+        while (!cpu_online(id))
+            id = (id + 1) % n;
+        return id;
+    }
 
-        INIT
-        static void add_mod (Hip_mem *&, mword, size_t);
+    static Hip_mem* get_mem_desc(){
+        return hip()->mem_desc;
+    }
+    
+    static uint16 get_mem_offset(){
+        return hip()->mem_offs;
+    }
+    
+    static uint16 get_mem_size(){
+        return hip()->mem_size;
+    }
+    
+    static uint16 get_length(){
+        return hip()->length;
+    }
+    
+    INIT
+    static void build(mword);
 
-        INIT
-        static void add_mhv (Hip_mem *&);
+    INIT
+    static void add_mem(Hip_mem *&, mword, size_t);
 
-        static void add_cpu();
-        static void add_check();
+    INIT
+    static void add_mod(Hip_mem *&, mword, size_t);
+
+    INIT
+    static void add_mhv(Hip_mem *&);
+
+    static void add_cpu();
+    static void add_check();
 };

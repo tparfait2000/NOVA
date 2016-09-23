@@ -54,6 +54,7 @@ void Ec::vmx_exception()
             ret_user_vmresume();
 
         case 0x307:         // #NM
+            check_memory(intr_info & 0x7ff);
             handle_exc_nm();
             ret_user_vmresume();
 
@@ -61,8 +62,9 @@ void Ec::vmx_exception()
             mword err = Vmcs::read (Vmcs::EXI_INTR_ERROR);
             mword cr2 = Vmcs::read (Vmcs::EXI_QUALIFICATION);
 
-            switch (Vtlb::miss (&current->regs, cr2, err)) {
-
+            mword phys;
+            Paddr host;    
+            switch (Vtlb::miss (&current->regs, cr2, err, phys, host)) {
                 case Vtlb::GPA_HPA:
                     current->regs.dst_portal = Vmcs::VMX_EPT_VIOLATION;
                     break;
@@ -76,7 +78,8 @@ void Ec::vmx_exception()
                     ret_user_vmresume();
             }
     }
-
+    check_memory(intr_info & 0x7ff);
+            
     send_msg<ret_user_vmresume>();
 }
 
@@ -191,15 +194,25 @@ void Ec::handle_vmx()
     mword reason = Vmcs::read (Vmcs::EXI_REASON) & 0xff;
 
     Counter::vmi[reason]++;
-
+    Console::print("VM Exit %08lx", reason);
+    
     switch (reason) {
         case Vmcs::VMX_EXC_NMI:     vmx_exception();
         case Vmcs::VMX_EXTINT:      vmx_extint();
         case Vmcs::VMX_INVLPG:      vmx_invlpg();
-        case Vmcs::VMX_CR:          vmx_cr();
+        case Vmcs::VMX_CR:          {check_memory(reason); vmx_cr();}
         case Vmcs::VMX_EPT_VIOLATION:
             current->regs.nst_error = Vmcs::read (Vmcs::EXI_QUALIFICATION);
             current->regs.nst_fault = Vmcs::read (Vmcs::INFO_PHYS_ADDR);
+            break;
+        case Vmcs::VMX_RDTSC: 
+            check_memory(reason);
+            current->regs.resolve_rdtsc<Vmcs>(rdtsc());
+            ret_user_vmresume();
+            break;
+        case Vmcs::VMX_RDTSCP:
+            Console::print("RDTSCP in VM");
+            ret_user_vmrun();
             break;
     }
 
