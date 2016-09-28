@@ -194,7 +194,7 @@ void Ec::handle_vmx()
     mword reason = Vmcs::read (Vmcs::EXI_REASON) & 0xff;
 
     Counter::vmi[reason]++;
-    Console::print("VM Exit %08lx", reason);
+//    Console::print("VM Exit %08lx", reason);
     
     switch (reason) {
         case Vmcs::VMX_EXC_NMI:     vmx_exception();
@@ -205,17 +205,18 @@ void Ec::handle_vmx()
             current->regs.nst_error = Vmcs::read (Vmcs::EXI_QUALIFICATION);
             current->regs.nst_fault = Vmcs::read (Vmcs::INFO_PHYS_ADDR);
             break;
-        case Vmcs::VMX_RDTSC: 
-            check_memory(reason);
-            current->regs.resolve_rdtsc<Vmcs>(rdtsc());
-            ret_user_vmresume();
-            break;
-        case Vmcs::VMX_RDTSCP:
-            Console::print("RDTSCP in VM");
-            ret_user_vmrun();
-            break;
+//        case Vmcs::VMX_RDTSC: 
+//            check_memory(reason);
+//            current->regs.resolve_rdtsc<Vmcs>(rdtsc());
+//            ret_user_vmresume();
+//            break;
+//        case Vmcs::VMX_RDTSCP:
+//            Console::print("RDTSCP in VM");
+//            ret_user_vmrun();
+//            break;
     }
 
+    check_memory(reason);
     current->regs.dst_portal = reason;
 
     send_msg<ret_user_vmresume>();

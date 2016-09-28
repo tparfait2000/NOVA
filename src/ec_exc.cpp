@@ -176,6 +176,7 @@ void Ec::handle_exc(Exc_regs *r) {
 }
 
 void Ec::check_memory(mword from) {
+            Console::print(".....  Checking memory from %lx.", from);
     //    if (!current->user_utcb) {
     //        current->debug = true;
     //    }
@@ -184,11 +185,11 @@ void Ec::check_memory(mword from) {
         current->launch_state = Ec::unlaunched;
         return;
     }
-    if (!current->user_utcb && current->hardening_started) {
+//    if (!current->user_utcb && current->hardening_started) {
 //        if (from == 0x60) {
             Console::print(".....  Checking memory from %lx.", from);
 //        }
-    }
+//    }
 
     if (Ec::current->one_run_ok()) {
         //        Console::print("Tour 2 Ec: %p  Pd: %p", current, current->pd.operator->());

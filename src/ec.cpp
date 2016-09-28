@@ -244,6 +244,7 @@ void Ec::handle_hazard(mword hzd, void (*func)()) {
         current->regs.clr_hazard(HZD_TSC);
 
         if (func == ret_user_vmresume) {
+            Console::print("TSC_OFFSET");
             current->regs.vmcs->make_current();
             Vmcs::write(Vmcs::TSC_OFFSET, static_cast<mword> (current->regs.tsc_offset));
             Vmcs::write(Vmcs::TSC_OFFSET_HI, static_cast<mword> (current->regs.tsc_offset >> 32));
