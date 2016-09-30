@@ -32,6 +32,7 @@
 #include "vmx.hpp"
 #include "x86.hpp"
 #include "pd.hpp"
+#include "string.hpp"
 
 Vmcs *              Vmcs::current;
 unsigned            Vmcs::vpid_ctr;
@@ -101,7 +102,7 @@ Vmcs::Vmcs (mword esp, mword bmp, mword cr3, uint64 eptp) : rev (basic.revision)
 
 void Vmcs::init()
 {
-    Console::print("Feature %x  vmx %d IA32_FEATURE_CONTROL %d ", Cpu::features[1], Cpu::feature (Cpu::FEAT_VMX), Msr::read<uint32>(Msr::IA32_FEATURE_CONTROL));
+    //Console::print("Feature %x  vmx %d IA32_FEATURE_CONTROL %d ", Cpu::features[1], Cpu::feature (Cpu::FEAT_VMX), Msr::read<uint32>(Msr::IA32_FEATURE_CONTROL));
     if (!Cpu::feature (Cpu::FEAT_VMX) || (Msr::read<uint32>(Msr::IA32_FEATURE_CONTROL) & 0x5) != 0x5) {
         Hip::clr_feature (Hip::FEAT_VMX);
         return;
@@ -143,4 +144,10 @@ void Vmcs::init()
     Vmcs *root = new (Pd::kern.quota) Vmcs;
 
     trace (TRACE_VMX, "VMCS:%#010lx REV:%#x EPT:%d URG:%d VNMI:%d VPID:%d", Buddy::ptr_to_phys (root), basic.revision, has_ept(), has_urg(), has_vnmi(), has_vpid());
+}
+
+Vmcs* Vmcs::clone() {
+    Vmcs *vmcs = reinterpret_cast<Vmcs*> (Buddy::allocator.alloc (0, Pd::kern.quota, Buddy::FILL_0));
+    memcpy(vmcs, this, PAGE_SIZE);
+    return vmcs;
 }

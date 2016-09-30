@@ -93,19 +93,19 @@ LFLAGS		:= --defsym=GIT_VER=0x$(call gitrv) --gc-sections --warn-common -static 
 # Rules
 %-$(ARCH).o:	%.ld $(MAKEFILE_LIST)
 		$(call message,PRE,$@)
-		$(CC) $(SFLAGS) -xc -E -P -MT $@ $< -o $@
+		$(CC) $(SFLAGS) -xc -E -P -MT -g $@ $< -o $@
 
 %-$(ARCH).o:	%.S $(MAKEFILE_LIST)
 		$(call message,ASM,$@)
-		$(CC) $(SFLAGS) -c $< -o $@
+		$(CC) $(SFLAGS) -c -ggdb -o0 $< -o $@
 
 %-$(ARCH).o:	%.cpp $(MAKEFILE_LIST)
 		$(call message,CMP,$@)
-		$(CC) $(CFLAGS) -c $< -o $@
+		$(CC) $(CFLAGS) -c -ggdb -o0 $< -o $@
 
 $(TARGET):	$(OBJ)
 		$(call message,LNK,$@)
-		$(LD) $(LFLAGS) $^ -o $@
+		$(LD) $(LFLAGS) -ggdb -o0 $^ -o $@
 
 .PHONY:		install
 .PHONY:		clean
