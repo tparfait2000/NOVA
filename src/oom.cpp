@@ -73,6 +73,12 @@ void Ec::oom_delegate(Ec * dst_ec, Ec * rep_ec, Ec * src_ec, bool user, bool C)
     if (EXPECT_FALSE (current->cpu != ec->xcpu) || (current->cont == xcpu_return) || (current->cont == ret_xcpu_reply))
         die ("PT wrong CPU - OOM");
 
+    if (C && current == ec) {
+        assert (rep_ec->partner == current);
+        rep_ec->cont = sys_call;
+        current->oom_call(dst_pt, src_pd_id, oom_state, nullptr /* unused */, nullptr /* unused */);
+    }
+
     if (C && current != ec) {
         bool clr = rep_ec->clr_partner();
         assert(clr);
@@ -83,23 +89,25 @@ void Ec::oom_delegate(Ec * dst_ec, Ec * rep_ec, Ec * src_ec, bool user, bool C)
 
     Ec * chg = C ? rep_ec : current;
     void (*c)() = C ? sys_call : sys_reply;
+    void (*h)() = C ? current->cont : sys_reply;
 
-    chg->oom_call(dst_pt, src_pd_id, oom_state, c, c);
+    chg->oom_call(dst_pt, src_pd_id, oom_state, c, h);
 }
 
 void Ec::oom_call(Pt * pt, mword src, mword state, void (*CC)(), void (*HELP)())
 {
     Ec *ec = pt->ec;
 
-    assert (!this->partner);
     assert (this->cpu == ec->xcpu);
 
     if (this != ec) {
+        assert (!this->partner);
+        this->cont = CC;
+
         if (ec->cont)
             ec->help (HELP);
 
         this->set_partner (ec);
-        this->cont = CC;
     }
 
     ec->cont = ret_user_sysexit;
