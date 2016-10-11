@@ -23,6 +23,7 @@
 #include "lock_guard.hpp"
 #include "slab.hpp"
 #include "stdio.hpp"
+#include "pd.hpp"
 
 Slab::Slab (Slab_cache *slab_cache)
     : avail (slab_cache->elem),
@@ -100,7 +101,7 @@ void *Slab_cache::alloc(Quota &quota)
     return ret;
 }
 
-void Slab_cache::free (void *ptr, Quota &quota)
+void Slab_cache::free (void *ptr, Quota &)
 {
     Lock_guard <Spinlock> guard (lock);
 
@@ -154,7 +155,8 @@ void Slab_cache::free (void *ptr, Quota &quota)
             if (slab->prev->empty() || (head && head->empty())) {
                 // There are already empty slabs - delete current slab
                 assert(head != slab);
-                Slab::destroy (slab, quota);
+                /* XXX - accounting issue - use slabs solely per process !! */
+                Slab::destroy (slab, Pd::root.quota);
             } else {
                 // There are partial slabs in front of us - requeue empty one
                 // Enqueue as head
