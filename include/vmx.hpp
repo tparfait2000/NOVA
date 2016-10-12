@@ -480,9 +480,9 @@ struct Msr_area
 
 struct Virtual_apic_page
 {
-    uint8 data[4096];
+    uint32 data [4096 / 4];
 
-    enum { VTPR = 0x80 };
+    enum { VTPR = 0x80 / 4 };
 
     ALWAYS_INLINE
     static inline void *operator new (size_t, Quota &quota)
@@ -497,6 +497,6 @@ struct Virtual_apic_page
         Buddy::allocator.free (reinterpret_cast<mword>(obj), quota);
     }
 
-    uint32 vtpr() { return *reinterpret_cast<uint32*>(&data[VTPR]); }
-    void vtpr(uint32 value) { *reinterpret_cast<uint32*>(&data[VTPR]) = value; }
+    uint32 vtpr() { return data[VTPR]; }
+    void vtpr(uint32 value) { data[VTPR] = value; }
 };
