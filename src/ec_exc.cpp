@@ -107,12 +107,11 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
 
     mword addr = r->REG(ip);
     if (current->is_temporal_exc(addr)) {
-        current->set_env(rdtsc());
-        return true; 
+        current->resolve_temp_exception();
+        return true;
     } else if (current->is_io_exc(addr)) {
-        if (current->execute_and_set_env(r, false)) {
-            return true; 
-        }
+        current->resolve_PIO_execption();
+        return true;
     }
     Console::print("GP Here: addr: %08lx", addr);
     return false;
@@ -210,10 +209,10 @@ void Ec::check_memory(mword from) {
         current->launch_state = Ec::UNLAUNCHED;
         return;
     }
-//    if (!current->user_utcb) {
-//        Console::print(".....  Checking memory from %d. eip: %p", from, Ec::current->regs.REG(ip));
-//        current->ec_debug= true;
-//    }
+    //    if (!current->user_utcb) {
+    //        Console::print(".....  Checking memory from %d. eip: %p", from, Ec::current->regs.REG(ip));
+    //        current->ec_debug= true;
+    //    }
 
     if (Ec::current->one_run_ok()) {
         //        Console::print("Tour 2 Ec: %p  Pd: %p", current, current->pd.operator->());

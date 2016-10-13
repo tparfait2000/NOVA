@@ -126,7 +126,7 @@ Ec::Ec(Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u, 
             vmcs_backup = regs.vmcs->clone();
             vmcs1 = regs.vmcs->clone();
             vmcs2 = regs.vmcs->clone();
-            
+
             regs.vmcs->clear();
             cont = send_msg<ret_user_vmresume>;
             trace(TRACE_SYSCALL, "EC:%p created (PD:%p VMCS:%p VTLB:%p)", this, p, regs.vmcs, regs.vtlb);
@@ -274,7 +274,7 @@ void Ec::ret_user_sysexit() {
         current->save_state();
         current->launch_state = Ec::SYSEXIT;
     }
-//    memset(reinterpret_cast<void*> (SPC_LOCAL_IOP), ~0u, 2*PAGE_SIZE);
+    //    memset(reinterpret_cast<void*> (SPC_LOCAL_IOP), ~0u, 2*PAGE_SIZE);
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : "memory");
 
     UNREACHED;
@@ -316,7 +316,7 @@ void Ec::ret_user_vmresume() {
         current->vmx_save_state();
         current->launch_state = Ec::VMRESUME;
     }
-    
+
     if (EXPECT_FALSE(Pd::current->gtlb.chk(Cpu::id))) {
         Pd::current->gtlb.clr(Cpu::id);
         if (current->regs.nst_on)
@@ -539,10 +539,10 @@ bool Ec::is_io_exc(mword v) {
         case 0xed: // IN AX, || IN EAX,DX
         case 0xee: // OUT DX, AL
         case 0xef: // OUT DX, AX || OUT DX, EAX
-            //        case 0x6c: // INS m8, DX || INSB 
-            //        case 0x6d: // INS m16, DX || INS m32, DX || INSW || INSD
-            //        case 0x6e: // OUTS DX, m8 || OUTSB
-            //        case 0x6f: // OUTS DX, m16 || OUTS DX, m32 || OUTSW || OUTSD
+        case 0x6c: // INS m8, DX || INSB 
+        case 0x6d: // INS m16, DX || INS m32, DX || INSW || INSD
+        case 0x6e: // OUTS DX, m8 || OUTSB
+        case 0x6f: // OUTS DX, m16 || OUTS DX, m32 || OUTSW || OUTSD
             return true;
         case 0x66:
         case 0x67:
@@ -552,112 +552,22 @@ bool Ec::is_io_exc(mword v) {
     }
 }
 
-bool Ec::execute_and_set_env(Exc_regs *r, bool is_16_prefix) {
-    uint8 op_code = *(reinterpret_cast<uint8 *> (r->REG(ip)));
-    uint8 imm8 = *(reinterpret_cast<uint8 *> (r->REG(ip) + 1));
+void Ec::resolve_PIO_execption() {
+//    Console::print("Read PIO");
+    Paddr phys;
+    mword attr;
+    Hpt hpt = Pd::current->Space_mem::loc[Cpu::id];
+    Quota quota = Pd::current->quota;
+    hpt.lookup(LOCAL_IOP_REMAP, phys, attr);
+    hpt.update(quota, SPC_LOCAL_IOP, 1, phys, attr, Hpt::TYPE_DF, false);
+    hpt.cow_flush(SPC_LOCAL_IOP);
+    Ec::current->enable_step_debug(SPC_LOCAL_IOP, phys, attr, Step_reason::PIO);
+}
 
-    uint16 port_num;
-    mword iobm, mask;
-    switch (op_code) {
-        case 0xe4: // IN AL, imm8
-            iobm = *(reinterpret_cast<mword*> (Space_pio::idx_to_virt_remap(imm8)));
-            mask = Space_pio::idx_to_mask_remap(imm8);
-            if (iobm & mask)
-                return false;
-            regs.REG(ax) = Io::in<uint8>(imm8);
-            regs.REG(ip) += 0x2; // because IN AL, imm8 is a 2 bytes long instruction
-            return true;
-        case 0xe5: // IN AX, imm8 || IN EAX, imm8
-            iobm = *(reinterpret_cast<mword*> (Space_pio::idx_to_virt_remap(imm8)));
-            mask = Space_pio::idx_to_mask_remap(imm8);
-            if (iobm & mask)
-                return false;
-            if (is_16_prefix) {
-                regs.REG(ax) = Io::in <uint16> (imm8);
-            } else {
-                regs.REG(ax) = Io::in <uint32> (imm8);
-            }
-            regs.REG(ip) += 0x2; // because 2 byte long instruction
-            return true;
-        case 0xe6: // OUT imm8, AL
-            iobm = *(reinterpret_cast<mword*> (Space_pio::idx_to_virt_remap(imm8)));
-            mask = Space_pio::idx_to_mask_remap(imm8);
-            if (iobm & mask)
-                return false;
-            Io::out(imm8, static_cast<uint8> (r->REG(ax)));
-            regs.REG(ip) += 0x2; // because OUT imm8, AL is a 2 byte long instruction
-            return true;
-        case 0xe7: // OUT imm8, AX || OUT imm8, EAX
-            iobm = *(reinterpret_cast<mword*> (Space_pio::idx_to_virt_remap(imm8)));
-            mask = Space_pio::idx_to_mask_remap(imm8);
-            if (iobm & mask)
-                return false;
-            if (is_16_prefix) {
-                Io::out(imm8, static_cast<uint16> (r->REG(ax)));
-            } else {
-                Io::out(imm8, static_cast<uint32> (r->REG(ax)));
-            }
-            regs.REG(ip) += 0x2; // because OUT DX, AX || OUT DX, EAX is a 1 byte long instruction
-            return true;
-        case 0xec: // IN AL,DX
-            port_num = (r->REG(dx))&0x0000ffff;
-            iobm = *(reinterpret_cast<mword*> (Space_pio::idx_to_virt_remap(port_num)));
-            mask = Space_pio::idx_to_mask_remap(port_num);
-            if (iobm & mask)
-                return false;
-            regs.REG(ax) = Io::in<uint8>(r->REG(dx));
-            regs.REG(ip) += 0x1; // because IN is a 1 byte long instruction
-            return true;
-        case 0xed: // IN AX, || IN EAX,DX
-            port_num = (r->REG(dx))&0x0000ffff;
-            iobm = *(reinterpret_cast<mword*> (Space_pio::idx_to_virt_remap(port_num)));
-            mask = Space_pio::idx_to_mask_remap(port_num);
-            if (iobm & mask)
-                return false;
-            // Here we assume we are in 32 bits mode; but when executing virtual machine, the machine mode must be taken into account 
-            if (is_16_prefix) {
-                regs.REG(ax) = Io::in <uint16> (r->REG(dx));
-            } else {
-                regs.REG(ax) = Io::in <uint32> (r->REG(dx));
-            }
-            regs.REG(ip) += 0x1; // because IN is a 1 byte long instruction
-            return true;
-        case 0xee: // OUT DX, AL
-            port_num = (r->REG(dx))&0x0000ffff;
-            iobm = *(reinterpret_cast<mword*> (Space_pio::idx_to_virt_remap(port_num)));
-            mask = Space_pio::idx_to_mask_remap(port_num);
-            if (iobm & mask)
-                return false;
-            Io::out(r->REG(dx), static_cast<uint8> (r->REG(ax)));
-            regs.REG(ip) += 0x1; // because OUT is a 1 byte long instruction
-            return true;
-        case 0xef: // OUT DX, AX || OUT DX, EAX
-            port_num = (r->REG(dx))&0x0000ffff;
-            iobm = *(reinterpret_cast<mword*> (Space_pio::idx_to_virt_remap(port_num)));
-            mask = Space_pio::idx_to_mask_remap(port_num);
-            if (iobm & mask)
-                return false;
-            // Here we assume we are in 32 bits mode; but when executing virtual machine, the machine mode must be taken into account 
-            if (is_16_prefix) {
-                Io::out(r->REG(dx), static_cast<uint16> (r->REG(ax)));
-            } else {
-                Io::out(r->REG(dx), static_cast<uint32> (r->REG(ax)));
-            }
-            regs.REG(ip) += 0x1; // because OUT DX, AX || OUT DX, EAX is a 1 byte long instruction
-            return true;
-        case 0x6c: // INS m8, DX || INSB 
-        case 0x6d: // INS m16, DX || INS m32, DX || INSW || INSD
-        case 0x6e: // OUTS DX, m8 || OUTSB
-        case 0x6f: // OUTS DX, m16 || OUTS DX, m32 || OUTSW || OUTSD
-
-        case 0x66:
-        case 0x67:
-            r->REG(ip) += 0x1;
-            execute_and_set_env(r, true); // operand-size prefixe
-            return true;
-        default:
-            Ec::die("Bad I/O emulation");
-    }
+void Ec::resolve_temp_exception() {
+//    Console::print("Read TSC Ec: %p, is_idle(): %d  IP: %p", current, current->is_idle(), current->regs.REG(ip));
+    set_cr4(get_cr4() & ~Cpu::CR4_TSD);
+    Ec::current->enable_step_debug(0, 0, 0, Step_reason::RDTSC);
 }
 
 void Ec::add_cow(Cow::cow_elt *ce) {
@@ -667,11 +577,13 @@ void Ec::add_cow(Cow::cow_elt *ce) {
     ce->next = tampon;
 }
 
-void Ec::enable_step_debug(mword fault_addr, Paddr fault_phys, mword fault_attr) {
+void Ec::enable_step_debug(mword fault_addr, Paddr fault_phys, mword fault_attr, Step_reason reason) {
     regs.REG(fl) |= Cpu::EFL_TF;
     io_addr = fault_addr;
     io_phys = fault_phys;
     io_attr = fault_attr;
+    step_reason = reason;
+    current->launch_state = Launch_type::IRET; // to ensure that this will finished before any other thread is scheduled
     //            if (io_addr == 0x7fffd6a0) {
     //                Ec::count++;
     //            }
@@ -680,20 +592,34 @@ void Ec::enable_step_debug(mword fault_addr, Paddr fault_phys, mword fault_attr)
     //            }
 }
 
-void Ec::disable_step_debug(Step_raison raison) {
-    switch (raison) {
+void Ec::disable_step_debug() {
+    regs.REG(fl) &= ~Cpu::EFL_TF;
+    switch (step_reason) {
         case MMIO:
-            regs.REG(fl) &= ~Cpu::EFL_TF;
+//            Console::print("MMIO read");
             Pd::current->loc[Cpu::id].update(Pd::current->quota, io_addr, 0, io_phys, io_attr & ~Hpt::HPT_P, Hpt::TYPE_UP, true);
             Hpt::cow_flush(io_addr);
             break;
         case PIO:
+//            Console::print("PIO read");
+            Paddr phys;
+            mword attr;
+            Pd::current->Space_mem::loc[Cpu::id].lookup(LOCAL_IOP_REMAP, phys, attr);
+            //            Console::print("current: %p  io_frame: %p", Pd::current, current->io_frame);
+            Pd::current->loc[Cpu::id].update(Pd::current->quota, SPC_LOCAL_IOP, 0, Pd::current->io_remap1, io_attr, Hpt::TYPE_DF, false);
+            Pd::current->loc[Cpu::id].update(Pd::current->quota, SPC_LOCAL_IOP + PAGE_SIZE, 0, Pd::current->io_remap2, io_attr, Hpt::TYPE_DF, false);
+            Hpt::cow_flush(SPC_LOCAL_IOP);
+            Hpt::cow_flush(SPC_LOCAL_IOP + PAGE_SIZE);
             break;
         case RDTSC:
+//            Console::print("TSC read Ec: %p, is_idle(): %d  IP: %p", current, current->is_idle(), current->regs.REG(ip));
+            set_cr4(get_cr4() | Cpu::CR4_TSD);
             break;
         default:
-            Console::print("Unknown raison");
+            Console::print("Unknown reason");
+            break;
     }
+    step_reason = NIL;
 }
 
 void Ec::restore_state() {
@@ -707,7 +633,7 @@ void Ec::restore_state() {
             Hpt::cow_flush(v);
             cow = cow->next;
         }
-    } else if(Hip::feature() & Hip::FEAT_SVM){
+    } else if (Hip::feature() & Hip::FEAT_SVM) {
         memcpy(vmcb1, regs.vmcb, PAGE_SIZE);
         memcpy(regs_0.vmcb, vmcb_backup, PAGE_SIZE);
         Vtlb *tlb = regs.vtlb;
@@ -716,7 +642,7 @@ void Ec::restore_state() {
             tlb->update(v, cow->new_phys[1]->phys_addr, cow->attr | Vtlb::TLB_W);
             cow = cow->next;
         }
-    } else if(Hip::feature() & Hip::FEAT_VMX){
+    } else if (Hip::feature() & Hip::FEAT_VMX) {
         memcpy(vmcs1, regs.vmcs, PAGE_SIZE);
         memcpy(regs_0.vmcs, vmcs_backup, PAGE_SIZE);
         Vtlb *tlb = regs.vtlb;
@@ -745,7 +671,7 @@ void Ec::rollback() {
             Cow::free_cow_elt(cow);
             cow = cow->next;
         }
-    } else if(Hip::feature() & Hip::FEAT_SVM){
+    } else if (Hip::feature() & Hip::FEAT_SVM) {
         memcpy(regs.vmcb, vmcb_backup, PAGE_SIZE);
         Vtlb *tlb = regs.vtlb;
         while (cow != nullptr) {
@@ -758,8 +684,7 @@ void Ec::rollback() {
             Cow::free_cow_elt(cow);
             cow = cow->next;
         }
-    }
-    else if(Hip::feature() & Hip::FEAT_VMX){
+    } else if (Hip::feature() & Hip::FEAT_VMX) {
         memcpy(regs.vmcs, vmcs_backup, PAGE_SIZE);
         Vtlb *tlb = regs.vtlb;
         while (cow != nullptr) {
@@ -784,10 +709,11 @@ bool Ec::compare_and_commit() {
         while (cow != nullptr) {
             const void *ptr1 = reinterpret_cast<const void*> (Hpt::remap_cow(quota, cow->new_phys[0]->phys_addr)),
                     *ptr2 = reinterpret_cast<const void*> (cow->page_addr_or_gpa);
-            if (memcmp(ptr1, ptr2, PAGE_SIZE)) {
+            int missmatch_addr = memcmp(ptr1, ptr2, PAGE_SIZE);
+            if (missmatch_addr) {
                 Console::print("Ec: %p  Pd: %p  ptr1: %p  "
-                        "ptr2: %p", current, current->pd.operator->(), ptr1, ptr2);
-                                return false;
+                        "ptr2: %p  missmatch_addr: %x", current, current->pd.operator->(), ptr1, ptr2, ptr2 +(PAGE_SIZE/4 - missmatch_addr - 1)*4);
+                return false;
             }
             Paddr old_phys = cow->old_phys;
             mword v = cow->page_addr_or_gpa;
