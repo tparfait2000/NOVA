@@ -216,6 +216,7 @@ public:
     int nb_fail = 0;
     int previous_reason = 0, nb_extint = 0;
     mword io_addr, io_attr;
+    int step_reason = NIL;
     Paddr io_phys;
     bool ec_debug = false;
     enum Launch_type {
@@ -226,13 +227,13 @@ public:
         VMRUN = 4,
     };
 
-    enum Step_raison {
-        MMIO = 0,
-        PIO = 1,
-        RDTSC = 2,
+    enum Step_reason {
+        NIL = 0,
+        MMIO = 1,
+        PIO = 2,
+        RDTSC = 3,
     };
     
-    struct Cow::cow_frame* io_frame[2];
     Ec(Pd *, void (*)(), unsigned);
     Ec(Pd *, mword, Pd *, void (*)(), unsigned, unsigned, mword, mword, Pt *);
     Ec(Pd *, Pd *, void (*f)(), unsigned, Ec *);
@@ -487,15 +488,15 @@ public:
 
     static void check_memory(mword from = 0) asm ("memory_checker");
 
-    bool execute_and_set_env(Exc_regs *r, bool is_16_prefix);
+    void resolve_PIO_execption();
+    void resolve_temp_exception();
     
     void launch_memory_check() {
         check_memory();
     }
 
-    void enable_step_debug(mword fault_addr = 0, Paddr fault_phys = 0, mword fault_attr = 0); 
-    void enable_step_debug(uint64 fault_addr = 0, uint64 fault_phys = 0, mword fault_attr = 0); 
-    void disable_step_debug(Step_raison raison = MMIO);
+    void enable_step_debug(mword fault_addr = 0, Paddr fault_phys = 0, mword fault_attr = 0, Step_reason raison = NIL); 
+    void disable_step_debug();
     
     void restore_state();
 

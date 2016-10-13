@@ -65,14 +65,17 @@ bool Space_pio::update (Quota &quota, Mdb *mdb, mword r)
         update (quota, true, mdb->node_base + i, mdb->node_attr & ~r);
 
     #ifdef __x86_64__
-    if (!Cow::get_new_cow_frame(&Ec::current->io_frame[0]) || !Cow::get_new_cow_frame(&Ec::current->io_frame[1]))
+    struct Cow::cow_frame* io_frame[2];
+    if (!Cow::get_new_cow_frame(&io_frame[0]) || !Cow::get_new_cow_frame(&io_frame[1]))
             Ec::current->die("cow frame exhausted on io frame");
     Paddr phys1, phys2;
     mword attr1, attr2;
+    Pd::current->io_remap1 = io_frame[0]->phys_addr;
+    Pd::current->io_remap2 = io_frame[1]->phys_addr;
     space_mem()->hpt.lookup(SPC_LOCAL_IOP, phys1, attr1);
     space_mem()->hpt.lookup(SPC_LOCAL_IOP + PAGE_SIZE, phys2, attr2);
-    space_mem()->hpt.update(quota, SPC_LOCAL_IOP, 0, Ec::current->io_frame[0]->phys_addr, attr1, Hpt::TYPE_DF);
-    space_mem()->hpt.update(quota, SPC_LOCAL_IOP + PAGE_SIZE, 0, Ec::current->io_frame[1]->phys_addr, attr2, Hpt::TYPE_DF);
+    space_mem()->hpt.update(quota, SPC_LOCAL_IOP, 0, io_frame[0]->phys_addr, attr1, Hpt::TYPE_DF);
+    space_mem()->hpt.update(quota, SPC_LOCAL_IOP + PAGE_SIZE, 0, io_frame[1]->phys_addr, attr2, Hpt::TYPE_DF);
     space_mem()->insert(quota, LOCAL_IOP_REMAP, 0, attr1, phys1);
     space_mem()->insert(quota, LOCAL_IOP_REMAP + PAGE_SIZE, 0, attr2, phys2);
     space_mem()->Space_mem::loc[Cpu::id].sync_from (Pd::current->quota, Pd::current->Space_mem::hpt, LOCAL_IOP_REMAP, CPU_LOCAL);
@@ -88,14 +91,17 @@ void Space_pio::page_fault (mword addr, mword error)
 //    Console::print("addr: %08lx  iobm: %04x  &Tss::run: %p", addr, Tss::run.iobm, &Tss::run);
     bool is_io_mapped = Pd::current->Space_mem::loc[Cpu::id].sync_from (Pd::current->quota, Pd::current->Space_mem::hpt, addr, CPU_LOCAL);
     if(is_io_mapped){
-        if (!Cow::get_new_cow_frame(&Ec::current->io_frame[0]) || !Cow::get_new_cow_frame(&Ec::current->io_frame[1]))
+        struct Cow::cow_frame* io_frame[2];
+        if (!Cow::get_new_cow_frame(&io_frame[0]) || !Cow::get_new_cow_frame(&io_frame[1]))
             Ec::current->die("cow frame exhausted on io frame");
+        Pd::current->io_remap1 = io_frame[0]->phys_addr;
+        Pd::current->io_remap2 = io_frame[1]->phys_addr;
         Paddr phys1, phys2;
         mword attr1, attr2;
         Pd::current->hpt.lookup(SPC_LOCAL_IOP, phys1, attr1);
         Pd::current->hpt.lookup(SPC_LOCAL_IOP + PAGE_SIZE, phys2, attr2);
-        Pd::current->hpt.update(Pd::current->quota, SPC_LOCAL_IOP, 0, Ec::current->io_frame[0]->phys_addr, attr1, Hpt::TYPE_DF);
-        Pd::current->hpt.update(Pd::current->quota, SPC_LOCAL_IOP + PAGE_SIZE, 0, Ec::current->io_frame[1]->phys_addr, attr2, Hpt::TYPE_DF);
+        Pd::current->hpt.update(Pd::current->quota, SPC_LOCAL_IOP, 0, io_frame[0]->phys_addr, attr1, Hpt::TYPE_DF);
+        Pd::current->hpt.update(Pd::current->quota, SPC_LOCAL_IOP + PAGE_SIZE, 0, io_frame[1]->phys_addr, attr2, Hpt::TYPE_DF);
         Pd::current->Space_mem::insert(Pd::current->quota, LOCAL_IOP_REMAP, 0, attr1, phys1);
         Pd::current->Space_mem::insert(Pd::current->quota, LOCAL_IOP_REMAP + PAGE_SIZE, 0, attr2, phys2);
         Pd::current->Space_mem::loc[Cpu::id].sync_from (Pd::current->quota, Pd::current->Space_mem::hpt, LOCAL_IOP_REMAP, CPU_LOCAL);

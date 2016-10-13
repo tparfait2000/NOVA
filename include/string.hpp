@@ -88,8 +88,8 @@ inline int strcmp(char const *s1, char const *s2) {
 extern "C" NONNULL
 inline int memcmp(const void *s1, const void *s2, size_t len) {
     len /=4;
-    uint8 diff;
-    asm volatile ("repe; cmpsl; setnz %0"
+    int diff = 0;
+    asm volatile ("repe; cmpsl; movl %%ecx, %0;"
                 : "=qm" (diff), "+D" (s1), "+S" (s2), "+c" (len));
     return diff;
 }

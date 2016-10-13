@@ -65,7 +65,8 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
         static Pd kern, root;
 
         Quota quota;
-
+        Paddr io_remap1, io_remap2;
+    
         INIT
         Pd (Pd *);
         ~Pd();
