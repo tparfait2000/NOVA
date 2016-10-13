@@ -45,7 +45,7 @@ void Ec::sys_finish()
         xcpu_return();
 
     if (Pd::current->quota.hit_limit() && S != Sys_regs::QUO_OOM)
-        trace (0, "warning: insufficient resources %lu/%lu", Pd::current->quota.usage(), Pd::current->quota.limit());
+        trace (TRACE_OOM, "warning: insufficient resources %lu/%lu", Pd::current->quota.usage(), Pd::current->quota.limit());
 
     ret_user_sysexit();
 }
@@ -84,7 +84,7 @@ void Ec::delegate()
 
     if (Cpu::hazard & HZD_OOM) {
         if (dst->pd->quota.hit_limit())
-            trace (0, "warning: insufficient resources %lx/%lx", dst->pd->quota.usage(), dst->pd->quota.limit());
+            trace (TRACE_OOM, "warning: insufficient resources %lx/%lx", dst->pd->quota.usage(), dst->pd->quota.limit());
 
         Cpu::hazard ^= HZD_OOM;
         current->oom_delegate(dst, ec, src, user, C);
