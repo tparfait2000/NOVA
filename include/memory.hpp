@@ -38,20 +38,20 @@
 #define SPC_LOCAL       0xffffffffc0000000
 #endif
 
-#define HV_GLOBAL_CPUS  (CPU_LOCAL - 0x1000000)         //0xcec00000
-#define HV_GLOBAL_FBUF  (CPU_LOCAL - PAGE_SIZE * 1)     //0xcfbff000
+#define HV_GLOBAL_CPUS  (CPU_LOCAL - 0x1000000)         //0xcec00000    0xFFFFFFFFBEE00000
+#define HV_GLOBAL_FBUF  (CPU_LOCAL - PAGE_SIZE * 1)     //0xcfbff000    0xffffffffbfdff000
 
-#define CPU_LOCAL_STCK  (SPC_LOCAL - PAGE_SIZE * 3)     //0xcfffd000
-#define CPU_LOCAL_APIC  (SPC_LOCAL - PAGE_SIZE * 2)     //0xcfffe000
-#define CPU_LOCAL_DATA  (SPC_LOCAL - PAGE_SIZE * 1)     //0xcffff000
+#define CPU_LOCAL_STCK  (SPC_LOCAL - PAGE_SIZE * 3)     //0xcfffd000    0xffffffffbfffd000
+#define CPU_LOCAL_APIC  (SPC_LOCAL - PAGE_SIZE * 2)     //0xcfffe000    0xffffffffbfffe000
+#define CPU_LOCAL_DATA  (SPC_LOCAL - PAGE_SIZE * 1)     //0xcffff000    0xffffffffbffff000
 
-#define SPC_LOCAL_IOP   (SPC_LOCAL)                     //0xd0000000
-#define SPC_LOCAL_IOP_E (SPC_LOCAL_IOP + PAGE_SIZE * 2) //0xd0002000
-#define SPC_LOCAL_REMAP (SPC_LOCAL_OBJ - 0x1000000)     //0xdf000000
-#define SPC_LOCAL_OBJ   (END_SPACE_LIM - 0x20000000)    //0xe0000000
+#define SPC_LOCAL_IOP   (SPC_LOCAL)                     //0xd0000000    0xffffffffc0000000
+#define SPC_LOCAL_IOP_E (SPC_LOCAL_IOP + PAGE_SIZE * 2) //0xd0002000    0xffffffffc0002000    
+#define SPC_LOCAL_REMAP (SPC_LOCAL_OBJ - 0x1000000)     //0xdf000000    0xFFFFFFFFDF000000
+#define SPC_LOCAL_OBJ   (END_SPACE_LIM - 0x20000000)    //0xe0000000    0xFFFFFFFFE0000000
 
-#define COW_ADDR        (SPC_LOCAL_REMAP - 0x1000000)   //0xde000000
-#define LOCAL_IOP_REMAP (COW_ADDR - 0x1000000)          //0xdd000000
+#define COW_ADDR        (SPC_LOCAL_REMAP - 0x1000000)   //0xde000000    0xFFFFFFFFDE000000
+#define LOCAL_IOP_REMAP (COW_ADDR - 0x1000000)          //0xdd000000    0xFFFFFFFFDD000000
 #define NB_COW_FRAME_ORDER    14  // means 2¹⁴ = 16 * 1024 frames
 #define NB_COW_FRAME    (1UL << NB_COW_FRAME_ORDER)  
 #define NB_COW_ELT      (NB_COW_FRAME)

@@ -114,7 +114,7 @@ class Space_mem : public Space
         ALWAYS_INLINE
         inline void insert (Quota &quota, mword virt, unsigned o, mword attr, Paddr phys)
         {
-            hpt.update (quota, virt, o, phys, attr);
+            hpt.update (quota, virt, o, phys, attr, Hpt::TYPE_UP, true);
         }
 
         ALWAYS_INLINE

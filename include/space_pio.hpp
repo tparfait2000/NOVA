@@ -58,4 +58,17 @@ class Space_pio : public Space
 
         ALWAYS_INLINE
         inline mword sticky_sub(mword) { return 0; }
+        
+        ALWAYS_INLINE
+        static inline mword idx_to_virt_remap (mword idx)
+        {
+            return LOCAL_IOP_REMAP + (idx / 8 / sizeof (mword)) * sizeof (mword);
+        }
+
+        ALWAYS_INLINE
+        static inline mword idx_to_mask_remap (mword idx)
+        {
+            return 1UL << (idx % (8 * sizeof (mword)));
+        }
+
 };

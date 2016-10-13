@@ -93,7 +93,7 @@ LFLAGS		:= --defsym=GIT_VER=0x$(call gitrv) --gc-sections --warn-common -static 
 # Rules
 %-$(ARCH).o:	%.ld $(MAKEFILE_LIST)
 		$(call message,PRE,$@)
-		$(CC) $(SFLAGS) -xc -E -P -MT -g $@ $< -o $@
+		$(CC) $(SFLAGS) -xc -E -P -MT -ggdb -o0 $@ $< -o $@
 
 %-$(ARCH).o:	%.S $(MAKEFILE_LIST)
 		$(call message,ASM,$@)

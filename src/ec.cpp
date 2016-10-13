@@ -272,8 +272,9 @@ void Ec::ret_user_sysexit() {
             handle_hazard(hzd, ret_user_sysexit);
 
         current->save_state();
-        current->launch_state = Ec::sysexit;
+        current->launch_state = Ec::SYSEXIT;
     }
+//    memset(reinterpret_cast<void*> (SPC_LOCAL_IOP), ~0u, 2*PAGE_SIZE);
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : "memory");
 
     UNREACHED;
@@ -287,7 +288,7 @@ void Ec::ret_user_iret() {
             handle_hazard(hzd, ret_user_iret);
 
         current->save_state();
-        current->launch_state = Ec::iret;
+        current->launch_state = Ec::IRET;
     }
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR LOAD_SEG RET_USER_EXC) : : "m" (current->regs) : "memory");
 
@@ -313,7 +314,7 @@ void Ec::ret_user_vmresume() {
         current->regs.vmcs->make_current();
 
         current->vmx_save_state();
-        current->launch_state = Ec::vmresume;
+        current->launch_state = Ec::VMRESUME;
     }
     
     if (EXPECT_FALSE(Pd::current->gtlb.chk(Cpu::id))) {
@@ -345,7 +346,7 @@ void Ec::ret_user_vmrun() {
             handle_hazard(hzd, ret_user_vmrun);
 
         current->svm_save_state();
-        current->launch_state = Ec::vmrun;
+        current->launch_state = Ec::VMRUN;
     }
     if (EXPECT_FALSE(Pd::current->gtlb.chk(Cpu::id))) {
         Pd::current->gtlb.clr(Cpu::id);
@@ -513,11 +514,186 @@ void Ec::idl_handler() {
         Rcu::update();
 }
 
+bool Ec::is_temporal_exc(mword v) {
+    uint16 *ptr = reinterpret_cast<uint16 *> (v);
+    if (*ptr == 0x310f) {// rdtsc 0f 31
+        return true;
+    } else
+        return false;
+}
+
+bool Ec::is_io_exc(mword v) {
+    /*TODO
+     * Firstly we must ensure that the port the process is trying to access is 
+     * within its I/O port space
+     * We must also deal with the REP prefix
+     */
+    uint8 *ptr = reinterpret_cast<uint8 *> (v);
+    switch (*ptr) {
+        case 0xe4: // IN AL, imm8
+        case 0xe5: // IN AX, imm8 || IN EAX, imm8
+        case 0xe6: // OUT imm8, AL
+        case 0xe7: // OUT imm8, AX || OUT imm8, EAX
+        case 0xec: // IN AL,DX
+            //            uint8 io_port = reinterpret_cast<uint8 *> (r->REG(dx));
+        case 0xed: // IN AX, || IN EAX,DX
+        case 0xee: // OUT DX, AL
+        case 0xef: // OUT DX, AX || OUT DX, EAX
+            //        case 0x6c: // INS m8, DX || INSB 
+            //        case 0x6d: // INS m16, DX || INS m32, DX || INSW || INSD
+            //        case 0x6e: // OUTS DX, m8 || OUTSB
+            //        case 0x6f: // OUTS DX, m16 || OUTS DX, m32 || OUTSW || OUTSD
+            return true;
+        case 0x66:
+        case 0x67:
+            return is_io_exc(v + 1); // operand-size prefixe
+        default:
+            return false;
+    }
+}
+
+bool Ec::execute_and_set_env(Exc_regs *r, bool is_16_prefix) {
+    uint8 op_code = *(reinterpret_cast<uint8 *> (r->REG(ip)));
+    uint8 imm8 = *(reinterpret_cast<uint8 *> (r->REG(ip) + 1));
+
+    uint16 port_num;
+    mword iobm, mask;
+    switch (op_code) {
+        case 0xe4: // IN AL, imm8
+            iobm = *(reinterpret_cast<mword*> (Space_pio::idx_to_virt_remap(imm8)));
+            mask = Space_pio::idx_to_mask_remap(imm8);
+            if (iobm & mask)
+                return false;
+            regs.REG(ax) = Io::in<uint8>(imm8);
+            regs.REG(ip) += 0x2; // because IN AL, imm8 is a 2 bytes long instruction
+            return true;
+        case 0xe5: // IN AX, imm8 || IN EAX, imm8
+            iobm = *(reinterpret_cast<mword*> (Space_pio::idx_to_virt_remap(imm8)));
+            mask = Space_pio::idx_to_mask_remap(imm8);
+            if (iobm & mask)
+                return false;
+            if (is_16_prefix) {
+                regs.REG(ax) = Io::in <uint16> (imm8);
+            } else {
+                regs.REG(ax) = Io::in <uint32> (imm8);
+            }
+            regs.REG(ip) += 0x2; // because 2 byte long instruction
+            return true;
+        case 0xe6: // OUT imm8, AL
+            iobm = *(reinterpret_cast<mword*> (Space_pio::idx_to_virt_remap(imm8)));
+            mask = Space_pio::idx_to_mask_remap(imm8);
+            if (iobm & mask)
+                return false;
+            Io::out(imm8, static_cast<uint8> (r->REG(ax)));
+            regs.REG(ip) += 0x2; // because OUT imm8, AL is a 2 byte long instruction
+            return true;
+        case 0xe7: // OUT imm8, AX || OUT imm8, EAX
+            iobm = *(reinterpret_cast<mword*> (Space_pio::idx_to_virt_remap(imm8)));
+            mask = Space_pio::idx_to_mask_remap(imm8);
+            if (iobm & mask)
+                return false;
+            if (is_16_prefix) {
+                Io::out(imm8, static_cast<uint16> (r->REG(ax)));
+            } else {
+                Io::out(imm8, static_cast<uint32> (r->REG(ax)));
+            }
+            regs.REG(ip) += 0x2; // because OUT DX, AX || OUT DX, EAX is a 1 byte long instruction
+            return true;
+        case 0xec: // IN AL,DX
+            port_num = (r->REG(dx))&0x0000ffff;
+            iobm = *(reinterpret_cast<mword*> (Space_pio::idx_to_virt_remap(port_num)));
+            mask = Space_pio::idx_to_mask_remap(port_num);
+            if (iobm & mask)
+                return false;
+            regs.REG(ax) = Io::in<uint8>(r->REG(dx));
+            regs.REG(ip) += 0x1; // because IN is a 1 byte long instruction
+            return true;
+        case 0xed: // IN AX, || IN EAX,DX
+            port_num = (r->REG(dx))&0x0000ffff;
+            iobm = *(reinterpret_cast<mword*> (Space_pio::idx_to_virt_remap(port_num)));
+            mask = Space_pio::idx_to_mask_remap(port_num);
+            if (iobm & mask)
+                return false;
+            // Here we assume we are in 32 bits mode; but when executing virtual machine, the machine mode must be taken into account 
+            if (is_16_prefix) {
+                regs.REG(ax) = Io::in <uint16> (r->REG(dx));
+            } else {
+                regs.REG(ax) = Io::in <uint32> (r->REG(dx));
+            }
+            regs.REG(ip) += 0x1; // because IN is a 1 byte long instruction
+            return true;
+        case 0xee: // OUT DX, AL
+            port_num = (r->REG(dx))&0x0000ffff;
+            iobm = *(reinterpret_cast<mword*> (Space_pio::idx_to_virt_remap(port_num)));
+            mask = Space_pio::idx_to_mask_remap(port_num);
+            if (iobm & mask)
+                return false;
+            Io::out(r->REG(dx), static_cast<uint8> (r->REG(ax)));
+            regs.REG(ip) += 0x1; // because OUT is a 1 byte long instruction
+            return true;
+        case 0xef: // OUT DX, AX || OUT DX, EAX
+            port_num = (r->REG(dx))&0x0000ffff;
+            iobm = *(reinterpret_cast<mword*> (Space_pio::idx_to_virt_remap(port_num)));
+            mask = Space_pio::idx_to_mask_remap(port_num);
+            if (iobm & mask)
+                return false;
+            // Here we assume we are in 32 bits mode; but when executing virtual machine, the machine mode must be taken into account 
+            if (is_16_prefix) {
+                Io::out(r->REG(dx), static_cast<uint16> (r->REG(ax)));
+            } else {
+                Io::out(r->REG(dx), static_cast<uint32> (r->REG(ax)));
+            }
+            regs.REG(ip) += 0x1; // because OUT DX, AX || OUT DX, EAX is a 1 byte long instruction
+            return true;
+        case 0x6c: // INS m8, DX || INSB 
+        case 0x6d: // INS m16, DX || INS m32, DX || INSW || INSD
+        case 0x6e: // OUTS DX, m8 || OUTSB
+        case 0x6f: // OUTS DX, m16 || OUTS DX, m32 || OUTSW || OUTSD
+
+        case 0x66:
+        case 0x67:
+            r->REG(ip) += 0x1;
+            execute_and_set_env(r, true); // operand-size prefixe
+            return true;
+        default:
+            Ec::die("Bad I/O emulation");
+    }
+}
+
 void Ec::add_cow(Cow::cow_elt *ce) {
     Lock_guard <Spinlock> guard(cow_lock);
     Cow::cow_elt *tampon = cow_list;
     cow_list = ce;
     ce->next = tampon;
+}
+
+void Ec::enable_step_debug(mword fault_addr, Paddr fault_phys, mword fault_attr) {
+    regs.REG(fl) |= Cpu::EFL_TF;
+    io_addr = fault_addr;
+    io_phys = fault_phys;
+    io_attr = fault_attr;
+    //            if (io_addr == 0x7fffd6a0) {
+    //                Ec::count++;
+    //            }
+    //            if (Ec::count > 1) {
+    //                Console::print("io_addr: %08lx  io_phys: %08lx  io_attr: %08lx", io_addr, io_phys, io_attr);
+    //            }
+}
+
+void Ec::disable_step_debug(Step_raison raison) {
+    switch (raison) {
+        case MMIO:
+            regs.REG(fl) &= ~Cpu::EFL_TF;
+            Pd::current->loc[Cpu::id].update(Pd::current->quota, io_addr, 0, io_phys, io_attr & ~Hpt::HPT_P, Hpt::TYPE_UP, true);
+            Hpt::cow_flush(io_addr);
+            break;
+        case PIO:
+            break;
+        case RDTSC:
+            break;
+        default:
+            Console::print("Unknown raison");
+    }
 }
 
 void Ec::restore_state() {
@@ -527,7 +703,7 @@ void Ec::restore_state() {
         Quota quota = Pd::current->quota;
         while (cow != nullptr) {
             mword v = cow->page_addr_or_gpa;
-            Pd::current->Space_mem::loc[Cpu::id].update(quota, v, 0, cow->new_phys[1]->phys_addr, cow->attr | Hpt::HPT_W, Hpt::TYPE_UP, true);
+            Pd::current->Space_mem::loc[Cpu::id].update(quota, v, 0, cow->new_phys[1]->phys_addr, cow->attr | Hpt::HPT_W, Hpt::TYPE_UP, false);
             Hpt::cow_flush(v);
             cow = cow->next;
         }
@@ -611,7 +787,7 @@ bool Ec::compare_and_commit() {
             if (memcmp(ptr1, ptr2, PAGE_SIZE)) {
                 Console::print("Ec: %p  Pd: %p  ptr1: %p  "
                         "ptr2: %p", current, current->pd.operator->(), ptr1, ptr2);
-                //                return false;
+                                return false;
             }
             Paddr old_phys = cow->old_phys;
             mword v = cow->page_addr_or_gpa;

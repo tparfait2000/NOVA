@@ -225,6 +225,7 @@ void Cpu::init()
     Vmcs::init();
     Vmcb::init();
 
+    set_cr4 (get_cr4() | Cpu::CR4_TSD);
     Mca::init();
 
     trace (TRACE_CPU, "CORE:%x:%x:%x %x:%x:%x:%x [%x] %.48s", package, core, thread, family, model, stepping, platform, patch, reinterpret_cast<char *>(name));

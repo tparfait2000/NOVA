@@ -88,6 +88,10 @@ public:
         asm volatile ("mov %0, %%cr3" : : "r" (val | pcid) : "memory");
     }
 
+    static inline void cow_flush() {
+        flush();
+    }
+
     bool sync_from(Quota &quota, Hpt, mword, mword);
 
     void sync_master_range(Quota &quota, mword, mword);
@@ -123,6 +127,7 @@ public:
         flush(v);
     }
     
+    bool is_cow_fault(Quota &quota, mword, mword);
 };
 
 class Hptp : public Hpt {

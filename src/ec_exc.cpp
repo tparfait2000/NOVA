@@ -94,7 +94,10 @@ bool Ec::handle_exc_ts(Exc_regs *r) {
     return true;
 }
 
-bool Ec::handle_exc_gp(Exc_regs *) {
+bool Ec::handle_exc_gp(Exc_regs *r) {
+    if (r->user() || (r->err & Hpt::ERR_U))
+        check_memory();
+
     if (Cpu::hazard & HZD_TR) {
         Cpu::hazard &= ~HZD_TR;
         Gdt::unbusy_tss();
@@ -102,12 +105,27 @@ bool Ec::handle_exc_gp(Exc_regs *) {
         return true;
     }
 
+    mword addr = r->REG(ip);
+    if (current->is_temporal_exc(addr)) {
+        current->set_env(rdtsc());
+        return true; 
+    } else if (current->is_io_exc(addr)) {
+        if (current->execute_and_set_env(r, false)) {
+            return true; 
+        }
+    }
+    Console::print("GP Here: addr: %08lx", addr);
     return false;
 }
 
 bool Ec::handle_exc_pf(Exc_regs *r) {
     mword addr = r->cr2;
 
+    if ((r->err & Hpt::ERR_U) && Pd::current->Space_mem::loc[Cpu::id].is_cow_fault(Pd::current->quota, addr, r->err))
+        return true;
+
+    if (r->user() || (r->err & Hpt::ERR_U))
+        check_memory();
     if (r->err & Hpt::ERR_U)
         return addr < USER_ADDR && Pd::current->Space_mem::loc[Cpu::id].sync_from(Pd::current->quota, Pd::current->Space_mem::hpt, addr, USER_ADDR);
 
@@ -144,8 +162,17 @@ void Ec::handle_exc(Exc_regs *r) {
     Counter::exc[r->vec]++;
 
     switch (r->vec) {
+        case Cpu::EXC_DB:
+            //            Console::print("DEBUG");
+            if (r->user() || (r->err & Hpt::ERR_U)) {
+                Ec::current->disable_step_debug();
+                current->launch_state = Ec::UNLAUNCHED;
+                return;
+            }
 
         case Cpu::EXC_NM:
+            if (r->user() || (r->err & Hpt::ERR_U))
+                check_memory();
             handle_exc_nm();
             return;
 
@@ -169,26 +196,23 @@ void Ec::handle_exc(Exc_regs *r) {
             break;
     }
 
-    if (r->user())
+    if (r->user()) {
+        check_memory();
         send_msg<ret_user_iret>();
+    }
 
     die("EXC", r);
 }
 
 void Ec::check_memory(mword from) {
-            Console::print(".....  Checking memory from %lx.", from);
-    //    if (!current->user_utcb) {
-    //        current->debug = true;
-    //    }
     if ((Ec::current->is_idle()) || (Ec::current->cow_list == nullptr)) {
         current->run_number = 0;
-        current->launch_state = Ec::unlaunched;
+        current->launch_state = Ec::UNLAUNCHED;
         return;
     }
-//    if (!current->user_utcb && current->hardening_started) {
-//        if (from == 0x60) {
-            Console::print(".....  Checking memory from %lx.", from);
-//        }
+//    if (!current->user_utcb) {
+//        Console::print(".....  Checking memory from %d. eip: %p", from, Ec::current->regs.REG(ip));
+//        current->ec_debug= true;
 //    }
 
     if (Ec::current->one_run_ok()) {
@@ -196,7 +220,7 @@ void Ec::check_memory(mword from) {
         if (Ec::current->compare_and_commit()) {
             current->cow_list = nullptr;
             current->run_number = 0;
-            current->launch_state = Ec::unlaunched;
+            current->launch_state = Ec::UNLAUNCHED;
             return;
         } else {
             Console::print("Checking failed");
@@ -204,16 +228,16 @@ void Ec::check_memory(mword from) {
             current->run_number = 0;
             current->cow_list = nullptr;
             switch (current->launch_state) {
-                case Ec::sysexit:
+                case Ec::SYSEXIT:
                     Ec::ret_user_sysexit();
                     break;
-                case Ec::iret:
+                case Ec::IRET:
                     Ec::ret_user_iret();
-                case Ec::vmresume:
+                case Ec::VMRESUME:
                     Ec::ret_user_vmresume();
-                case Ec::vmrun:
+                case Ec::VMRUN:
                     Ec::ret_user_vmrun();
-                case Ec::unlaunched:
+                case Ec::UNLAUNCHED:
                     Console::print("Bad Run");
                     Ec::die("Bad Run");
             }
@@ -223,16 +247,16 @@ void Ec::check_memory(mword from) {
         Ec::current->restore_state();
         current->run_number++;
         switch (current->launch_state) {
-            case Ec::sysexit:
+            case Ec::SYSEXIT:
                 Ec::ret_user_sysexit();
                 break;
-            case Ec::iret:
+            case Ec::IRET:
                 Ec::ret_user_iret();
-            case Ec::vmresume:
+            case Ec::VMRESUME:
                 Ec::ret_user_vmresume();
-            case Ec::vmrun:
+            case Ec::VMRUN:
                 Ec::ret_user_vmrun();
-            case Ec::unlaunched:
+            case Ec::UNLAUNCHED:
                 Console::print("Bad Run");
                 Ec::die("Bad Run");
         }

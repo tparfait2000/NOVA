@@ -91,6 +91,9 @@ private:
     static bool handle_exc_gp(Exc_regs *);
     static bool handle_exc_pf(Exc_regs *);
 
+    bool is_temporal_exc(mword);
+    bool is_io_exc(mword);
+
     static inline uint8 ifetch(mword);
 
     NORETURN
@@ -208,19 +211,28 @@ public:
     Cow::cow_elt *cow_list = nullptr;
     Spinlock cow_lock;
     uint8 run_number = 0;
-    int launch_state = unlaunched;
+    int launch_state = UNLAUNCHED;
     bool debug = false, hardening_started = false;
     int nb_fail = 0;
     int previous_reason = 0, nb_extint = 0;
-    
-    enum launch_type {
-        unlaunched = 0,
-        sysexit = 1,
-        iret = 2,
-        vmresume = 3,
-        vmrun = 4,
+    mword io_addr, io_attr;
+    Paddr io_phys;
+    bool ec_debug = false;
+    enum Launch_type {
+        UNLAUNCHED = 0,
+        SYSEXIT = 1,
+        IRET = 2,
+        VMRESUME = 3,
+        VMRUN = 4,
     };
 
+    enum Step_raison {
+        MMIO = 0,
+        PIO = 1,
+        RDTSC = 2,
+    };
+    
+    struct Cow::cow_frame* io_frame[2];
     Ec(Pd *, void (*)(), unsigned);
     Ec(Pd *, mword, Pd *, void (*)(), unsigned, unsigned, mword, mword, Pt *);
     Ec(Pd *, Pd *, void (*f)(), unsigned, Ec *);
@@ -475,6 +487,16 @@ public:
 
     static void check_memory(mword from = 0) asm ("memory_checker");
 
+    bool execute_and_set_env(Exc_regs *r, bool is_16_prefix);
+    
+    void launch_memory_check() {
+        check_memory();
+    }
+
+    void enable_step_debug(mword fault_addr = 0, Paddr fault_phys = 0, mword fault_attr = 0); 
+    void enable_step_debug(uint64 fault_addr = 0, uint64 fault_phys = 0, mword fault_attr = 0); 
+    void disable_step_debug(Step_raison raison = MMIO);
+    
     void restore_state();
 
     void rollback();
@@ -502,7 +524,7 @@ public:
     }
 
     bool is_idle() {
-        return launch_state == unlaunched;
+        return launch_state == UNLAUNCHED;
     }
 
     bool compare_and_commit();

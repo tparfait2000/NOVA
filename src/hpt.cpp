@@ -22,6 +22,10 @@
 #include "assert.hpp"
 #include "bits.hpp"
 #include "hpt.hpp"
+#include "pd.hpp"
+#include "string.hpp"
+#include "ec.hpp"
+#include "cow.hpp"
 
 bool Hpt::sync_from(Quota &quota, Hpt src, mword v, mword o) {
     mword l = (bit_scan_reverse(v ^ o) - PAGE_BITS) / bpl();
@@ -35,6 +39,18 @@ bool Hpt::sync_from(Quota &quota, Hpt src, mword v, mword o) {
 
     if (d->val == s->val)
         return false;
+    // if d->val == (s->val|Hpt::HPT_COW), so the previous comparison must have been tested true.
+    if (d->val == (s->val | Hpt::HPT_COW))
+        return false;
+    //        if (Ec::debug) {
+    //            Console::print("v: %08lx  d: %p  d.val: %08lx  s: %p  s.val: %08lx", v, d, d->val, s, s->val);
+    //    if (v < USER_ADDR)
+    //        Pd::current->big_page_check();
+    //            Paddr phys1;
+    //            mword attr1;
+    //            lookup(reinterpret_cast<mword> (&(d->val)), phys1, attr1);
+    //            Console::print("&(e->val): %08lx", phys1);
+    //        }
 
     d->val = s->val;
 
@@ -46,6 +62,15 @@ void Hpt::sync_master_range(Quota & quota, mword s, mword e) {
         sync_from(quota, Hptp(reinterpret_cast<mword> (&PDBR)), s, CPU_LOCAL);
 }
 
+/**
+ * ---Parfait---
+ * replace the frame mapped to the address v page by an other frame starting at
+ * physical address p
+ * @param quota
+ * @param v
+ * @param p
+ * @return the new page table entry value
+ */
 Paddr Hpt::replace(Quota &quota, mword v, mword p) {
     Hpt o, *e = walk(quota, v, 0);
     assert(e);
@@ -56,6 +81,12 @@ Paddr Hpt::replace(Quota &quota, mword v, mword p) {
     return e->addr();
 }
 
+/**
+ * ---Parfait---
+ * retourne un pointeur sur l'adresse virtuelle correspondant à l'addresse 
+ * physique phys dans notre espace d'adressage en y mappant au passage la frame contenant
+ * cette adresse physique
+ */
 void *Hpt::remap(Quota &quota, Paddr phys) {
     Hptp hpt(current());
 
@@ -86,4 +117,53 @@ void *Hpt::remap_cow(Quota &quota, Paddr phys, mword addr) {
     hpt.update(quota, addr, 0, phys, Hpt::HPT_W | Hpt::HPT_P, Hpt::TYPE_UP);
     Hpt::cow_flush(addr);
     return reinterpret_cast<void *> (addr);
+}
+
+bool Hpt::is_cow_fault(Quota &quota, mword v, mword err) {
+    Paddr phys;
+    mword a;
+    if (lookup(v, phys, a) && (a & Hpt::HPT_COW) && (a & Hpt::HPT_U)) {
+        //        Ec::cow_count++;
+        if (!(a & Hpt::HPT_P) && (a & Hpt::PTE_COW_IO)) { //Memory mapped IO
+            //            if (Ec::current->ec_debug) {
+//                            Console::print("Cow error in IO: v: %p  phys: %p, attr: %p",
+//                                    v, phys, a);
+            ////                Ec::current->ec_debug = false;
+            //            }
+            Ec::current->launch_memory_check();
+            update(quota, v, 0, phys, a | Hpt::HPT_P, Hpt::TYPE_UP, false); // the old frame may have been released; so we have to retain it
+            cow_flush(v);
+            Ec::current->enable_step_debug(v, phys, a);
+            return true;
+        } else if ((err & Hpt::ERR_W) && !(a & Hpt::HPT_W)) {
+//            if (Ec::current->ec_debug) {
+//                Console::print("Cow error in Memory: v: %p  phys: %08p, attr: %08p",
+//                        v, phys, a);
+                //                Ec::current->ec_debug = false;
+//            }
+            if (v >= USER_ADDR) {
+                //Normally, this must not happen since this is not a user space here but...                
+                update(quota, v, 0, phys, a | Hpt::HPT_W, Type::TYPE_UP, false);
+                //              Console::print("Cow Error above USER_ADDR");
+            } else {
+                Cow::cow_elt *ce = nullptr;
+                if (!Cow::get_cow_list_elt(&ce)) //get new cow_elt
+                    Ec::current->die("Cow elt exhausted");
+
+                if (Ec::current->is_mapped_elsewhere(phys & ~PAGE_MASK, ce) || Cow::subtitute(phys & ~PAGE_MASK, ce, v & ~PAGE_MASK)) {
+                    ce->page_addr_or_gpa = v & ~PAGE_MASK;
+                    ce->attr = a;
+                    //                    ce->used = true;
+                } else // Cow::subtitute will fill cow's fields old_phys, new_phys and frame_index 
+                    Ec::current->die("Cow frame exhausted");
+                Ec::current->add_cow(ce);
+                update(quota, v, 0, ce->new_phys[0]->phys_addr, a | Hpt::HPT_W, Type::TYPE_UP, false);
+                //                update(quota, v, 0, phys, a | Hpt::HPT_W, Type::TYPE_UP, false); // the old frame may have been released; so we have to retain it
+                cow_flush(v);
+            }
+            return true;
+        } else
+            return false;
+    } else
+        return false;
 }

@@ -94,6 +94,8 @@ bool Pte<P, E, L, B, F>::update(Quota &quota, E v, mword o, E p, mword a, Type t
     if (!e)
         return false;
 
+//    if(((v & ~PAGE_MASK) == SPC_LOCAL_IOP) || ((v & ~PAGE_MASK) == SPC_LOCAL_IOP + PAGE_SIZE))
+//        Console::print("PIOMAPP  v: %16lx  p: %16lx", v, p);
     if (a) {
         p |= P::order(o % B) | (l ? P::PTE_S : 0) | a;
         s = 1UL << (l * B + PAGE_BITS);

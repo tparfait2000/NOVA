@@ -96,6 +96,7 @@ class Cpu
 
         enum
         {
+            CR4_TSD         = 1UL << 2,         // 0x4
             CR4_DE          = 1UL << 3,         // 0x8
             CR4_PSE         = 1UL << 4,         // 0x10
             CR4_PAE         = 1UL << 5,         // 0x20

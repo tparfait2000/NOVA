@@ -19,6 +19,8 @@
  */
 
 #include "pd.hpp"
+#include "tss.hpp"
+#include "ec.hpp"
 
 Space_mem *Space_pio::space_mem()
 {
@@ -62,13 +64,48 @@ bool Space_pio::update (Quota &quota, Mdb *mdb, mword r)
     for (unsigned long i = 0; i < (1UL << mdb->node_order); i++)
         update (quota, true, mdb->node_base + i, mdb->node_attr & ~r);
 
+    #ifdef __x86_64__
+    if (!Cow::get_new_cow_frame(&Ec::current->io_frame[0]) || !Cow::get_new_cow_frame(&Ec::current->io_frame[1]))
+            Ec::current->die("cow frame exhausted on io frame");
+    Paddr phys1, phys2;
+    mword attr1, attr2;
+    space_mem()->hpt.lookup(SPC_LOCAL_IOP, phys1, attr1);
+    space_mem()->hpt.lookup(SPC_LOCAL_IOP + PAGE_SIZE, phys2, attr2);
+    space_mem()->hpt.update(quota, SPC_LOCAL_IOP, 0, Ec::current->io_frame[0]->phys_addr, attr1, Hpt::TYPE_DF);
+    space_mem()->hpt.update(quota, SPC_LOCAL_IOP + PAGE_SIZE, 0, Ec::current->io_frame[1]->phys_addr, attr2, Hpt::TYPE_DF);
+    space_mem()->insert(quota, LOCAL_IOP_REMAP, 0, attr1, phys1);
+    space_mem()->insert(quota, LOCAL_IOP_REMAP + PAGE_SIZE, 0, attr2, phys2);
+    space_mem()->Space_mem::loc[Cpu::id].sync_from (Pd::current->quota, Pd::current->Space_mem::hpt, LOCAL_IOP_REMAP, CPU_LOCAL);
+    memset(reinterpret_cast<void*> (SPC_LOCAL_IOP), ~0u, 2*PAGE_SIZE);
+    #endif
     return false;
 }
 
 void Space_pio::page_fault (mword addr, mword error)
 {
     assert (!(error & Hpt::ERR_W));
-
+#ifdef __i386__
+//    Console::print("addr: %08lx  iobm: %04x  &Tss::run: %p", addr, Tss::run.iobm, &Tss::run);
+    bool is_io_mapped = Pd::current->Space_mem::loc[Cpu::id].sync_from (Pd::current->quota, Pd::current->Space_mem::hpt, addr, CPU_LOCAL);
+    if(is_io_mapped){
+        if (!Cow::get_new_cow_frame(&Ec::current->io_frame[0]) || !Cow::get_new_cow_frame(&Ec::current->io_frame[1]))
+            Ec::current->die("cow frame exhausted on io frame");
+        Paddr phys1, phys2;
+        mword attr1, attr2;
+        Pd::current->hpt.lookup(SPC_LOCAL_IOP, phys1, attr1);
+        Pd::current->hpt.lookup(SPC_LOCAL_IOP + PAGE_SIZE, phys2, attr2);
+        Pd::current->hpt.update(Pd::current->quota, SPC_LOCAL_IOP, 0, Ec::current->io_frame[0]->phys_addr, attr1, Hpt::TYPE_DF);
+        Pd::current->hpt.update(Pd::current->quota, SPC_LOCAL_IOP + PAGE_SIZE, 0, Ec::current->io_frame[1]->phys_addr, attr2, Hpt::TYPE_DF);
+        Pd::current->Space_mem::insert(Pd::current->quota, LOCAL_IOP_REMAP, 0, attr1, phys1);
+        Pd::current->Space_mem::insert(Pd::current->quota, LOCAL_IOP_REMAP + PAGE_SIZE, 0, attr2, phys2);
+        Pd::current->Space_mem::loc[Cpu::id].sync_from (Pd::current->quota, Pd::current->Space_mem::hpt, LOCAL_IOP_REMAP, CPU_LOCAL);
+        memset(reinterpret_cast<void*> (SPC_LOCAL_IOP), ~0u, 2*PAGE_SIZE);
+    }else{
+        Pd::current->Space_mem::replace (Pd::current->quota, addr, reinterpret_cast<Paddr>(&FRAME_1) | Hpt::HPT_NX | Hpt::HPT_A | Hpt::HPT_P);
+    }
+#endif
+#ifdef __x86_64__
     if (!Pd::current->Space_mem::loc[Cpu::id].sync_from (Pd::current->quota, Pd::current->Space_mem::hpt, addr, CPU_LOCAL))
         Pd::current->Space_mem::replace (Pd::current->quota, addr, reinterpret_cast<Paddr>(&FRAME_1) | Hpt::HPT_NX | Hpt::HPT_A | Hpt::HPT_P);
+#endif    
 }

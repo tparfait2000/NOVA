@@ -190,7 +190,7 @@ ret_from_interrupt:     testb   $3, OFS_CS (%REG(bx))
                         call    chk_kern_preempt
                         LOAD_GPR
                         add     $(6 * SIZE), %REG(sp)
-                        RET_USER_EXC
+                        RET_USER_EXC  // we don't need to care about this iret because it is not going out of the kernel. we reached here from a kernel fault
 
 #ifdef __i386__
 entry_sysenter_db:      mov     12(%esp), %esp
@@ -208,6 +208,19 @@ entry_sysenter:         LOAD_KSP
                         lea     -11*SIZE(%REG(sp)), %REG(sp)
                         SAVE_GPR
                         mov     $(CPU_LOCAL_STCK + PAGE_SIZE), %REG(sp)
+#ifdef __i386__
+                        pushfl
+#else
+                        pushfq
+#endif
+                        SAVE_GPR
+                        call    memory_checker
+                        LOAD_GPR
+#ifdef __i386__
+                        popfl
+#else
+                        popfq
+#endif
                         and     $0xf, %ARG_1
                         jmp     *syscall(,%ARG_1,SIZE)
 
@@ -220,4 +233,17 @@ entry_vmx:              SAVE_GPR
                         mov     %cr2, %REG(ax)
                         mov     %REG(ax), OFS_CR2 (%REG(sp))
                         mov     $(CPU_LOCAL_STCK + PAGE_SIZE), %REG(sp)
+#ifdef __i386__
+                        pushfl
+#else
+                        pushfq
+#endif
+                        SAVE_GPR
+                        call    memory_checker
+                        LOAD_GPR
+#ifdef __i386__
+                        popfl
+#else
+                        popfq
+#endif
                         jmp     vmx_handler
