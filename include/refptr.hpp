@@ -22,20 +22,19 @@
 
 #include "atomic.hpp"
 
-template <uint32 ex>
-class Refex
+class Refcount
 {
     private:
         uint32 ref;
 
     public:
         ALWAYS_INLINE
-        inline Refex() : ref (1) {}
+        inline Refcount() : ref (1) {}
 
         ALWAYS_INLINE
         inline bool add_ref()
         {
-            for (uint32 r; (r = ref), (r != ex); )
+            for (uint32 r; (r = ref); )
                 if (Atomic::cmp_swap (ref, r, r + 1))
                     return true;
 
@@ -48,8 +47,6 @@ class Refex
             return Atomic::sub (ref, 1U) == 0;
         }
 };
-
-class Refcount : public Refex<0U> { };
 
 template <typename T>
 class Refptr
@@ -67,7 +64,7 @@ class Refptr
         ALWAYS_INLINE
         inline ~Refptr()
         {
-            if (ptr && ptr->del_ref())
+            if (ptr->del_ref())
                 delete ptr;
         }
 };

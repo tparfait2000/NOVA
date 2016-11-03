@@ -59,10 +59,7 @@ void Sc::ready_enqueue (uint64 t, bool use_left)
     assert (prio < priorities);
     assert (cpu == Cpu::id);
 
-    if (!add_ref()) {
-        trace (TRACE_ERROR, "SC:%p add_ref failed - %s", this, __func__);
-        return;
-    }
+    add_ref();
 
     if (prio > prio_top)
         prio_top = prio;
@@ -150,10 +147,7 @@ void Sc::remote_enqueue()
         ready_enqueue (rdtsc());
 
     else {
-        if (!add_ref()) {
-            trace (TRACE_ERROR, "SC:%p add_ref failed - %s", this, __func__);
-            return;
-        }
+        add_ref();
 
         Sc::Rq *r = remote (cpu);
 
