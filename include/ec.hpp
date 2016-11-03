@@ -300,7 +300,11 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
             Lock_guard <Spinlock> guard (lock);
 
             for (Sc *s; dequeue (s = head()); ) {
-                if (EXPECT_FALSE(s->del_ref()) && (this == s->ec)) {
+                if (EXPECT_FALSE(this != s->ec)) {
+                    s->remote_enqueue(false);
+                    continue;
+                }
+                if (EXPECT_FALSE(s->del_ref())) {
                     delete s;
                     continue;
                 }

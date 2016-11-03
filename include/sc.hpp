@@ -55,7 +55,8 @@ class Sc : public Kobject, public Refcount
 
         static unsigned prio_top CPULOCAL;
 
-        void ready_enqueue (uint64, bool use_left = true);
+        void ready_enqueue (uint64, bool, bool = true);
+
         void ready_dequeue (uint64);
 
         static void free (Rcu_elem * a) {
@@ -85,7 +86,7 @@ class Sc : public Kobject, public Refcount
             return reinterpret_cast<typeof rq *>(reinterpret_cast<mword>(&rq) - CPU_LOCAL_DATA + HV_GLOBAL_CPUS + c * PAGE_SIZE);
         }
 
-        void remote_enqueue();
+        void remote_enqueue(bool = true);
 
         static void rrq_handler();
         static void rke_handler();

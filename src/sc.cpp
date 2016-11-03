@@ -54,12 +54,17 @@ Sc::Sc (Pd *own, Ec *e, unsigned c, Sc *x) : Kobject (SC, static_cast<Space_obj 
     trace (TRACE_SYSCALL, "SC:%p created (EC:%p CPU:%#x P:%#x Q:%#llx) - xCPU", this, e, c, prio, budget / (Lapic::freq_bus / 1000));
 }
 
-void Sc::ready_enqueue (uint64 t, bool use_left)
+void Sc::ready_enqueue (uint64 t, bool inc_ref, bool use_left)
 {
     assert (prio < priorities);
     assert (cpu == Cpu::id);
 
-    add_ref();
+    if (inc_ref) {
+        bool ok = add_ref();
+        assert (ok);
+        if (!ok)
+            return;
+    }
 
     if (prio > prio_top)
         prio_top = prio;
@@ -123,11 +128,12 @@ void Sc::schedule (bool suspend, bool use_left)
 
     Cpu::hazard &= ~HZD_SCHED;
 
-    if (EXPECT_FALSE(current->del_ref()) && (Ec::current == current->ec))
+    bool const ref = Ec::current == current->ec;
+    if (EXPECT_FALSE((suspend || ref) && current->del_ref()))
         delete current;
     else
     if (EXPECT_TRUE (!suspend))
-        current->ready_enqueue (t, use_left);
+        current->ready_enqueue (t, ref, use_left);
 
     Sc *sc = list[prio_top];
     assert (sc);
@@ -141,13 +147,18 @@ void Sc::schedule (bool suspend, bool use_left)
     sc->ec->activate();
 }
 
-void Sc::remote_enqueue()
+void Sc::remote_enqueue(bool inc_ref)
 {
     if (Cpu::id == cpu)
-        ready_enqueue (rdtsc());
+        ready_enqueue (rdtsc(), inc_ref);
 
     else {
-        add_ref();
+        if (inc_ref) {
+            bool ok = add_ref();
+            assert (ok);
+            if (!ok)
+                return;
+        }
 
         Sc::Rq *r = remote (cpu);
 
@@ -179,8 +190,7 @@ void Sc::rrq_handler()
 
         ptr = ptr->next == ptr ? nullptr : ptr->next;
 
-        sc->del_ref();
-        sc->ready_enqueue (t);
+        sc->ready_enqueue (t, false);
     }
 
     rq.queue = nullptr;
