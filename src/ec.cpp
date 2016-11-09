@@ -429,10 +429,12 @@ bool Ec::fixup (mword &eip)
 
 void Ec::die (char const *reason, Exc_regs *r)
 {
-    if (current->utcb || current->pd == &Pd::kern) {
-        if (strcmp(reason, "PT not found"))
-        trace (0, "Killed EC:%p SC:%p V:%#lx CS:%#lx EIP:%#lx CR2:%#lx ERR:%#lx (%s)",
-               current, Sc::current, r->vec, r->cs, r->REG(ip), r->cr2, r->err, reason);
+    bool const show = current->pd == &Pd::kern || current->pd == &Pd::root;
+
+    if (current->utcb || show) {
+        if (show || strcmp(reason, "PT not found"))
+        trace (0, "Killed EC:%p SC:%p V:%#lx CS:%#lx EIP:%#lx CR2:%#lx ERR:%#lx (%s) %s",
+               current, Sc::current, r->vec, r->cs, r->REG(ip), r->cr2, r->err, reason, current->pd == &Pd::root ? "Pd::root" : current->pd == &Pd::kern ? "Pd::kern" : "");
     } else
         trace (0, "Killed EC:%p SC:%p V:%#lx CR0:%#lx CR3:%#lx CR4:%#lx (%s)",
                current, Sc::current, r->vec, r->cr0_shadow, r->cr3_shadow, r->cr4_shadow, reason);

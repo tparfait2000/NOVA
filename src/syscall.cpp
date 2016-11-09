@@ -472,6 +472,33 @@ void Ec::sys_lookup()
 {
     Sys_lookup *s = static_cast<Sys_lookup *>(current->sys_regs());
 
+    if (s->flags()) {
+        trace (TRACE_SYSCALL, "EC:%p SYS_DELEGATE PD:%lx->%lx T:%d B:%#lx", current, s->pd_snd(), s->pd_dst(), s->crd().type(), s->crd().base());
+
+        Kobject *obj_dst = Space_obj::lookup (s->pd_dst()).obj();
+        if (EXPECT_FALSE (obj_dst->type() != Kobject::PD)) {
+            trace (TRACE_ERROR, "%s: Non-PD CAP (%#lx)", __func__, s->pd_dst());
+            sys_finish<Sys_regs::BAD_CAP>();
+        }
+        Kobject *obj_snd = Space_obj::lookup (s->pd_snd()).obj();
+        if (EXPECT_FALSE (obj_snd->type() != Kobject::PD)) {
+            trace (TRACE_ERROR, "%s: Non-PD CAP (%#lx)", __func__, s->pd_dst());
+            sys_finish<Sys_regs::BAD_CAP>();
+        }
+
+        Pd * pd_dst = static_cast<Pd *>(obj_dst);
+        Pd * pd_snd = static_cast<Pd *>(obj_snd);
+
+        pd_dst->xfer_items (pd_snd,
+                            Crd (0),
+                            s->crd(),
+                            current->utcb->xfer(),
+                            nullptr,
+                            current->utcb->ti());
+
+        sys_finish<Sys_regs::SUCCESS>();
+    }
+
     trace (TRACE_SYSCALL, "EC:%p SYS_LOOKUP T:%d B:%#lx", current, s->crd().type(), s->crd().base());
 
     Space *space; Mdb *mdb;
