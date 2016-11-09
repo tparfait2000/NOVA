@@ -159,6 +159,12 @@ class Sys_lookup : public Sys_regs
     public:
         ALWAYS_INLINE
         inline Crd & crd() { return reinterpret_cast<Crd &>(ARG_2); }
+
+        ALWAYS_INLINE
+        inline mword pd_snd() const { return ARG_1 >> 8; }
+
+        ALWAYS_INLINE
+        inline mword pd_dst() const { return ARG_3; }
 };
 
 class Sys_reply : public Sys_regs
