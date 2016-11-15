@@ -50,6 +50,6 @@ void bootstrap()
         Sc *root_sc = new (Pd::root.quota) Sc (&Pd::root, NUM_EXC + 2, root_ec, Cpu::id, Sc::default_prio, Sc::default_quantum);
         root_sc->remote_enqueue();
     }
-
+    Ec::clear_instCounter();
     Sc::schedule();
 }

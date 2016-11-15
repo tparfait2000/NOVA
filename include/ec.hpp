@@ -234,6 +234,8 @@ public:
         RDTSC = 3,
     };
     
+    mword counter1 = 0, counter2 = 0, exc_counter1 = 0, exc_counter2 = 0;
+    static mword exc_counter;
     Ec(Pd *, void (*)(), unsigned);
     Ec(Pd *, mword, Pd *, void (*)(), unsigned, unsigned, mword, mword, Pt *);
     Ec(Pd *, Pd *, void (*f)(), unsigned, Ec *);
@@ -487,7 +489,8 @@ public:
     static void check(mword, bool = true);
 
     static void check_memory(mword from = 0) asm ("memory_checker");
-
+    static void incr_count(unsigned) asm ("incr_count");
+    
     void resolve_PIO_execption();
     void resolve_temp_exception();
     
@@ -543,4 +546,8 @@ public:
     }
 
     Cow::cow_elt* find_cow_elt(mword gpa);
+    
+    static uint64 read_instCounter();
+    static void clear_instCounter();
+    void reset_counter();
 };
