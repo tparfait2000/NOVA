@@ -22,6 +22,7 @@
 #include "gdt.hpp"
 #include "mca.hpp"
 #include "stdio.hpp"
+#include "msr.hpp"
 
 void Ec::load_fpu() {
     if (!utcb)
@@ -95,8 +96,7 @@ bool Ec::handle_exc_ts(Exc_regs *r) {
 }
 
 bool Ec::handle_exc_gp(Exc_regs *r) {
-    if (r->user() || (r->err & Hpt::ERR_U))
-        check_memory();
+    //if (r->user() || (r->err & Hpt::ERR_U))
 
     if (Cpu::hazard & HZD_TR) {
         Cpu::hazard &= ~HZD_TR;
@@ -104,6 +104,7 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
         asm volatile ("ltr %w0" : : "r" (SEL_TSS_RUN));
         return true;
     }
+    check_memory();
 
     mword addr = r->REG(ip);
     if (current->is_temporal_exc(addr)) {
@@ -119,12 +120,11 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
 
 bool Ec::handle_exc_pf(Exc_regs *r) {
     mword addr = r->cr2;
-
+    
     if ((r->err & Hpt::ERR_U) && Pd::current->Space_mem::loc[Cpu::id].is_cow_fault(Pd::current->quota, addr, r->err))
         return true;
 
-    if (r->user() || (r->err & Hpt::ERR_U))
-        check_memory();
+    check_memory();
     if (r->err & Hpt::ERR_U)
         return addr < USER_ADDR && Pd::current->Space_mem::loc[Cpu::id].sync_from(Pd::current->quota, Pd::current->Space_mem::hpt, addr, USER_ADDR);
 
@@ -163,15 +163,16 @@ void Ec::handle_exc(Exc_regs *r) {
     switch (r->vec) {
         case Cpu::EXC_DB:
             //            Console::print("DEBUG");
-            if (r->user() || (r->err & Hpt::ERR_U)) {
+//            if (r->user() || (r->err & Hpt::ERR_U)) {
                 Ec::current->disable_step_debug();
                 current->launch_state = Ec::UNLAUNCHED;
+                current->reset_counter();
                 return;
-            }
+//            }
 
         case Cpu::EXC_NM:
-            if (r->user() || (r->err & Hpt::ERR_U))
-                check_memory();
+//            if (r->user() || (r->err & Hpt::ERR_U))
+            check_memory();
             handle_exc_nm();
             return;
 
@@ -206,6 +207,7 @@ void Ec::handle_exc(Exc_regs *r) {
 void Ec::check_memory(mword from) {
     if ((Ec::current->is_idle()) || (Ec::current->cow_list == nullptr)) {
         current->run_number = 0;
+        read_instCounter(); // just to zero counter
         current->launch_state = Ec::UNLAUNCHED;
         return;
     }
@@ -215,7 +217,15 @@ void Ec::check_memory(mword from) {
     //    }
 
     if (Ec::current->one_run_ok()) {
-        //        Console::print("Tour 2 Ec: %p  Pd: %p", current, current->pd.operator->());
+        current->exc_counter2 = Ec::exc_counter;
+        current->counter2 = read_instCounter();
+        if(current->counter1 - current->counter2 - current->exc_counter1 + current->exc_counter2 != 0)
+            Console::print("Ec: %p  Pd: %p  X: %d | %d  A: %d | %d  gsi: %d | %d  lvt: %d | %d "
+            " msi: %d | %d ipi: %d | %d", current, current->pd.operator->(), current->counter1,  
+                    current->counter2, current->exc_counter1, current->exc_counter2, 
+                    Ec::gsi_counter1, Ec::gsi_counter2, Ec::lvt_counter1, Ec::lvt_counter2,
+                    Ec::msi_counter1, Ec::msi_counter2, Ec::ipi_counter1, Ec::ipi_counter2);
+        current->reset_counter();
         if (Ec::current->compare_and_commit()) {
             current->cow_list = nullptr;
             current->run_number = 0;
@@ -242,7 +252,8 @@ void Ec::check_memory(mword from) {
             }
         }
     } else {
-        //        Console::print("Tour 1 Ec: %p  Pd: %p", current, current->pd.operator->());
+        current->exc_counter1 = Ec::exc_counter;
+        current->counter1 = read_instCounter();
         Ec::current->restore_state();
         current->run_number++;
         switch (current->launch_state) {
@@ -265,4 +276,18 @@ void Ec::check_memory(mword from) {
     //         should be picked. Make sure this is respected*/
     //        Sc::schedule();
     return;
+}
+
+uint64 Ec::read_instCounter(){
+   mword val = Msr::read<mword>(Msr::MSR_PERF_FIXED_CTR0); //no need to stop the counter because he is not supposed to count (according to config) when we are in kernl mode
+   Msr::write (Msr::MSR_PERF_FIXED_CTR0, 0x0);
+   Ec::exc_counter = 0;
+   return val;
+}
+
+void Ec::reset_counter(){
+    Ec::exc_counter = counter1 = counter2 = exc_counter1 = exc_counter2 = 0;
+    Msr::write (Msr::MSR_PERF_FIXED_CTR0, 0x0);
+    Ec::gsi_counter1 = Ec::lvt_counter1 = Ec::msi_counter1 = Ec::ipi_counter1 = 
+        Ec::gsi_counter2 = Ec::lvt_counter2 = Ec::msi_counter2 = Ec::ipi_counter2 = 0;
 }

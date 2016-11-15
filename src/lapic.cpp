@@ -124,6 +124,11 @@ void Lapic::timer_handler()
 
 void Lapic::lvt_vector (unsigned vector)
 {
+    if(Ec::current->one_run_ok())
+        Ec::lvt_counter2++;
+    else
+        Ec::lvt_counter1++;
+    
     unsigned lvt = vector - VEC_LVT;
 
     switch (vector) {
@@ -140,6 +145,10 @@ void Lapic::lvt_vector (unsigned vector)
 
 void Lapic::ipi_vector (unsigned vector)
 {
+    if(Ec::current->one_run_ok())
+        Ec::ipi_counter2++;
+    else
+        Ec::ipi_counter1++;
     unsigned ipi = vector - VEC_IPI;
 
     switch (vector) {

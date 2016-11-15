@@ -88,6 +88,11 @@ void Gsi::unmask (unsigned gsi)
 
 void Gsi::vector (unsigned vector)
 {
+    if(Ec::current->one_run_ok())
+        Ec::gsi_counter2++;
+    else
+        Ec::gsi_counter1++;
+    
     unsigned gsi = vector - VEC_GSI;
 
     if (gsi == Keyb::gsi)

@@ -87,6 +87,8 @@ INTRGATE                \DPL
  */
 entry_exc:              push    $0
 entry_exc_error:        SAVE_STATE
+                        mov     OFS_CS (%REG(bx)), %ARG_1
+                        call    incr_count
                         mov     %cr2, %REG(ax)
                         mov     %REG(ax), OFS_CR2 (%REG(bx))
                         mov     %REG(bx), %ARG_1
@@ -130,6 +132,8 @@ INTRGATE                0
 
 entry_gsi:              push    $0
                         SAVE_STATE
+                        mov     OFS_CS (%REG(bx)), %ARG_1
+                        call    incr_count
                         mov     OFS_VEC (%REG(bx)), %ARG_1
                         call    gsi_vector
                         jmp     ret_from_interrupt
@@ -146,6 +150,8 @@ INTRGATE                0
 
 entry_lvt:              push    $0
                         SAVE_STATE
+                        mov     OFS_CS (%REG(bx)), %ARG_1
+                        call    incr_count
                         mov     OFS_VEC (%REG(bx)), %ARG_1
                         call    lvt_vector
                         jmp     ret_from_interrupt
@@ -162,6 +168,8 @@ INTRGATE                0
 
 entry_msi:              push    $0
                         SAVE_STATE
+                        mov     OFS_CS (%REG(bx)), %ARG_1
+                        call    incr_count
                         mov     OFS_VEC (%REG(bx)), %ARG_1
                         call    msi_vector
                         jmp     ret_from_interrupt
@@ -178,6 +186,8 @@ INTRGATE                0
 
 entry_ipi:              push    $0
                         SAVE_STATE
+                        mov     OFS_CS (%REG(bx)), %ARG_1
+                        call    incr_count
                         mov     OFS_VEC (%REG(bx)), %ARG_1
                         call    ipi_vector
                         jmp     ret_from_interrupt

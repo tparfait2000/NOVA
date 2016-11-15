@@ -31,10 +31,13 @@
 #include "vtlb.hpp"
 #include "sm.hpp"
 #include "pt.hpp"
+#include "msr.hpp"
 
 INIT_PRIORITY(PRIO_SLAB)
 Slab_cache Ec::cache(sizeof (Ec), 32);
-
+mword Ec::exc_counter = 0, Ec::gsi_counter1 = 0, 
+        Ec::lvt_counter1 = 0, Ec::msi_counter1 = 0, Ec::ipi_counter1 = 0, Ec::gsi_counter2 = 0,
+        Ec::lvt_counter2 = 0, Ec::msi_counter2 = 0, Ec::ipi_counter2 = 0;
 Ec *Ec::current, *Ec::fpowner;
 // Constructors
 
@@ -274,7 +277,6 @@ void Ec::ret_user_sysexit() {
         current->save_state();
         current->launch_state = Ec::SYSEXIT;
     }
-    //    memset(reinterpret_cast<void*> (SPC_LOCAL_IOP), ~0u, 2*PAGE_SIZE);
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : "memory");
 
     UNREACHED;
@@ -795,4 +797,19 @@ Cow::cow_elt* Ec::find_cow_elt(mword gpa) {
         Console::print("Cow elt not find");
     }
     return result;
+}
+
+void Ec::clear_instCounter(){
+    //Msr::write (Msr::IA32_PMC0, 0x0);
+    //Msr::write (Msr::IA32_PMC1, 0x0);
+    Msr::write (Msr::MSR_PERF_GLOBAL_CTRL, 0x700000003);
+    Msr::write (Msr::MSR_PERF_FIXED_CTR0, 0x0);
+    //Msr::write (Msr::IA32_PERFEVTSEL0, 0x004100c0);
+    //Msr::write (Msr::IA32_PERFEVTSEL1, 0x004100c8);
+    Msr::write (Msr::MSR_PERF_FIXED_CTRL, 0x2);
+}
+
+void Ec::incr_count(unsigned cs){
+    if(cs & 3)
+        Ec::exc_counter++;
 }
