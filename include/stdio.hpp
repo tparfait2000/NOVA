@@ -25,6 +25,8 @@
 #include "cpu.hpp"
 #include "memory.hpp"
 
+#define DEBUG 0
+
 #define trace(T,format,...)                                         \
 do {                                                                \
     if (EXPECT_FALSE ((trace_mask & (T)) == (T))) {                 \
@@ -74,7 +76,7 @@ unsigned const trace_mask =
 //                            TRACE_ACPI      |
 //                            TRACE_MEMORY    |
 //                            TRACE_PCI       |
-//                            TRACE_SCHEDULE  |
+                            TRACE_SCHEDULE  |
 //                            TRACE_VTLB      |
 //                            TRACE_DEL       |
 //                            TRACE_REV       |

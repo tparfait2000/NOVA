@@ -25,6 +25,7 @@
 #include "memory.hpp"
 #include "msr.hpp"
 #include "x86.hpp"
+#include "console.hpp"
 
 class Lapic
 {
@@ -105,6 +106,7 @@ class Lapic
     public:
         static unsigned freq_tsc;
         static unsigned freq_bus;
+        static uint64 prev_tsc;
 
         ALWAYS_INLINE
         static inline unsigned id()
@@ -133,12 +135,14 @@ class Lapic
         ALWAYS_INLINE
         static inline void set_timer (uint64 tsc)
         {
+            uint64 now = rdtsc();
             if (freq_bus) {
-                uint64 now = rdtsc();
                 uint32 icr;
                 write (LAPIC_TMR_ICR, tsc > now && (icr = static_cast<uint32>(tsc - now) / (freq_tsc / freq_bus)) > 0 ? icr : 1);
             } else
                 Msr::write (Msr::IA32_TSC_DEADLINE, tsc);
+            Console::print("TSC: %llu  NOW: %llu  TSC - NOW: %llu ", tsc, now, (tsc - now)/freq_tsc);
+            prev_tsc = now;
         }
 
         ALWAYS_INLINE

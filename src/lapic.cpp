@@ -31,6 +31,7 @@
 
 unsigned    Lapic::freq_tsc;
 unsigned    Lapic::freq_bus;
+uint64    Lapic::prev_tsc;
 
 void Lapic::init()
 {
@@ -115,6 +116,8 @@ void Lapic::error_handler()
 
 void Lapic::timer_handler()
 {
+    uint64 now = rdtsc();
+    Console::print("now: %llu  prev_tsc: %llu  prev_tsc - now: %llu ", now, prev_tsc, (now - prev_tsc)/freq_tsc);
     bool expired = (freq_bus ? read (LAPIC_TMR_CCR) : Msr::read<uint64>(Msr::IA32_TSC_DEADLINE)) == 0;
     if (expired)
         Timeout::check();
