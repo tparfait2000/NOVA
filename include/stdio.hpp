@@ -76,7 +76,7 @@ unsigned const trace_mask =
 //                            TRACE_ACPI      |
 //                            TRACE_MEMORY    |
 //                            TRACE_PCI       |
-                            TRACE_SCHEDULE  |
+//                            TRACE_SCHEDULE  |
 //                            TRACE_VTLB      |
 //                            TRACE_DEL       |
 //                            TRACE_REV       |

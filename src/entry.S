@@ -224,6 +224,7 @@ entry_sysenter:         LOAD_KSP
                         pushfq
 #endif
                         SAVE_GPR
+                        mov     $1258, %ARG_1
                         call    memory_checker
                         LOAD_GPR
 #ifdef __i386__

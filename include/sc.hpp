@@ -71,7 +71,7 @@ class Sc : public Kobject, public Refex<~0U>
         static Sc *     current     CPULOCAL_HOT;
         static unsigned ctr_link    CPULOCAL;
         static unsigned ctr_loop    CPULOCAL;
-
+        
         static unsigned const default_prio = 1;
         static unsigned const default_quantum = 10000;
 

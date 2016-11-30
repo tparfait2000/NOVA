@@ -52,7 +52,7 @@ void Mca::init()
 void Mca::vector()
 {
     uint64 sts;
-
+    Console::print("MCA error");
     for (unsigned i = 0; i < banks; i++)
         if ((sts = Msr::read<uint64>(Msr::Register (4 * i + Msr::IA32_MCI_STATUS))) & 1ULL << 63)
             trace (TRACE_ERROR, "Machine Check B%u: %#018llx", i, sts);

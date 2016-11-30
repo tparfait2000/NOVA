@@ -218,7 +218,7 @@ public:
     mword io_addr, io_attr;
     int step_reason = NIL;
     Paddr io_phys;
-    bool ec_debug = false;
+    static bool ec_debug;
     enum Launch_type {
         UNLAUNCHED = 0,
         SYSEXIT = 1,
@@ -234,8 +234,9 @@ public:
         RDTSC = 3,
     };
     
-    mword counter1 = 0, counter2 = 0, exc_counter1 = 0, exc_counter2 = 0, interrupt_counter2 = 0;
-    static mword exc_counter, gsi_counter1, lvt_counter1, msi_counter1, ipi_counter1,
+    mword counter1 = 0, counter2 = 0;
+    int exc_counter1 = 0, exc_counter2 = 0, interrupt_counter2 = 0;
+    static int exc_counter, gsi_counter1, lvt_counter1, msi_counter1, ipi_counter1,
             gsi_counter2, lvt_counter2, msi_counter2, ipi_counter2;
     Ec(Pd *, void (*)(), unsigned);
     Ec(Pd *, mword, Pd *, void (*)(), unsigned, unsigned, mword, mword, Pt *);
@@ -489,15 +490,11 @@ public:
     template <void(*C)()>
     static void check(mword, bool = true);
 
-    static void check_memory(mword from = 0) asm ("memory_checker");
+    static void check_memory(int pmi = 0) asm ("memory_checker");
     static void incr_count(unsigned) asm ("incr_count");
     
     void resolve_PIO_execption();
     void resolve_temp_exception();
-    
-    void launch_memory_check() {
-        check_memory();
-    }
 
     void enable_step_debug(mword fault_addr = 0, Paddr fault_phys = 0, mword fault_attr = 0, Step_reason raison = NIL); 
     void disable_step_debug();
@@ -551,4 +548,5 @@ public:
     static uint64 read_instCounter();
     static void clear_instCounter();
     void reset_counter();
+    static void activate_pmi(int);
 };

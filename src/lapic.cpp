@@ -32,6 +32,7 @@
 unsigned    Lapic::freq_tsc;
 unsigned    Lapic::freq_bus;
 uint64    Lapic::prev_tsc;
+unsigned    Lapic::begin_time;
 
 void Lapic::init()
 {
@@ -106,7 +107,11 @@ void Lapic::send_ipi (unsigned cpu, unsigned vector, Delivery_mode dlv, Shorthan
 
 void Lapic::therm_handler() {}
 
-void Lapic::perfm_handler() {}
+void Lapic::perfm_handler() {
+    Console::print("PERF INTERRUPT X: %d | %d  A: %d | %d", Ec::current->counter1, 
+            Ec::current->exc_counter1, Ec::read_instCounter(), Ec::exc_counter);
+    Ec::check_memory(1255);
+}
 
 void Lapic::error_handler()
 {
@@ -116,8 +121,10 @@ void Lapic::error_handler()
 
 void Lapic::timer_handler()
 {
-    uint64 now = rdtsc();
-    Console::print("now: %llu  prev_tsc: %llu  prev_tsc - now: %llu ", now, prev_tsc, (now - prev_tsc)/freq_tsc);
+//    Console::print("Timer interrupt");
+//    uint64 now = rdtsc();
+//    if((now - begin_time) > max_time * freq_tsc/1000)
+//        Ec::check_memory(1251);
     bool expired = (freq_bus ? read (LAPIC_TMR_CCR) : Msr::read<uint64>(Msr::IA32_TSC_DEADLINE)) == 0;
     if (expired)
         Timeout::check();
@@ -127,10 +134,10 @@ void Lapic::timer_handler()
 
 void Lapic::lvt_vector (unsigned vector)
 {
-    if(Ec::current->one_run_ok())
-        Ec::lvt_counter2++;
-    else
-        Ec::lvt_counter1++;
+//    if(Ec::current->one_run_ok())
+//        Ec::lvt_counter2++;
+//    else
+//        Ec::lvt_counter1++;
     
     unsigned lvt = vector - VEC_LVT;
 
@@ -148,10 +155,10 @@ void Lapic::lvt_vector (unsigned vector)
 
 void Lapic::ipi_vector (unsigned vector)
 {
-    if(Ec::current->one_run_ok())
-        Ec::ipi_counter2++;
-    else
-        Ec::ipi_counter1++;
+//    if(Ec::current->one_run_ok())
+//        Ec::ipi_counter2++;
+//    else
+//        Ec::ipi_counter1++;
     unsigned ipi = vector - VEC_IPI;
 
     switch (vector) {

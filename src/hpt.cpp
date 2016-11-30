@@ -130,7 +130,7 @@ bool Hpt::is_cow_fault(Quota &quota, mword v, mword err) {
 //                                    v, phys, a);
             ////                Ec::current->ec_debug = false;
             //            }
-            Ec::current->launch_memory_check();
+            Ec::current->check_memory(1257);
             update(quota, v, 0, phys, a | Hpt::HPT_P, Hpt::TYPE_UP, false); // the old frame may have been released; so we have to retain it
             cow_flush(v);
 //            Console::print("Read MMIO");

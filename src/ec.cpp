@@ -35,9 +35,10 @@
 
 INIT_PRIORITY(PRIO_SLAB)
 Slab_cache Ec::cache(sizeof (Ec), 32);
-mword Ec::exc_counter = 0, Ec::gsi_counter1 = 0, 
+int Ec::exc_counter = 0, Ec::gsi_counter1 = 0, 
         Ec::lvt_counter1 = 0, Ec::msi_counter1 = 0, Ec::ipi_counter1 = 0, Ec::gsi_counter2 = 0,
         Ec::lvt_counter2 = 0, Ec::msi_counter2 = 0, Ec::ipi_counter2 = 0;
+bool Ec::ec_debug = false;
 Ec *Ec::current, *Ec::fpowner;
 // Constructors
 
@@ -806,7 +807,7 @@ void Ec::clear_instCounter(){
     Msr::write (Msr::MSR_PERF_FIXED_CTR0, 0x0);
     //Msr::write (Msr::IA32_PERFEVTSEL0, 0x004100c0);
     //Msr::write (Msr::IA32_PERFEVTSEL1, 0x004100c8);
-    Msr::write (Msr::MSR_PERF_FIXED_CTRL, 0x2);
+    Msr::write (Msr::MSR_PERF_FIXED_CTRL, 0xa);
 }
 
 void Ec::incr_count(unsigned cs){

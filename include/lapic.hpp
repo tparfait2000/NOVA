@@ -108,6 +108,10 @@ class Lapic
         static unsigned freq_bus;
         static uint64 prev_tsc;
 
+        static unsigned const max_time = 800; // 1000 => 1µs (ou 1000ns) si freq_tsc/1000000
+                                               // 1000 => 1000µs (ou 1ms) si freq_tsc/1000 
+        static unsigned begin_time;
+       
         ALWAYS_INLINE
         static inline unsigned id()
         {
@@ -136,13 +140,15 @@ class Lapic
         static inline void set_timer (uint64 tsc)
         {
             uint64 now = rdtsc();
+            tsc = (tsc - now) * 1000000/freq_tsc > max_time ? now + freq_tsc/1000000 * max_time : tsc;
+//            if((tsc - now) * 1000000/freq_tsc > max_time )
+//                Console::print("TSC : %lld", (tsc - now) * 1000/freq_tsc);
             if (freq_bus) {
                 uint32 icr;
                 write (LAPIC_TMR_ICR, tsc > now && (icr = static_cast<uint32>(tsc - now) / (freq_tsc / freq_bus)) > 0 ? icr : 1);
             } else
                 Msr::write (Msr::IA32_TSC_DEADLINE, tsc);
-            Console::print("TSC: %llu  NOW: %llu  TSC - NOW: %llu ", tsc, now, (tsc - now)/freq_tsc);
-            prev_tsc = now;
+            begin_time = static_cast<unsigned>(rdtsc());
         }
 
         ALWAYS_INLINE
