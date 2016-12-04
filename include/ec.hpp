@@ -34,7 +34,6 @@
 #include "si.hpp"
 
 #include "stdio.hpp"
-#include "cow.hpp"
 
 class Utcb;
 class Sm;
@@ -207,9 +206,6 @@ public:
     static Ec *current CPULOCAL_HOT;
     static Ec *fpowner CPULOCAL;
 
-    /*--------Copy on write treatement--------*/
-    Cow::cow_elt *cow_list = nullptr;
-    Spinlock cow_lock;
     uint8 run_number = 0;
     int launch_state = UNLAUNCHED;
     bool debug = false, hardening_started = false;
@@ -234,8 +230,6 @@ public:
         RDTSC = 3,
     };
     
-    mword counter1 = 0, counter2 = 0, exc_counter1 = 0, exc_counter2 = 0;
-    static mword exc_counter;
     Ec(Pd *, void (*)(), unsigned);
     Ec(Pd *, mword, Pd *, void (*)(), unsigned, unsigned, mword, mword, Pt *);
     Ec(Pd *, Pd *, void (*f)(), unsigned, Ec *);
@@ -488,23 +482,15 @@ public:
     template <void(*C)()>
     static void check(mword, bool = true);
 
-    static void check_memory(mword from = 0) asm ("memory_checker");
+    static void check_memory(int pmi = 0) asm ("memory_checker");
     static void incr_count(unsigned) asm ("incr_count");
     
     void resolve_PIO_execption();
     void resolve_temp_exception();
     
-    void launch_memory_check() {
-        check_memory();
-    }
-
     void enable_step_debug(mword fault_addr = 0, Paddr fault_phys = 0, mword fault_attr = 0, Step_reason raison = NIL); 
     void disable_step_debug();
     
-    void restore_state();
-
-    void rollback();
-
     void save_state() {
         regs_0 = regs;
     }
@@ -531,11 +517,6 @@ public:
         return launch_state == UNLAUNCHED;
     }
 
-    bool compare_and_commit();
-
-    bool is_mapped_elsewhere(Paddr phys, Cow::cow_elt* cow);
-    void add_cow(Cow::cow_elt *ce);
-    
     void set_env(uint64 t) {
         // set EAX and EDX to the correct value
         // update EIP
@@ -545,9 +526,10 @@ public:
         regs.REG(ip) += 0x2; // because rdtsc is a 2 bytes long instruction
     }
 
-    Cow::cow_elt* find_cow_elt(mword gpa);
+    Pd* getPd(){
+        return pd;
+    }
     
-    static uint64 read_instCounter();
-    static void clear_instCounter();
-    void reset_counter();
+    void restore_state();
+    void rollback();
 };

@@ -86,9 +86,10 @@ void Ec::handle_exc_nm() {
 }
 
 bool Ec::handle_exc_ts(Exc_regs *r) {
-    if (r->user())
+    if (r->user()) {
+        check_memory(1259);
         return false;
-
+    }
     // SYSENTER with EFLAGS.NT=1 and IRET faulted
     r->REG(fl) &= ~Cpu::EFL_NT;
 
@@ -96,25 +97,24 @@ bool Ec::handle_exc_ts(Exc_regs *r) {
 }
 
 bool Ec::handle_exc_gp(Exc_regs *r) {
-    //if (r->user() || (r->err & Hpt::ERR_U))
-
+    if (r->user())
+        check_memory(1252);
     if (Cpu::hazard & HZD_TR) {
         Cpu::hazard &= ~HZD_TR;
         Gdt::unbusy_tss();
         asm volatile ("ltr %w0" : : "r" (SEL_TSS_RUN));
         return true;
     }
-    check_memory();
 
-    mword addr = r->REG(ip);
-    if (current->is_temporal_exc(addr)) {
+    mword eip = r->REG(ip);
+    if (current->is_temporal_exc(eip)) {
         current->resolve_temp_exception();
         return true;
-    } else if (current->is_io_exc(addr)) {
+    } else if (current->is_io_exc(eip)) {
         current->resolve_PIO_execption();
         return true;
     }
-    Console::print("GP Here: addr: %08lx", addr);
+    Console::print("GP Here: addr: %08lx", eip);
     return false;
 }
 
@@ -124,7 +124,7 @@ bool Ec::handle_exc_pf(Exc_regs *r) {
     if ((r->err & Hpt::ERR_U) && Pd::current->Space_mem::loc[Cpu::id].is_cow_fault(Pd::current->quota, addr, r->err))
         return true;
 
-    check_memory();
+    check_memory(1254);
     if (r->err & Hpt::ERR_U)
         return addr < USER_ADDR && Pd::current->Space_mem::loc[Cpu::id].sync_from(Pd::current->quota, Pd::current->Space_mem::hpt, addr, USER_ADDR);
 
@@ -163,16 +163,18 @@ void Ec::handle_exc(Exc_regs *r) {
     switch (r->vec) {
         case Cpu::EXC_DB:
             //            Console::print("DEBUG");
-//            if (r->user() || (r->err & Hpt::ERR_U)) {
+            if (r->user()) {
                 Ec::current->disable_step_debug();
                 current->launch_state = Ec::UNLAUNCHED;
-                current->reset_counter();
                 return;
-//            }
+            } else {
+                Console::print("Debug in kernel");
+                break;
+            }
 
         case Cpu::EXC_NM:
-//            if (r->user() || (r->err & Hpt::ERR_U))
-            check_memory();
+            if (r->user())
+                check_memory(1253);
             handle_exc_nm();
             return;
 
@@ -197,43 +199,38 @@ void Ec::handle_exc(Exc_regs *r) {
     }
 
     if (r->user()) {
-        check_memory();
+        check_memory(1256);
         send_msg<ret_user_iret>();
     }
 
     die("EXC", r);
 }
 
-void Ec::check_memory(mword from) {
-    if ((Ec::current->is_idle()) || (Ec::current->cow_list == nullptr)) {
-        current->run_number = 0;
-        read_instCounter(); // just to zero counter
-        current->launch_state = Ec::UNLAUNCHED;
+void Ec::check_memory(int pmi) {
+    Ec *ec = current;
+    Pd *pd = ec->getPd();
+    if (ec->is_idle() || !pd->cow_list) {
+        ec->run_number = 0;
+        ec->launch_state = Ec::UNLAUNCHED;
         return;
     }
     //    if (!current->user_utcb) {
     //        Console::print(".....  Checking memory from %d. eip: %p", from, Ec::current->regs.REG(ip));
     //        current->ec_debug= true;
     //    }
-
-    if (Ec::current->one_run_ok()) {
-        current->exc_counter2 = Ec::exc_counter;
-        current->counter2 = read_instCounter();
-//        if(current->counter1 - current->counter2 - current->exc_counter1 + current->exc_counter2 != 0)
-//            Console::print("Ec: %p  Pd: %p  X: %d | %d  A: %d | %d", current, current->pd.operator->(), current->counter1,  
-//                    current->counter2, current->exc_counter1, current->exc_counter2);
-        current->reset_counter();
-        if (Ec::current->compare_and_commit()) {
-            current->cow_list = nullptr;
-            current->run_number = 0;
-            current->launch_state = Ec::UNLAUNCHED;
+//    Console::print(".....  Checking memory from %d  Ec: %p", pmi, ec);
+    if (ec->one_run_ok()) {
+       if (pd->compare_and_commit()) {
+            ec->run_number = 0;
+            ec->launch_state = Ec::UNLAUNCHED;
+            pd->cow_list = nullptr;
             return;
         } else {
-            Console::print("Checking failed");
-            Ec::current->rollback();
-            current->run_number = 0;
-            current->cow_list = nullptr;
-            switch (current->launch_state) {
+            Console::print("Checking failed Ec: %p", ec);
+            ec->rollback();
+            ec->run_number = 0;
+            pd->cow_list = nullptr;
+            switch (ec->launch_state) {
                 case Ec::SYSEXIT:
                     Ec::ret_user_sysexit();
                     break;
@@ -249,11 +246,9 @@ void Ec::check_memory(mword from) {
             }
         }
     } else {
-        current->exc_counter1 = Ec::exc_counter;
-        current->counter1 = read_instCounter();
-        Ec::current->restore_state();
-        current->run_number++;
-        switch (current->launch_state) {
+        ec->restore_state();
+        ec->run_number++;
+        switch (ec->launch_state) {
             case Ec::SYSEXIT:
                 Ec::ret_user_sysexit();
                 break;
@@ -273,16 +268,4 @@ void Ec::check_memory(mword from) {
     //         should be picked. Make sure this is respected*/
     //        Sc::schedule();
     return;
-}
-
-uint64 Ec::read_instCounter(){
-   mword val = Msr::read<mword>(Msr::MSR_PERF_FIXED_CTR0); //no need to stop the counter because he is not supposed to count (according to config) when we are in kernl mode
-   Msr::write (Msr::MSR_PERF_FIXED_CTR0, 0x0);
-   Ec::exc_counter = 0;
-   return val;
-}
-
-void Ec::reset_counter(){
-    Ec::exc_counter = counter1 = counter2 = exc_counter1 = exc_counter2 = 0;
-    Msr::write (Msr::MSR_PERF_FIXED_CTR0, 0x0);
 }

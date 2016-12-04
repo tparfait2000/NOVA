@@ -35,7 +35,6 @@
 
 INIT_PRIORITY(PRIO_SLAB)
 Slab_cache Ec::cache(sizeof (Ec), 32);
-mword Ec::exc_counter = 0;
 Ec *Ec::current, *Ec::fpowner;
 // Constructors
 
@@ -570,13 +569,6 @@ void Ec::resolve_temp_exception() {
     Ec::current->enable_step_debug(0, 0, 0, Step_reason::RDTSC);
 }
 
-void Ec::add_cow(Cow::cow_elt *ce) {
-    Lock_guard <Spinlock> guard(cow_lock);
-    Cow::cow_elt *tampon = cow_list;
-    cow_list = ce;
-    ce->next = tampon;
-}
-
 void Ec::enable_step_debug(mword fault_addr, Paddr fault_phys, mword fault_attr, Step_reason reason) {
     regs.REG(fl) |= Cpu::EFL_TF;
     io_addr = fault_addr;
@@ -623,191 +615,11 @@ void Ec::disable_step_debug() {
 }
 
 void Ec::restore_state() {
-    Lock_guard <Spinlock> guard(cow_lock);
-    Cow::cow_elt *cow = current->cow_list;
-    if (user_utcb) {
-        Quota quota = Pd::current->quota;
-        while (cow != nullptr) {
-            mword v = cow->page_addr_or_gpa;
-            Pd::current->Space_mem::loc[Cpu::id].update(quota, v, 0, cow->new_phys[1]->phys_addr, cow->attr | Hpt::HPT_W, Hpt::TYPE_UP, false);
-            Hpt::cow_flush(v);
-            cow = cow->next;
-        }
-    } else if (Hip::feature() & Hip::FEAT_SVM) {
-        memcpy(vmcb1, regs.vmcb, PAGE_SIZE);
-        memcpy(regs_0.vmcb, vmcb_backup, PAGE_SIZE);
-        Vtlb *tlb = regs.vtlb;
-        while (cow != nullptr) {
-            mword v = cow->gla;
-            tlb->update(v, cow->new_phys[1]->phys_addr, cow->attr | Vtlb::TLB_W);
-            cow = cow->next;
-        }
-    } else if (Hip::feature() & Hip::FEAT_VMX) {
-        memcpy(vmcs1, regs.vmcs, PAGE_SIZE);
-        memcpy(regs_0.vmcs, vmcs_backup, PAGE_SIZE);
-        Vtlb *tlb = regs.vtlb;
-        while (cow != nullptr) {
-            mword v = cow->gla;
-            tlb->update(v, cow->new_phys[1]->phys_addr, cow->attr | Vtlb::TLB_W);
-            cow = cow->next;
-        }
-    }
+    pd->restore_state();
     regs = regs_0;
-
 }
 
 void Ec::rollback() {
     regs = regs_0;
-    Lock_guard <Spinlock> guard(cow_lock);
-    Cow::cow_elt *cow = current->cow_list;
-    Hpt hpt = Pd::current->Space_mem::loc[Cpu::id];
-    Quota quota = Pd::current->quota;
-    if (user_utcb) {
-        while (cow != nullptr) {
-            Paddr old_phys = cow->old_phys;
-            mword v = cow->page_addr_or_gpa;
-            hpt.update(quota, v, 0, old_phys, cow->attr & ~Hpt::HPT_W, Hpt::TYPE_UP, true);
-            Hpt::cow_flush(v);
-            Cow::free_cow_elt(cow);
-            cow = cow->next;
-        }
-    } else if (Hip::feature() & Hip::FEAT_SVM) {
-        memcpy(regs.vmcb, vmcb_backup, PAGE_SIZE);
-        Vtlb *tlb = regs.vtlb;
-        while (cow != nullptr) {
-            Paddr old_phys = cow->old_phys;
-            mword v = cow->gla;
-            tlb->update(v, old_phys, cow->attr & ~Vtlb::TLB_W);
-            v = cow->page_addr_or_gpa;
-            hpt.update(quota, v, 0, old_phys, cow->attr & ~Hpt::HPT_W, Hpt::TYPE_UP, true);
-            Hpt::cow_flush(v);
-            Cow::free_cow_elt(cow);
-            cow = cow->next;
-        }
-    } else if (Hip::feature() & Hip::FEAT_VMX) {
-        memcpy(regs.vmcs, vmcs_backup, PAGE_SIZE);
-        Vtlb *tlb = regs.vtlb;
-        while (cow != nullptr) {
-            Paddr old_phys = cow->old_phys;
-            mword v = cow->gla;
-            tlb->update(v, old_phys, cow->attr & ~Vtlb::TLB_W);
-            v = cow->page_addr_or_gpa;
-            hpt.update(quota, v, 0, old_phys, cow->attr & ~Hpt::HPT_W, Hpt::TYPE_UP, true);
-            Hpt::cow_flush(v);
-            Cow::free_cow_elt(cow);
-            cow = cow->next;
-        }
-    }
-}
-
-bool Ec::compare_and_commit() {
-    Lock_guard <Spinlock> guard(cow_lock);
-    Cow::cow_elt *cow = current->cow_list;
-    Quota quota = Pd::current->quota;
-    Hpt hpt = Pd::current->Space_mem::loc[Cpu::id];
-    if (user_utcb) {
-        while (cow != nullptr) {
-            const void *ptr1 = reinterpret_cast<const void*> (Hpt::remap_cow(quota, cow->new_phys[0]->phys_addr)),
-                    *ptr2 = reinterpret_cast<const void*> (cow->page_addr_or_gpa);
-            int missmatch_addr = memcmp(ptr1, ptr2, PAGE_SIZE);
-            if (missmatch_addr) {
-                Console::print("Ec: %p  Pd: %p  ptr1: %p  "
-                        "ptr2: %p  missmatch_addr: %x", current, current->pd.operator->(), ptr1, ptr2, ptr2 +(PAGE_SIZE/4 - missmatch_addr - 1)*4);
-                return false;
-            }
-            Paddr old_phys = cow->old_phys;
-            mword v = cow->page_addr_or_gpa;
-            void *ptr = Hpt::remap_cow(quota, old_phys);
-            memcpy(ptr, reinterpret_cast<const void*> (v), PAGE_SIZE);
-            hpt.update(quota, v, 0, old_phys, cow->attr & ~Hpt::HPT_W, Hpt::TYPE_UP, true); // the old frame may have been released; so we have to retain it
-            Hpt::cow_flush(v);
-            Cow::free_cow_elt(cow);
-            cow = cow->next;
-        }
-    } else {
-        Vtlb *tlb = regs.vtlb;
-        while (cow != nullptr) {
-            Paddr old_phys = cow->old_phys;
-            mword v = cow->page_addr_or_gpa;
-            hpt.update(quota, v, 0, cow->new_phys[1]->phys_addr, cow->attr, Hpt::TYPE_UP, true);
-            Hpt::cow_flush(v);
-            const void *ptr1 = reinterpret_cast<const void*> (Hpt::remap_cow(quota, cow->new_phys[0]->phys_addr)),
-                    *ptr2 = reinterpret_cast<const void*> (v);
-            if (memcmp(ptr1, ptr2, PAGE_SIZE)) {
-                Console::print("old_phys: %08lx  v: %08lx  new_phys[0]: %08lx  new_phys[1]: %08lx  ptr1: %p  "
-                        "ptr2: %p", old_phys, v, cow->new_phys[0]->phys_addr, cow->new_phys[1]->phys_addr, ptr1, ptr2);
-                //                if (nb_fail > 0) {
-                current->debug = true;
-                return false;
-                //                } else
-                //                    nb_fail++;
-            }
-            void *ptr = Hpt::remap_cow(quota, old_phys);
-            memcpy(ptr, reinterpret_cast<const void*> (v), PAGE_SIZE);
-            hpt.update(quota, v, 0, old_phys, cow->attr, Hpt::TYPE_UP, true);
-            Hpt::cow_flush(v);
-            tlb->update(cow->gla, old_phys, cow->attr & ~Vtlb::TLB_W);
-            Cow::free_cow_elt(cow);
-            cow = cow->next;
-        }
-    }
-    return true;
-}
-
-bool Ec::is_mapped_elsewhere(Paddr phys, Cow::cow_elt* cow) {
-    Lock_guard <Spinlock> guard(cow_lock);
-    bool is_mapped = false;
-    Cow::cow_elt *c = Ec::current->cow_list;
-    while ((c != nullptr) && (c != cow)) {
-        if (c->old_phys == phys) {//frame already mapped elsewhere
-            cow->old_phys = phys;
-            cow->new_phys[0] = c->new_phys[0];
-            cow->new_phys[1] = c->new_phys[1];
-            is_mapped = true;
-        }
-        if (c->new_phys[0] && c->new_phys[0]->phys_addr == phys) {//mapping created before subtitute(v)
-            cow->old_phys = c->old_phys;
-            cow->new_phys[0] = c->new_phys[0];
-            cow->new_phys[1] = c->new_phys[1];
-            is_mapped = true;
-        }
-
-        c = c->next;
-    }
-    if (is_mapped)
-        return true;
-    else
-        return false;
-}
-
-Cow::cow_elt* Ec::find_cow_elt(mword gpa) {
-    int n = 0;
-    Lock_guard <Spinlock> guard(cow_lock);
-    Cow::cow_elt *c = Ec::current->cow_list, *result = nullptr;
-    while (c != nullptr) {
-        if (c->old_phys == (gpa & ~PAGE_MASK)) {
-            result = c;
-            n++;
-        }
-    }
-    if (n != 1) {
-        die("Cow elt not find");
-        Console::print("Cow elt not find");
-    }
-    return result;
-}
-
-void Ec::clear_instCounter(){
-    //Msr::write (Msr::IA32_PMC0, 0x0);
-    //Msr::write (Msr::IA32_PMC1, 0x0);
-    Msr::write (Msr::MSR_PERF_GLOBAL_CTRL, 0x700000003);
-    Msr::write (Msr::MSR_PERF_FIXED_CTR0, 0x0);
-    //Msr::write (Msr::IA32_PERFEVTSEL0, 0x004100c0);
-    //Msr::write (Msr::IA32_PERFEVTSEL1, 0x004100c8);
-    Msr::write (Msr::MSR_PERF_FIXED_CTRL, 0x2);
-}
-
-void Ec::incr_count(unsigned cs){
-    if(cs & 3)
-        Ec::exc_counter++;
+    pd->rollback();
 }
