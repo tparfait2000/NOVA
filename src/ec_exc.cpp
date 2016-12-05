@@ -122,7 +122,7 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
 
 bool Ec::handle_exc_pf(Exc_regs *r) {
     mword addr = r->cr2;
-
+    
     if ((r->err & Hpt::ERR_U) && Pd::current->Space_mem::loc[Cpu::id].is_cow_fault(Pd::current->quota, addr, r->err))
         return true;
 
@@ -213,10 +213,11 @@ void Ec::handle_exc(Exc_regs *r) {
 }
 
 void Ec::check_memory(int pmi) {
-    if ((Ec::current->is_idle()) || (Ec::current->cow_list == nullptr)) {
-        current->run_number = 0;
-        read_instCounter(); // just to zero counter
-        current->launch_state = Ec::UNLAUNCHED;
+    Ec *ec = current;
+    Pd *pd = ec->getPd();
+    if (ec->is_idle() || !pd->cow_list) {
+        ec->run_number = 0;
+        ec->launch_state = Ec::UNLAUNCHED;
         return;
     }
 
@@ -224,33 +225,33 @@ void Ec::check_memory(int pmi) {
 //        Console::print(".....  Checking memory from %d ", pmi);
 //        //        current->ec_debug= true;
 //    }
-    if (Ec::current->one_run_ok()) {
-        current->exc_counter2 = Ec::exc_counter;
-        current->counter2 = read_instCounter();
-        current->reset_counter();
+    if (ec->one_run_ok()) {
+        ec->exc_counter2 = Ec::exc_counter;
+        ec->counter2 = read_instCounter();
+        ec->reset_counter();
         if (Ec::ec_debug) {
             Console::print("PMI: %d  Ec: %p  Pd: %p  X: %d | %d  A: %d | %d  gsi: %d | %d  lvt: %d | %d "
-                    " msi: %d | %d ipi: %d | %d", pmi, current, current->pd.operator->(), current->counter1,
-                    current->counter2, current->exc_counter1, current->exc_counter2,
+                    " msi: %d | %d ipi: %d | %d", pmi, ec, pd, ec->counter1,
+                    ec->counter2, ec->exc_counter1, ec->exc_counter2,
                     Ec::gsi_counter1, Ec::gsi_counter2, Ec::lvt_counter1, Ec::lvt_counter2,
                     Ec::msi_counter1, Ec::msi_counter2, Ec::ipi_counter1, Ec::ipi_counter2);
             Ec::ec_debug = false;
         }
         if (pmi == 1251) {
-            Console::print("PMI: %d  counter1: %ld  exc: %d Run = 1", pmi, current->counter1, current->exc_counter1);
-            Ec::activate_pmi(current->counter1 - current->exc_counter1);
+            Console::print("PMI: %d  counter1: %ld  exc: %d Run = 1", pmi, ec->counter1, ec->exc_counter1);
+            Ec::activate_pmi(ec->counter1 - ec->exc_counter1);
         }
-        if (Ec::current->compare_and_commit()) {
-            current->cow_list = nullptr;
-            current->run_number = 0;
-            current->launch_state = Ec::UNLAUNCHED;
+        if (pd->compare_and_commit()) {
+            pd->cow_list = nullptr;
+            ec->run_number = 0;
+            ec->launch_state = Ec::UNLAUNCHED;
             return;
         } else {
-            Console::print("Checking failed");
-            Ec::current->rollback();
-            current->run_number = 0;
-            current->cow_list = nullptr;
-            switch (current->launch_state) {
+            Console::print("Checking failed Ec: %p", ec);
+            ec->rollback();
+            ec->run_number = 0;
+            pd->cow_list = nullptr;
+            switch (ec->launch_state) {
                 case Ec::SYSEXIT:
                     Ec::ret_user_sysexit();
                     break;
@@ -266,15 +267,15 @@ void Ec::check_memory(int pmi) {
             }
         }
     } else {
-        current->exc_counter1 = Ec::exc_counter;
-        current->counter1 = read_instCounter();
+        ec->exc_counter1 = Ec::exc_counter;
+        ec->counter1 = read_instCounter();
         if (pmi == 1251) {
-            Console::print("PMI: %d  counter1: %ld  exc: %d Run = 1", pmi, current->counter1, current->exc_counter1);
-            Ec::activate_pmi(current->counter1 - current->exc_counter1);
+            Console::print("PMI: %d  counter1: %ld  exc: %d Run = 1", pmi, ec->counter1, ec->exc_counter1);
+            Ec::activate_pmi(ec->counter1 - ec->exc_counter1);
         }
-        Ec::current->restore_state();
-        current->run_number++;
-        switch (current->launch_state) {
+        ec->restore_state();
+        ec->run_number++;
+        switch (ec->launch_state) {
             case Ec::SYSEXIT:
                 Ec::ret_user_sysexit();
                 break;
