@@ -77,7 +77,10 @@ class Sm : public Kobject, public Refcount, public Queue<Ec>, public Queue<Si>, 
                     return;
                 }
 
-                ec->add_ref();
+                if (!ec->add_ref()) {
+                    Sc::schedule (block);
+                    return;
+                }
 
                 Queue<Ec>::enqueue (ec);
             }
@@ -93,32 +96,32 @@ class Sm : public Kobject, public Refcount, public Queue<Ec>, public Queue<Si>, 
         ALWAYS_INLINE
         inline void up (void (*c)() = nullptr, Sm * si = nullptr)
         {
-            Ec *ec;
+            Ec *ec = nullptr;
 
-            {   Lock_guard <Spinlock> guard (lock);
+            do {
+                if (ec)
+                    delete ec;
 
-                loop:
+                {   Lock_guard <Spinlock> guard (lock);
 
-                if (!Queue<Ec>::dequeue (ec = Queue<Ec>::head())) {
+                    if (!Queue<Ec>::dequeue (ec = Queue<Ec>::head())) {
 
-                    if (si) {
-                       if (si->queued()) return;
-                       Queue<Si>::enqueue(si);
+                        if (si) {
+                           if (si->queued()) return;
+                           Queue<Si>::enqueue(si);
+                        }
+
+                        counter++;
+                        return;
                     }
 
-                    counter++;
-                    return;
                 }
 
-                if (EXPECT_FALSE(ec->del_ref())) {
-                    delete ec;
-                    goto loop;
-                }
+                if (si) ec->set_si_regs(si->value, si->reset(true));
 
-                if (si) ec->set_si_regs(si->value, si->reset());
-            }
+                ec->release (c);
 
-            ec->release (c);
+            } while (EXPECT_FALSE(ec->del_ref()));
         }
 
         ALWAYS_INLINE

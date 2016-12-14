@@ -150,6 +150,7 @@ void Ec::oom_xcpu_return()
     current->rcap    = nullptr;
     current->utcb    = nullptr;
     current->fpu     = nullptr;
+    current->xcpu_sm = nullptr;
 
     Rcu::call(current);
     Rcu::call(Sc::current);

@@ -146,6 +146,11 @@ Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone) : Kobject (EC, stati
 //De-constructor
 Ec::~Ec()
 {
+    if (xcpu_sm) {
+        Sm::destroy(xcpu_sm, pd->quota);
+        xcpu_sm = nullptr;
+    }
+
     pre_free(this);
 
     if (pt_oom && pt_oom->del_ref())
@@ -479,6 +484,7 @@ void Ec::xcpu_return()
     current->rcap    = nullptr;
     current->utcb    = nullptr;
     current->fpu     = nullptr;
+    current->xcpu_sm = nullptr;
 
     Rcu::call(current);
     Rcu::call(Sc::current);

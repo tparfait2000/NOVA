@@ -145,7 +145,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         {
             Ec * e = static_cast<Ec *>(a);
 
-            if (!e->utcb && !e->xcpu_sm) {
+            if (e->regs.vtlb) {
                 trace(0, "leaking memory - vCPU EC memory re-usage not supported");
                 return;
             }
