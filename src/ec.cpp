@@ -56,8 +56,8 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
     regs.vmcs = nullptr;
     regs.vmcb = nullptr;
 
-    if (pt_oom)
-        pt_oom->add_ref();
+    if (pt_oom && !pt_oom->add_ref())
+        pt_oom = nullptr;
 
     if (u) {
 
@@ -139,8 +139,8 @@ Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone) : Kobject (EC, stati
     regs.vmcs = nullptr;
     regs.vmcb = nullptr;
 
-    if (pt_oom)
-        pt_oom->add_ref();
+    if (pt_oom && !pt_oom->add_ref())
+        pt_oom = nullptr;
 }
 
 //De-constructor

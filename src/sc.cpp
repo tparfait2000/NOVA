@@ -128,12 +128,11 @@ void Sc::schedule (bool suspend, bool use_left)
 
     Cpu::hazard &= ~HZD_SCHED;
 
-    bool const ref = Ec::current == current->ec;
-    if (EXPECT_FALSE((suspend || ref) && current->del_ref()))
-        delete current;
-    else
     if (EXPECT_TRUE (!suspend))
-        current->ready_enqueue (t, ref, use_left);
+        current->ready_enqueue (t, false, use_left);
+    else
+        if (current->del_rcu())
+            Rcu::call (current);
 
     Sc *sc = list[prio_top];
     assert (sc);

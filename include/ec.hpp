@@ -141,6 +141,9 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
             }
         }
 
+        ALWAYS_INLINE
+        static inline void destroy (Ec *obj, Quota &quota) { obj->~Ec(); cache.free (obj, quota); }
+
         static void free (Rcu_elem * a)
         {
             Ec * e = static_cast<Ec *>(a);
@@ -152,7 +155,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
             if (e->del_ref()) {
                 assert(e != Ec::current);
-                delete e;
+                Ec::destroy (e, e->pd->quota);
             }
         }
 
@@ -166,9 +169,11 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         inline void set_partner (Ec *p)
         {
             partner = p;
-            partner->add_ref();
+            bool ok = partner->add_ref();
+            assert (ok);
             partner->rcap = this;
-            partner->rcap->add_ref();
+            ok = partner->rcap->add_ref();
+            assert (ok);
             Sc::ctr_link++;
         }
 
@@ -177,10 +182,12 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         {
             assert (partner == current);
             if (partner->rcap) {
-                partner->rcap->del_ref();
+                bool last = partner->rcap->del_ref();
+                assert (!last);
                 partner->rcap = nullptr;
             }
-            partner->del_ref();
+            bool last = partner->del_ref();
+            assert (!last);
             partner = nullptr;
             return Sc::ctr_link--;
         }
@@ -240,13 +247,13 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         ALWAYS_INLINE NORETURN
         inline void make_current()
         {
-            if (EXPECT_FALSE(current->del_ref())) {
-                delete current;
-            }
+            if (EXPECT_FALSE (current->del_rcu()))
+                Rcu::call (current);
 
             current = this;
 
-            current->add_ref();
+            bool ok = current->add_ref();
+            assert (ok);
 
             Tss::run.sp0 = reinterpret_cast<mword>(exc_regs() + 1);
 
@@ -284,7 +291,9 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
                 if (!blocked())
                     return;
 
-                Sc::current->add_ref();
+                bool ok = Sc::current->add_ref();
+                assert (ok);
+
                 enqueue (Sc::current);
             }
 
@@ -300,15 +309,12 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
             Lock_guard <Spinlock> guard (lock);
 
             for (Sc *s; dequeue (s = head()); ) {
-                if (EXPECT_FALSE(this != s->ec)) {
+                if (EXPECT_TRUE(!s->last_ref()) || s->ec->partner) {
                     s->remote_enqueue(false);
                     continue;
                 }
-                if (EXPECT_FALSE(s->del_ref())) {
-                    delete s;
-                    continue;
-                }
-                s->remote_enqueue();
+
+                Rcu::call(s);
             }
         }
 
@@ -436,9 +442,6 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
         ALWAYS_INLINE
         static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
-
-        ALWAYS_INLINE
-        static inline void operator delete (void *ptr) { cache.free (ptr, static_cast<Ec *>(ptr)->pd->quota); }
 
         template <void (*)()>
         NORETURN

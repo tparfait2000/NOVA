@@ -211,6 +211,9 @@ void Ec::reply (void (*c)(), Sm * sm)
 
     bool clr = ec->clr_partner();
 
+    if (Sc::current->ec == ec && Sc::current->last_ref())
+        Sc::schedule (true);
+
     if (sm)
         sm->dn (false, 0, ec, clr);
 
@@ -378,7 +381,7 @@ void Ec::sys_create_ec()
 
     if (!Space_obj::insert_root (pd->quota, ec)) {
         trace (TRACE_ERROR, "%s: Non-NULL CAP (%#lx)", __func__, r->sel());
-        delete ec;
+        Ec::destroy (ec, ec->pd->quota);
         sys_finish<Sys_regs::BAD_CAP>();
     }
 
@@ -542,7 +545,8 @@ void Ec::sys_revoke()
                 sys_finish<Sys_regs::BAD_CAP>();
             }
             pd = static_cast<Pd *>(cap.obj());
-            pd->add_ref();
+            if (!pd->add_ref())
+                sys_finish<Sys_regs::BAD_CAP>();
         }
         current->cont = sys_revoke;
 
@@ -555,10 +559,8 @@ void Ec::sys_revoke()
     current->cont = sys_finish<Sys_regs::SUCCESS>;
     r->rem(nullptr);
 
-    if (r->remote() && pd->del_ref()) {
-        pd->add_ref();
+    if (r->remote() && pd->del_rcu())
         Rcu::call(pd);
-    }
 
     if (EXPECT_FALSE (r->sm())) {
         Capability cap_sm = Space_obj::lookup (r->sm());

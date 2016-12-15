@@ -100,7 +100,7 @@ class Sm : public Kobject, public Refcount, public Queue<Ec>, public Queue<Si>, 
 
             do {
                 if (ec)
-                    delete ec;
+                    Rcu::call (ec);
 
                 {   Lock_guard <Spinlock> guard (lock);
 
@@ -121,7 +121,7 @@ class Sm : public Kobject, public Refcount, public Queue<Ec>, public Queue<Si>, 
 
                 ec->release (c);
 
-            } while (EXPECT_FALSE(ec->del_ref()));
+            } while (EXPECT_FALSE(ec->del_rcu()));
         }
 
         ALWAYS_INLINE
@@ -144,8 +144,10 @@ class Sm : public Kobject, public Refcount, public Queue<Ec>, public Queue<Si>, 
 
             rcu = true;
 
-            if (r)
-                add_ref();
+            if (r) {
+                bool ok = add_ref();
+                assert (ok);
+            }
 
             Rcu::call (this);
         }

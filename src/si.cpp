@@ -27,8 +27,12 @@ Si::Si (Sm * s, mword v) : sm(s), prev(nullptr), next(nullptr), value(v)
 {
     trace (TRACE_SYSCALL, "SI:%p created (SM:%p signal:%#lx)", this, s, v);
 
-    if (sm)
-        sm->add_ref();
+    if (sm) {
+        bool ok = sm->add_ref();
+        assert (ok);
+        if (!ok)
+            sm = nullptr;
+    }
 }
 
 Si::~Si()
@@ -55,15 +59,17 @@ void Si::chain(Sm *si)
 
     Lock_guard <Spinlock> guard (lock);
 
-    if (sm && sm->del_ref()) {
-        sm->add_ref();
+    if (sm && sm->del_rcu())
         sm->call_rcu();
-    }
 
     sm = si;
 
-    if (sm)
-        sm->add_ref();
+    if (sm) {
+        bool ok = sm->add_ref();
+        assert (ok);
+        if (!ok)
+            sm = nullptr;
+    }
 
     mword c = kern_sm->reset(true);
 
