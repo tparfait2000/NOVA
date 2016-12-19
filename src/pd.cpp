@@ -273,7 +273,7 @@ void Pd::del_crd (Pd *pd, Crd del, Crd &crd, mword sub, mword hot)
         this->htlb.merge (cpus);
 
     if (s)
-        shootdown();
+        shootdown(this);
 }
 
 void Pd::rev_crd (Crd crd, bool self, bool preempt, bool kim)
@@ -303,7 +303,7 @@ void Pd::rev_crd (Crd crd, bool self, bool preempt, bool kim)
         Cpu::preempt_disable();
 
     if (crd.type() == Crd::MEM)
-        shootdown();
+        shootdown(this);
 }
 
 void Pd::xfer_items (Pd *src, Crd xlt, Crd del, Xfer *s, Xfer *d, unsigned long ti)
