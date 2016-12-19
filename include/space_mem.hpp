@@ -28,6 +28,8 @@
 #include "hpt.hpp"
 #include "space.hpp"
 
+class Pd;
+
 class Space_mem : public Space
 {
     public:
@@ -132,7 +134,7 @@ class Space_mem : public Space
 
         bool update (Quota_guard &quota, Mdb *, mword = 0);
 
-        static void shootdown();
+        static void shootdown(Pd *);
 
         void init (Quota &quota, unsigned);
 

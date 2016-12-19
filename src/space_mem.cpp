@@ -135,11 +135,14 @@ bool Space_mem::update (Quota_guard &quota, Mdb *mdb, mword r)
     return (r || f);
 }
 
-void Space_mem::shootdown()
+void Space_mem::shootdown(Pd * local)
 {
     for (unsigned cpu = 0; cpu < NUM_CPU; cpu++) {
 
         if (!Hip::cpu_online (cpu))
+            continue;
+
+        if (!local->cpus.chk(cpu))
             continue;
 
         Pd *pd = Pd::remote (cpu);
