@@ -29,7 +29,6 @@ class Sm : public Kobject, public Refcount, public Queue<Ec>, public Queue<Si>, 
 {
     private:
         mword counter;
-        bool  rcu;
 
         static Slab_cache cache;
 
@@ -40,7 +39,6 @@ class Sm : public Kobject, public Refcount, public Queue<Ec>, public Queue<Si>, 
                 Pd *pd = static_cast<Pd *>(static_cast<Space_obj *>(sm->space));
                 destroy(sm, pd->quota);
             } else {
-                sm->rcu = false;
                 sm->up();
             }
         }
@@ -137,27 +135,15 @@ class Sm : public Kobject, public Refcount, public Queue<Ec>, public Queue<Si>, 
         }
 
         ALWAYS_INLINE
-        inline void call_rcu(bool r = false)
-        {
-            if (ACCESS_ONCE(rcu))
-                return;
-
-            rcu = true;
-
-            if (r) {
-                bool ok = add_ref();
-                assert (ok);
-            }
-
-            Rcu::call (this);
-        }
-
-        ALWAYS_INLINE
         inline void add_to_rcu()
         {
-            Lock_guard <Spinlock> guard (lock);
+            if (!add_ref())
+                return;
 
-            call_rcu(true);
+            if (!Rcu::call (this))
+                /* enqueued ? - drop our ref and add to rcu if necessary */
+                if (del_rcu())
+                    Rcu::call (this);
         }
 
         ALWAYS_INLINE
