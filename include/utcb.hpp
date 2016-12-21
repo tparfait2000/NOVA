@@ -136,4 +136,25 @@ class Utcb : public Utcb_head, private Utcb_data
 
         ALWAYS_INLINE
         static inline void destroy(Utcb *obj, Quota &quota) { obj->~Utcb(); Buddy::allocator.free (reinterpret_cast<mword>(obj), quota); }
+        
+        mword read_rdi() { return rdi; }
+        mword read_cs_base() { return cs.base; }
+        mword read_cs_lim() { return cs.limit; }
+        uint16 read_cs_sel() { return cs.sel; }
+        mword read_ds_base() { return ds.base; }
+        mword read_ds_lim() { return ds.limit; }
+        uint16 read_ds_sel() { return ds.sel; }
+        mword read_ss_base() { return ss.base; }
+        mword read_ss_lim() { return ss.limit; }
+        uint16 read_ss_sel() { return ss.sel; }
+        mword read_es_base() { return es.base; }
+        mword read_es_lim() { return es.limit; }
+        uint16 read_es_sel() { return es.sel; }
+        mword read_fs_base() { return fs.base; }
+        mword read_fs_lim() { return fs.limit; }
+        uint16 read_fs_sel() { return fs.sel; }
+        mword read_gs_base() { return gs.base; }
+        mword read_gs_lim() { return gs.limit; }
+        uint16 read_gs_sel() { return gs.sel; }
+                
 };

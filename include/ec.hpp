@@ -55,6 +55,7 @@ private:
     Fpu * fpu;
     Vmcb *vmcb_backup, *vmcb1, *vmcb2;
     Vmcs *vmcs_backup, *vmcs1, *vmcs2;
+    static unsigned compteur;
 
     union {
 
@@ -208,8 +209,8 @@ public:
 
     uint8 run_number = 0;
     int launch_state = UNLAUNCHED;
-    bool debug = false, hardening_started = false;
-    int nb_fail = 0;
+    bool debug = false, hardening_started = false, in_step_mode = false;
+    unsigned nb_fail = 0, nbInstr_to_execute = 0;
     int previous_reason = 0, nb_extint = 0;
     mword io_addr, io_attr;
     int step_reason = NIL;
@@ -230,9 +231,8 @@ public:
         RDTSC = 3,
     };
     
-    mword counter1 = 0, counter2 = 0;
-    int exc_counter1 = 0, exc_counter2 = 0, interrupt_counter2 = 0;
-    static int exc_counter, gsi_counter1, lvt_counter1, msi_counter1, ipi_counter1,
+    uint64 counter1 = 0, counter2 = 0;
+    static unsigned step_nb, exc_counter, exc_counter1, exc_counter2, gsi_counter1, lvt_counter1, msi_counter1, ipi_counter1,
             gsi_counter2, lvt_counter2, msi_counter2, ipi_counter2;
     Ec(Pd *, void (*)(), unsigned);
     Ec(Pd *, mword, Pd *, void (*)(), unsigned, unsigned, mword, mword, Pt *);
@@ -486,6 +486,7 @@ public:
     template <void(*C)()>
     static void check(mword, bool = true);
 
+    REGPARM(1)
     static void check_memory(int pmi = 0) asm ("memory_checker");
     static void incr_count(unsigned) asm ("incr_count");
     
@@ -537,8 +538,7 @@ public:
     void restore_state();
     void rollback();
     
-    static uint64 read_instCounter();
+    static uint64 readReset_instCounter();
     static void clear_instCounter();
     void reset_counter();
-    static void activate_pmi(int);
 };

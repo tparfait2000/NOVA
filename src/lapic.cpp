@@ -32,7 +32,7 @@
 unsigned    Lapic::freq_tsc;
 unsigned    Lapic::freq_bus;
 uint64    Lapic::prev_tsc;
-unsigned    Lapic::begin_time;
+uint64    Lapic::begin_time;
 
 void Lapic::init()
 {
@@ -53,7 +53,7 @@ void Lapic::init()
         default:
             set_lvt (LAPIC_LVT_THERM, DLV_FIXED, VEC_LVT_THERM);
         case 4:
-            set_lvt (LAPIC_LVT_PERFM, DLV_FIXED, VEC_LVT_PERFM);
+            set_lvt (LAPIC_LVT_PERFM, DLV_NMI, VEC_LVT_PERFM);
         case 3:
             set_lvt (LAPIC_LVT_ERROR, DLV_FIXED, VEC_LVT_ERROR);
         case 2:
@@ -105,31 +105,33 @@ void Lapic::send_ipi (unsigned cpu, unsigned vector, Delivery_mode dlv, Shorthan
     write (LAPIC_ICR_LO, dsh | 1U << 14 | dlv | vector);
 }
 
-void Lapic::therm_handler() {}
+void Lapic::therm_handler() {
+    Console::print("TERMAL INTERRUPT ");
+}
 
 void Lapic::perfm_handler() {
-    Console::print("PERF INTERRUPT X: %d | %d  A: %d | %d", Ec::current->counter1, 
-            Ec::current->exc_counter1, Ec::read_instCounter(), Ec::exc_counter);
-    Ec::check_memory(1255);
 }
 
 void Lapic::error_handler()
 {
     write (LAPIC_ESR, 0);
     write (LAPIC_ESR, 0);
+    Console::print("ERROR INTERRUPT");
 }
 
 void Lapic::timer_handler()
 {
-//    Console::print("Timer interrupt");
 //    uint64 now = rdtsc();
 //    if((now - begin_time) > max_time * freq_tsc/1000)
+//    Console::print("Timer interrupt %llu", (now - begin_time)*1000000/freq_tsc);
 //        Ec::check_memory(1251);
     bool expired = (freq_bus ? read (LAPIC_TMR_CCR) : Msr::read<uint64>(Msr::IA32_TSC_DEADLINE)) == 0;
     if (expired)
-        Timeout::check();
+        Timeout::check();        
 
     Rcu::update();
+    eoi();
+//    Ec::check_memory(1251);
 }
 
 void Lapic::lvt_vector (unsigned vector)
@@ -170,4 +172,29 @@ void Lapic::ipi_vector (unsigned vector)
     eoi();
 
     Counter::print<1,16> (++Counter::ipi[ipi], Console_vga::COLOR_LIGHT_GREEN, ipi + SPN_IPI);
+}
+
+void Lapic::reset_pmi(unsigned count)
+{
+    if(count==0)
+        return;
+    set_lvt(LAPIC_LVT_PERFM, DLV_NMI, VEC_LVT_PERFM);
+    Msr::write(Msr::IA32_PERF_GLOBAL_OVF_CTRL, 1ull << 32);
+    Msr::write(Msr::MSR_PERF_FIXED_CTR0, -count | 0xFFFF00000000);
+    Console::print("MSR_PERF_FIXED_CTR0 %llx", Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
+}
+
+void Lapic::activate_pmi() {
+    Msr::write(Msr::MSR_PERF_GLOBAL_CTRL, 0x700000003);
+    Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);
+    Msr::write (Msr::IA32_PMC0, 0x0);
+    Msr::write(Msr::IA32_PERFEVTSEL0, 0x004100c0);
+}
+
+void Lapic::reset_counter(){
+    Msr::write(Msr::MSR_PERF_FIXED_CTR0, 0x0);
+    
+    Msr::write(Msr::IA32_PERFEVTSEL0, 0x000100c0);
+    Msr::write(Msr::IA32_PMC0, 0x0);
+    Msr::write(Msr::IA32_PERFEVTSEL0, 0x004100c0);
 }

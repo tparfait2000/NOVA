@@ -23,6 +23,8 @@
 #include "mca.hpp"
 #include "stdio.hpp"
 #include "msr.hpp"
+#include "utcb.hpp"
+#include "lapic.hpp"
 
 void Ec::load_fpu() {
     if (!utcb)
@@ -114,15 +116,13 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
         current->resolve_PIO_execption();
         return true;
     }
-    Console::print("GP Here: err: %08lx  addr: %08lx  eip: %08lx  val: %08lx rdi: %10llx cs: %08lx ds: %08lx  "
-            "es: %08lx  fs: %08lx  gs: %08lx", r->err, r->cr2, eip, *(reinterpret_cast<uint32 *> (eip)), r->REG(di),
-            r->cs, r->ds, r->es, r->fs, r->gs);
+    Console::print("GP Here: Ec: %p  err: %08lx  addr: %08lx  eip: %08lx  val: %08x", current, r->err, r->cr2, eip, *(reinterpret_cast<uint32 *> (eip)));
     return false;
 }
 
 bool Ec::handle_exc_pf(Exc_regs *r) {
     mword addr = r->cr2;
-    
+
     if ((r->err & Hpt::ERR_U) && Pd::current->Space_mem::loc[Cpu::id].is_cow_fault(Pd::current->quota, addr, r->err))
         return true;
 
@@ -161,13 +161,31 @@ bool Ec::handle_exc_pf(Exc_regs *r) {
 
 void Ec::handle_exc(Exc_regs *r) {
     Counter::exc[r->vec]++;
-    
-//    if((r->vec != Cpu::EXC_DB) && (r->vec != Cpu::EXC_NM) && (r->vec != Cpu::EXC_TS) 
-//            && (r->vec != Cpu::EXC_GP) && (r->vec != Cpu::EXC_PF) && (r->vec != Cpu::EXC_MC))
-//        Console::print("Vec: %lx", r->vec);
+
+    if (r->vec == 0xf)
+        Console::print("Vec Heater: %lx", r->vec);
     switch (r->vec) {
+        case Cpu::EXC_NMI:
+            if (Msr::read<uint64>(Msr::IA32_PERF_GLOBAL_STATUS) & 1ull << 32) {
+                Console::print("PERF INTERRUPT OVERFLOW STATUS %llx  OVF_CTRL %llx", Msr::read<uint64>(Msr::IA32_PERF_GLOBAL_STATUS), Msr::read<uint64>(Msr::IA32_PERF_GLOBAL_OVF_CTRL));
+                current->in_step_mode = true;
+                current->regs.REG(fl) |= Cpu::EFL_TF;
+                Console::print("STATUS %llx  OVF_CTRL %llx", Msr::read<uint64>(Msr::IA32_PERF_GLOBAL_STATUS), Msr::read<uint64>(Msr::IA32_PERF_GLOBAL_OVF_CTRL));
+                return;
+            }
+            break;
         case Cpu::EXC_DB:
-            //            Console::print("DEBUG");
+            if (current->in_step_mode) {
+                compteur = current->nbInstr_to_execute;
+                for (; compteur > 0;) {
+                    Console::print("Step finished %u",compteur);
+                    compteur--;
+                    return;
+                }
+                compteur = 0;
+                current->in_step_mode = false;
+                check_memory(3001);
+            }
             if (r->user()) {
                 Ec::current->disable_step_debug();
                 current->launch_state = Ec::UNLAUNCHED;
@@ -221,26 +239,28 @@ void Ec::check_memory(int pmi) {
         return;
     }
 
-//    if (!current->user_utcb) {
-//        Console::print(".....  Checking memory from %d ", pmi);
-//        //        current->ec_debug= true;
-//    }
+    //    if (!current->user_utcb) {
+    //        Console::print(".....  Checking memory from %d ", pmi);
+    //        //        current->ec_debug= true;
+    //    }
     if (ec->one_run_ok()) {
         ec->exc_counter2 = Ec::exc_counter;
-        ec->counter2 = read_instCounter();
-        ec->reset_counter();
+        ec->counter2 = readReset_instCounter();
         if (Ec::ec_debug) {
-            Console::print("PMI: %d  Ec: %p  Pd: %p  X: %d | %d  A: %d | %d  gsi: %d | %d  lvt: %d | %d "
-                    " msi: %d | %d ipi: %d | %d", pmi, ec, pd, ec->counter1,
+            Console::print("PMI: %d  Ec: %p  Pd: %p  X: %lld | %lld  A: %u | %u  gsi: %u | %u  lvt: %u | %u "
+                    " msi: %u | %u  ipi: %u | %u", pmi, ec, pd, ec->counter1,
                     ec->counter2, ec->exc_counter1, ec->exc_counter2,
                     Ec::gsi_counter1, Ec::gsi_counter2, Ec::lvt_counter1, Ec::lvt_counter2,
                     Ec::msi_counter1, Ec::msi_counter2, Ec::ipi_counter1, Ec::ipi_counter2);
             Ec::ec_debug = false;
         }
-        if (pmi == 1251) {
-            Console::print("PMI: %d  counter1: %ld  exc: %d Run = 1", pmi, ec->counter1, ec->exc_counter1);
-            Ec::activate_pmi(ec->counter1 - ec->exc_counter1);
+        if (pmi == 3001) {
+            Console::print("PMI: %d  counter2: %lld  exc: %d Run = 2  PMC0: %lld  EIP: %lx",
+                    pmi, ec->counter2, ec->exc_counter2, Msr::read<uint64>(Msr::IA32_PMC0), ec->regs.REG(ip));
+            //            Lapic::reset_pmi(ec->counter2 - ec->exc_counter2);
         }
+        ec->reset_counter();
+
         if (pd->compare_and_commit()) {
             pd->cow_list = nullptr;
             ec->run_number = 0;
@@ -268,10 +288,19 @@ void Ec::check_memory(int pmi) {
         }
     } else {
         ec->exc_counter1 = Ec::exc_counter;
-        ec->counter1 = read_instCounter();
+        ec->counter1 = readReset_instCounter();
         if (pmi == 1251) {
-            Console::print("PMI: %d  counter1: %ld  exc: %d Run = 1", pmi, ec->counter1, ec->exc_counter1);
-            Ec::activate_pmi(ec->counter1 - ec->exc_counter1);
+            Console::print("PMI: %d  counter1: %lld  exc: %u Run = 1  PMC0: %lld  EIP: %lx",
+                    pmi, ec->counter1, ec->exc_counter1, Msr::read<uint64>(Msr::IA32_PMC0), ec->regs.REG(ip));
+            uint64 instruction_num = ec->counter1 - ec->exc_counter1; 
+            if (instruction_num > step_nb){
+                Lapic::reset_pmi(instruction_num - step_nb);
+                ec->nbInstr_to_execute = step_nb;
+            }else{
+                ec->in_step_mode = true;
+                ec->regs.REG(fl) |= Cpu::EFL_TF;
+                ec->nbInstr_to_execute = instruction_num;
+            }
         }
         ec->restore_state();
         ec->run_number++;
@@ -291,30 +320,20 @@ void Ec::check_memory(int pmi) {
         }
     }
 
-    //        /*when atomic sequence is executed in parallel, it is an other EC which 
-    //         should be picked. Make sure this is respected*/
-    //        Sc::schedule();
+
     return;
 }
 
-uint64 Ec::read_instCounter() {
-    mword val = Msr::read<mword>(Msr::MSR_PERF_FIXED_CTR0); //no need to stop the counter because he is not supposed to count (according to config) when we are in kernl mode
-    Msr::write(Msr::MSR_PERF_FIXED_CTR0, 0x0);
+uint64 Ec::readReset_instCounter() {
     Ec::exc_counter = 0;
+    uint64 val = Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0); //no need to stop the counter because he is not supposed to count (according to config) when we are in kernl mode
+    Msr::write(Msr::MSR_PERF_FIXED_CTR0, 0x0);
     return val;
 }
 
 void Ec::reset_counter() {
     Ec::exc_counter = counter1 = counter2 = exc_counter1 = exc_counter2 = 0;
-    Msr::write(Msr::MSR_PERF_FIXED_CTR0, 0x0);
     Ec::gsi_counter1 = Ec::lvt_counter1 = Ec::msi_counter1 = Ec::ipi_counter1 =
             Ec::gsi_counter2 = Ec::lvt_counter2 = Ec::msi_counter2 = Ec::ipi_counter2 = 0;
-}
-
-void Ec::activate_pmi(int count) {
-    uint32 val = -count;
-    Ec::ec_debug = true;
-    Msr::write(Msr::MSR_PERF_FIXED_CTR0, val);
-    Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);
-    Console::print("Ec: %p  Pd: %p  count: %d val: %lx, %d", current, current->pd.operator->(), count, val, Msr::read<mword>(Msr::MSR_PERF_FIXED_CTR0));
+    Lapic::reset_counter();
 }
