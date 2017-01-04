@@ -86,6 +86,7 @@
 #define OFS_CR2         0x58
 #define OFS_VEC         0xa8
 #define OFS_CS          0xb8
+#define OFS_RIP         0xb0
 
 #define LOAD_KSP        mov     PREG(sp), PREG(11);     \
                         mov     tss_run + 4, PREG(sp)
@@ -128,7 +129,8 @@
                         pop     PREG(ax);
 
 #define RET_USER_HYP    mov     PREG(11), PREG(sp);     \
-                        mov     $0x200, PREG(11);       \
+                        and     $0x100, PREG(11);       \
+                        or      $0x200, PREG(11);       \
                         sysretq;
 
 #define RET_USER_EXC    iretq;
