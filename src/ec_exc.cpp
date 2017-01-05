@@ -123,10 +123,6 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
 bool Ec::handle_exc_pf(Exc_regs *r) {
     mword addr = r->cr2;
     
-    if(ec_debug){
-        if(r->err & Hpt::ERR_U)
-            Console::print("OK");
-    }
     if ((r->err & Hpt::ERR_U) && Pd::current->Space_mem::loc[Cpu::id].is_cow_fault(Pd::current->quota, addr, r->err))
         return true;
 
@@ -179,12 +175,11 @@ void Ec::handle_exc(Exc_regs *r) {
             }
             break;
         case Cpu::EXC_DB:
-            Console::print(" In Debug Mode");
             if (current->in_step_mode) {
-                for (; compteur > 0;) {
+                compteur--;
+                if(compteur > 0) {
                     Console::print("Step finished %u",compteur);
                     current->regs.REG(fl) |= Cpu::EFL_TF;
-                    compteur--;
                     return;
                 }
                 compteur = 0;
@@ -309,12 +304,7 @@ void Ec::check_memory(int pmi) {
             }else{
                 if(instruction_num > 0){
                     ec->in_step_mode = true;
-                    if(ec->launch_state == SYSEXIT){
-                        Console::print("R11 %lx", ec->regs.r11);
-                        ec->regs.r11 |= Cpu::EFL_TF;
-                    }else{
-                        ec->regs.REG(fl) |= Cpu::EFL_TF;
-                    }
+                    ec->regs.REG(fl) |= Cpu::EFL_TF;
                     ec->nbInstr_to_execute = instruction_num;
                     compteur = instruction_num;  
                 }
