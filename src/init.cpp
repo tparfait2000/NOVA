@@ -50,8 +50,8 @@ mword kern_ptab_setup()
     return hpt.addr();
 }
 
-extern "C" INIT REGPARM (1)
-void init (mword mbi)
+extern "C" INIT REGPARM (2)
+void init (mword magic, mword mbi)
 {
     // Setup 0-page and 1-page
     memset (reinterpret_cast<void *>(&PAGE_0),  0,  PAGE_SIZE);
@@ -59,7 +59,7 @@ void init (mword mbi)
 
     for (void (**func)() = &CTORS_G; func != &CTORS_E; (*func++)()) ;
 
-    Hip::build (mbi);
+    Hip::build (magic, mbi);
 
     for (void (**func)() = &CTORS_C; func != &CTORS_G; (*func++)()) ;
 
