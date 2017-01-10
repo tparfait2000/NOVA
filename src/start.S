@@ -69,11 +69,13 @@ __boot_gdt__:
 
 .macro                  INIT_PAGING
 #ifdef __x86_64__
+                        mov     %eax, %edi /* backup - used by multiboot */
                         mov     $0xc0000080, %ecx
                         rdmsr
                         or      $0x101, %eax
                         wrmsr
                         mov     $0x6b8, %edx
+                        mov     %edi, %eax /* restore - used by multiboot */
 #else
                         mov     $0x698, %edx
 #endif
@@ -147,7 +149,12 @@ __start_all:            INIT_STATE
                         test    %REG(bx), %REG(bx)
                         je      2f
 
-                        mov     %REG(bx), %ARG_1
+#ifdef __x86_64__
+                        mov     %REG(ax), %REG(di)
+                        mov     %REG(bx), %REG(si)
+#else
+                        mov     %REG(bx), %edx
+#endif
                         call    init
                         jmp     3f
 
