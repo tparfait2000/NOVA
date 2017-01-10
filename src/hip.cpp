@@ -30,7 +30,7 @@
 mword Hip::root_addr;
 mword Hip::root_size;
 
-void Hip::build (mword addr)
+void Hip::build (mword magic, mword addr)
 {
     Hip *h = hip();
 
@@ -47,6 +47,9 @@ void Hip::build (mword addr)
     h->sel_vmi    = NUM_VMI;
     h->cfg_page   = PAGE_SIZE;
     h->cfg_utcb   = PAGE_SIZE;
+
+    if (magic != Multiboot::MAGIC)
+        return;
 
     Multiboot *mbi = static_cast<Multiboot *>(Hpt::remap (addr));
 
