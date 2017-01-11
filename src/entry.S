@@ -81,20 +81,24 @@ INTRGATE                \DPL
 #endif
                         jmp     entry_exc_error
 .endm
-
+        
+.macro                  SAVE_REGS
+                        SAVE_FLAGS
+                        SAVE_GPR
+                        mov     %REG(bx), %ARG_1
+                        call saveRegs
+                        LOAD_GPR
+                        LOAD_FLAGS
+.endm
+        
 /*
  * Exception Entries
  */
 entry_exc:              push    $0
 entry_exc_error:        SAVE_STATE
-                        mov     OFS_RIP (%REG(bx)), %ARG_3
-                        mov     OFS_VEC (%REG(bx)), %ARG_2
-                        mov     OFS_CS (%REG(bx)), %ARG_1
-                        call getVec
-                        mov     OFS_CS (%REG(bx)), %ARG_1
-                        call    incr_count
                         mov     %cr2, %REG(ax)
                         mov     %REG(ax), OFS_CR2 (%REG(bx))
+                        SAVE_REGS
                         mov     %REG(bx), %ARG_1
                         call    exc_handler
                         jmp     ret_from_interrupt
@@ -136,12 +140,7 @@ INTRGATE                0
 
 entry_gsi:              push    $0
                         SAVE_STATE
-                        mov     OFS_RIP (%REG(bx)), %ARG_3
-                        mov     OFS_VEC (%REG(bx)), %ARG_2
-                        mov     OFS_CS (%REG(bx)), %ARG_1
-                        call getVec
-                        mov     OFS_CS (%REG(bx)), %ARG_1
-                        call    incr_count
+                        SAVE_REGS
                         mov     OFS_VEC (%REG(bx)), %ARG_1
                         call    gsi_vector
                         jmp     ret_from_interrupt
@@ -158,12 +157,7 @@ INTRGATE                0
 
 entry_lvt:              push    $0
                         SAVE_STATE
-                        mov     OFS_RIP (%REG(bx)), %ARG_3
-                        mov     OFS_VEC (%REG(bx)), %ARG_2
-                        mov     OFS_CS (%REG(bx)), %ARG_1
-                        call getVec
-                        mov     OFS_CS (%REG(bx)), %ARG_1
-                        call    incr_count
+                        SAVE_REGS
                         mov     OFS_VEC (%REG(bx)), %ARG_1
                         call    lvt_vector
                         jmp     ret_from_interrupt
@@ -180,12 +174,7 @@ INTRGATE                0
 
 entry_msi:              push    $0
                         SAVE_STATE
-                        mov     OFS_RIP (%REG(bx)), %ARG_3
-                        mov     OFS_VEC (%REG(bx)), %ARG_2
-                        mov     OFS_CS (%REG(bx)), %ARG_1
-                        call getVec
-                        mov     OFS_CS (%REG(bx)), %ARG_1
-                        call    incr_count
+                        SAVE_REGS
                         mov     OFS_VEC (%REG(bx)), %ARG_1
                         call    msi_vector
                         jmp     ret_from_interrupt
@@ -202,12 +191,7 @@ INTRGATE                0
 
 entry_ipi:              push    $0
                         SAVE_STATE
-                        mov     OFS_RIP (%REG(bx)), %ARG_3
-                        mov     OFS_VEC (%REG(bx)), %ARG_2
-                        mov     OFS_CS (%REG(bx)), %ARG_1
-                        call getVec
-                        mov     OFS_CS (%REG(bx)), %ARG_1
-                        call    incr_count
+                        SAVE_REGS
                         mov     OFS_VEC (%REG(bx)), %ARG_1
                         call    ipi_vector
                         jmp     ret_from_interrupt
@@ -238,20 +222,13 @@ entry_sysenter:         LOAD_KSP
                         lea     -11*SIZE(%REG(sp)), %REG(sp)
                         SAVE_GPR
                         mov     $(CPU_LOCAL_STCK + PAGE_SIZE), %REG(sp)
-#ifdef __i386__
-                        pushfl
-#else
-                        pushfq
-#endif
+                        SAVE_FLAGS
                         SAVE_GPR
+                        mov     %REG(cx), %ARG_1
                         mov     $1258, %ARG_1
                         call    memory_checker
                         LOAD_GPR
-#ifdef __i386__
-                        popfl
-#else
-                        popfq
-#endif
+                        LOAD_FLAGS
                         and     $0xf, %ARG_1
                         jmp     *syscall(,%ARG_1,SIZE)
 
@@ -264,17 +241,9 @@ entry_vmx:              SAVE_GPR
                         mov     %cr2, %REG(ax)
                         mov     %REG(ax), OFS_CR2 (%REG(sp))
                         mov     $(CPU_LOCAL_STCK + PAGE_SIZE), %REG(sp)
-#ifdef __i386__
-                        pushfl
-#else
-                        pushfq
-#endif
+                        SAVE_FLAGS
                         SAVE_GPR
                         call    memory_checker
                         LOAD_GPR
-#ifdef __i386__
-                        popfl
-#else
-                        popfq
-#endif
+                        LOAD_FLAGS
                         jmp     vmx_handler

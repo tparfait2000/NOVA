@@ -55,7 +55,7 @@ private:
     Fpu * fpu;
     Vmcb *vmcb_backup, *vmcb1, *vmcb2;
     Vmcs *vmcs_backup, *vmcs1, *vmcs2;
-    static unsigned compteur;
+    static unsigned compteur, instr_count0;
 
     union {
 
@@ -209,12 +209,13 @@ public:
 
     uint8 run_number = 0;
     int launch_state = UNLAUNCHED;
-    bool debug = false, hardening_started = false, in_step_mode = false;
+    bool debug = false, hardening_started = false, in_step_mode = false, cow_faulted = false;
     unsigned nb_fail = 0, nbInstr_to_execute = 0;
     int previous_reason = 0, nb_extint = 0;
     mword io_addr, io_attr;
     int step_reason = NIL;
     Paddr io_phys;
+    uint64 begin_time;        
     static bool ec_debug;
     enum Launch_type {
         UNLAUNCHED = 0,
@@ -234,6 +235,8 @@ public:
     uint64 counter1 = 0, counter2 = 0;
     static unsigned step_nb, exc_counter, exc_counter1, exc_counter2, gsi_counter1, lvt_counter1, msi_counter1, ipi_counter1,
             gsi_counter2, lvt_counter2, msi_counter2, ipi_counter2;
+    static mword prev_rip, last_rip, last_rcx, end_rip, end_rcx;
+    
     Ec(Pd *, void (*)(), unsigned);
     Ec(Pd *, mword, Pd *, void (*)(), unsigned, unsigned, mword, mword, Pt *);
     Ec(Pd *, Pd *, void (*f)(), unsigned, Ec *);
@@ -490,8 +493,8 @@ public:
     static void check_memory(int pmi = 0) asm ("memory_checker");
     REGPARM(1)
     static void incr_count(unsigned) asm ("incr_count");
-    REGPARM(3)
-    static void getVec(unsigned, unsigned, mword) asm ("getVec");
+    REGPARM(1)
+    static void saveRegs(Exc_regs *) asm ("saveRegs");
     
     void resolve_PIO_execption();
     void resolve_temp_exception();
@@ -544,4 +547,8 @@ public:
     static uint64 readReset_instCounter();
     static void clear_instCounter();
     void reset_counter();
+    static void check_exit(unsigned);
+    bool activate_timer();
+    mword get_regsRIP();
+    mword get_regsRCX();
 };

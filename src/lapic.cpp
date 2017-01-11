@@ -153,9 +153,13 @@ void Lapic::lvt_vector (unsigned vector)
     }
 
     eoi();
-    uint64 now = rdtsc();
-    if((now - begin_time) > max_time * freq_tsc/1000)
+    uint64 now = rdtsc(), time = begin_time > Ec::current->begin_time ? begin_time : Ec::current->begin_time;
+    if((now - time) > max_time * freq_tsc/1000){
+//        Console::print("last_rip: %lx  last_rcx: %lx  compteur: %lld", Ec::last_rip, Ec::last_rcx, Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
+        Ec::end_rip = Ec::last_rip;
+        Ec::end_rcx = Ec::last_rcx;
         Ec::check_memory(1251);
+    }
     Counter::print<1,16> (++Counter::lvt[lvt], Console_vga::COLOR_LIGHT_BLUE, lvt + SPN_LVT);
 }
 
@@ -185,20 +189,20 @@ void Lapic::set_pmi(unsigned count)
     set_lvt(LAPIC_LVT_PERFM, DLV_NMI, VEC_LVT_PERFM);
     Msr::write(Msr::IA32_PERF_GLOBAL_OVF_CTRL, 1ull << 32);
     Msr::write(Msr::MSR_PERF_FIXED_CTR0, -count | 0xFFFF00000000);
-    Console::print("MSR_PERF_FIXED_CTR0 %llx", Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
+//    Console::print("MSR_PERF_FIXED_CTR0 %llx", Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
 }
 
 void Lapic::activate_pmi() {
     Msr::write(Msr::MSR_PERF_GLOBAL_CTRL, 0x700000003);
     Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);
     Msr::write (Msr::IA32_PMC0, 0x0);
-    Msr::write(Msr::IA32_PERFEVTSEL0, 0x004100c0);
+    Msr::write(Msr::IA32_PERFEVTSEL0, 0x004100c5);
 }
 
 void Lapic::reset_counter(){
     Msr::write(Msr::MSR_PERF_FIXED_CTR0, 0x0);
     
-    Msr::write(Msr::IA32_PERFEVTSEL0, 0x000100c0);
+    Msr::write(Msr::IA32_PERFEVTSEL0, 0x000100c5);
     Msr::write(Msr::IA32_PMC0, 0x0);
-    Msr::write(Msr::IA32_PERFEVTSEL0, 0x004100c0);
+    Msr::write(Msr::IA32_PERFEVTSEL0, 0x004100c5);
 }

@@ -38,7 +38,8 @@ Slab_cache Ec::cache(sizeof (Ec), 32);
 unsigned Ec::exc_counter = 0, Ec::gsi_counter1 = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, 
         Ec::lvt_counter1 = 0, Ec::msi_counter1 = 0, Ec::ipi_counter1 = 0, Ec::gsi_counter2 = 0,
         Ec::lvt_counter2 = 0, Ec::msi_counter2 = 0, Ec::ipi_counter2 = 0;
-unsigned Ec::step_nb = 100, Ec::compteur = 0;
+unsigned Ec::step_nb = 100, Ec::compteur = 0, Ec::instr_count0 = 0;
+mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx;
 bool Ec::ec_debug = false;
 Ec *Ec::current, *Ec::fpowner;
 // Constructors
@@ -279,8 +280,7 @@ void Ec::ret_user_sysexit() {
         current->save_state();
         current->launch_state = Ec::SYSEXIT;
     }
-    if(ec_debug)
-        Console::print("TF: %08lx SYSEXIT", current->regs.r11);
+    current->begin_time = rdtsc();
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : "memory");
 
     UNREACHED;
@@ -296,8 +296,9 @@ void Ec::ret_user_iret() {
         current->save_state();
         current->launch_state = Ec::IRET;
     }
-    if(ec_debug)
-        Console::print("TF: %08lx IRET", current->regs.REG(fl));
+    if(!current->cow_faulted) // cow page faults must not lead to reset the begin_time
+        current->begin_time = rdtsc();
+    current->cow_faulted = false;
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR LOAD_SEG RET_USER_EXC) : : "m" (current->regs) : "memory");
 
     UNREACHED;
@@ -649,7 +650,21 @@ void Ec::rollback() {
     pd->rollback();
 }
 
-void Ec::getVec(unsigned cs, unsigned vec, mword rip) {
-    if(ec_debug && (cs & 3 || vec == 1001))
-        Console::print("vector: %u  cs: %u  rip: %lx", vec, cs, rip);
+void Ec::saveRegs(Exc_regs *r) {
+    if(r->cs & 3){
+        last_rip = r->REG(ip);
+        last_rcx = r->REG(cx);
+        Ec::exc_counter++;
+//        if(ec_debug)
+//            Console::print("vector: %lu  cs: %lx  rip: %lx  rcx: %lx  compteur: %lld", r->vec, r->cs, r->REG(ip), r->REG(cx), Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
+    }
+    return;
+}
+
+mword Ec::get_regsRIP(){
+    return regs.REG(ip);
+}
+
+mword Ec::get_regsRCX(){
+    return regs.REG(cx);
 }

@@ -108,7 +108,7 @@ class Lapic
         static unsigned freq_bus;
         static uint64 prev_tsc;
 
-        static unsigned const max_time = 1000; // 1000 => 1µs (ou 1000ns) si freq_tsc/1000000
+        static unsigned const max_time = 10; // 1000 => 1µs (ou 1000ns) si freq_tsc/1000000
                                                // 1000 => 1000µs (ou 1ms) si freq_tsc/1000 
         static uint64 begin_time;
        

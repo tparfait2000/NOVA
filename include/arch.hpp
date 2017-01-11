@@ -64,6 +64,8 @@
 #define LOAD_GPR        popa;
 #define RET_USER_HYP    sti; sysexit;
 #define RET_USER_EXC    iret;
+#define SAVE_FLAGS      pushfl;
+#define LOAD_FLAGS      popfl;
 #endif
 
 #ifdef __x86_64__
@@ -136,4 +138,6 @@
                         sysretq;
 
 #define RET_USER_EXC    iretq;
+#define SAVE_FLAGS      pushfq;
+#define LOAD_FLAGS      popfq;
 #endif
