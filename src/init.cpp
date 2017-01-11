@@ -28,6 +28,8 @@
 #include "idt.hpp"
 #include "keyb.hpp"
 #include "pd.hpp"
+#include "multiboot.hpp"
+#include "multiboot2.hpp"
 
 extern "C" INIT
 mword kern_ptab_setup()
@@ -64,7 +66,7 @@ void init (mword magic, mword mbi)
     for (void (**func)() = &CTORS_C; func != &CTORS_G; (*func++)()) ;
 
     // Now we're ready to talk to the world
-    Console::print ("\fNOVA Microhypervisor v%d-%07lx (%s): %s %s [%s]\n", CFG_VER, reinterpret_cast<mword>(&GIT_VER), ARCH, __DATE__, __TIME__, COMPILER_STRING);
+    Console::print ("\fNOVA Microhypervisor v%d-%07lx (%s): %s %s [%s] [%s]\n", CFG_VER, reinterpret_cast<mword>(&GIT_VER), ARCH, __DATE__, __TIME__, COMPILER_STRING, magic == Multiboot::MAGIC ? "MBI" : (magic==Multiboot2::MAGIC ? "MBI2" : ""));
 
     Idt::build();
     Gsi::setup();
