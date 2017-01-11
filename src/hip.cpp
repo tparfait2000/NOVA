@@ -58,7 +58,7 @@ void Hip::build (mword addr)
     uint32 mods_count  = mbi->mods_count;
 
     if (flags & Multiboot::CMDLINE)
-        Cmdline::init (cmdline);
+        Cmdline::init (static_cast<char const *>(Hpt::remap (cmdline)));
 
     Hip_mem *mem = h->mem_desc;
 
