@@ -118,7 +118,7 @@ __gdt_desc:             .word   __boot_gdt__ - __boot_gdt - 1
 
 __start_bsp:            mov     $(__start_bsp - __start_ap), %ecx
                         mov     $__start_ap, %esi
-                        mov     $0x1000, %edi
+                        mov     $AP_BOOT_PADDR, %edi
                         rep     movsb
 #ifdef __x86_64__
                         mov     $(LVL3L + 0x27), %ecx
