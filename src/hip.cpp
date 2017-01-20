@@ -29,6 +29,7 @@
 #include "space_obj.hpp"
 #include "pd.hpp"
 #include "acpi_rsdp.hpp"
+#include "acpi.hpp"
 
 mword Hip::root_addr;
 mword Hip::root_size;
@@ -156,6 +157,23 @@ void Hip::add_cpu()
 void Hip::add_check()
 {
     Hip *h = hip();
+
+    Hip_mem *mem = reinterpret_cast<Hip_mem *>(reinterpret_cast<mword>(h) + h->length);
+
+    if (Acpi::p_rsdt()) {
+        mem->addr = Acpi::p_rsdt();
+        mem->size = 0;
+        mem->type = Hip_mem::ACPI_RSDT;
+        mem++;
+    }
+    if (Acpi::p_xsdt()) {
+        mem->addr = Acpi::p_xsdt();
+        mem->size = 0;
+        mem->type = Hip_mem::ACPI_XSDT;
+        mem++;
+    }
+
+    h->length = static_cast<uint16>(reinterpret_cast<mword>(mem) - reinterpret_cast<mword>(h));
 
     h->freq_tsc = Lapic::freq_tsc;
 
