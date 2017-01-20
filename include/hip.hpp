@@ -41,7 +41,9 @@ class Hip_mem
     public:
         enum {
             HYPERVISOR  = -1u,
-            MB_MODULE   = -2u
+            MB_MODULE   = -2u,
+            ACPI_RSDT   = -3u,
+            ACPI_XSDT   = -4u
         };
 
         uint64  addr;

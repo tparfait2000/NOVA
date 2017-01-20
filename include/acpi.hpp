@@ -110,6 +110,12 @@ class Acpi
         static unsigned irq;
         static unsigned gsi;
 
+        ALWAYS_INLINE
+        static inline Paddr p_rsdt() { return rsdt; }
+
+        ALWAYS_INLINE
+        static inline Paddr p_xsdt() { return xsdt; }
+
         static void delay (unsigned);
         static uint64 time();
         static void reset();
