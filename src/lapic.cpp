@@ -121,10 +121,7 @@ void Lapic::error_handler()
 
 void Lapic::timer_handler()
 {
-//    uint64 now = rdtsc();
-//    if((now - begin_time) > max_time * freq_tsc/1000)
-//    Console::print("Timer interrupt %llu", (now - begin_time)*1000000/freq_tsc);
-//        Ec::check_memory(1251);
+
     bool expired = (freq_bus ? read (LAPIC_TMR_CCR) : Msr::read<uint64>(Msr::IA32_TSC_DEADLINE)) == 0;
     if (expired)
         Timeout::check();        
@@ -143,6 +140,8 @@ void Lapic::lvt_vector (unsigned vector)
 //    else
 //        Ec::lvt_counter1++;
     
+    uint64 run1_time = begin_time > Ec::begin_time ? Ec::end_time + Ec::begin_time - begin_time : Ec::end_time;
+    uint64 now1 = rdtsc(), time1 = begin_time > Ec::begin_time ? begin_time : Ec::begin_time;
     unsigned lvt = vector - VEC_LVT;
 
     switch (vector) {
@@ -153,9 +152,10 @@ void Lapic::lvt_vector (unsigned vector)
     }
 
     eoi();
-    uint64 now = rdtsc(), time = begin_time > Ec::current->begin_time ? begin_time : Ec::current->begin_time;
-    if((now - time) > max_time * freq_tsc/1000){
-//        Console::print("last_rip: %lx  last_rcx: %lx  compteur: %lld", Ec::last_rip, Ec::last_rcx, Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
+    uint64 now = rdtsc(), time = begin_time > Ec::begin_time ? begin_time : Ec::begin_time;
+    if((vector == VEC_LVT_TIMER) && ((now - time) > max_time * freq_tsc/1000)){
+//  if((vector == VEC_LVT_TIMER) && (run1_time > max_time * static_cast<uint64>(freq_tsc)/1000)){
+//    Console::print("run1_time: %lld  now - time: %lld  now1 - time1: %lld", run1_time, now - time, now1 - time1);
         Ec::end_rip = Ec::last_rip;
         Ec::end_rcx = Ec::last_rcx;
         Ec::check_memory(1251);
@@ -182,8 +182,7 @@ void Lapic::ipi_vector (unsigned vector)
     Counter::print<1,16> (++Counter::ipi[ipi], Console_vga::COLOR_LIGHT_GREEN, ipi + SPN_IPI);
 }
 
-void Lapic::set_pmi(unsigned count)
-{
+void Lapic::set_pmi(unsigned count){
     if(count==0)
         return;
     set_lvt(LAPIC_LVT_PERFM, DLV_NMI, VEC_LVT_PERFM);

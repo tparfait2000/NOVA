@@ -40,7 +40,8 @@ unsigned Ec::exc_counter = 0, Ec::gsi_counter1 = 0, Ec::exc_counter1 = 0, Ec::ex
         Ec::lvt_counter2 = 0, Ec::msi_counter2 = 0, Ec::ipi_counter2 = 0;
 unsigned Ec::step_nb = 100, Ec::compteur = 0, Ec::instr_count0 = 0;
 mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx;
-bool Ec::ec_debug = false;
+bool Ec::ec_debug = false, Ec::set_ti = false;
+uint64 Ec::static_tour = 0, Ec::begin_time = 0, Ec::end_time = 0, Ec::t_cache = 0, Ec::t_check1 = 0;
 Ec *Ec::current, *Ec::fpowner;
 // Constructors
 
@@ -279,8 +280,13 @@ void Ec::ret_user_sysexit() {
 
         current->save_state();
         current->launch_state = Ec::SYSEXIT;
+//        wbinvd();
+        begin_time = rdtsc(); //normalement, cette instruction devrait etre dans le if precedant
     }
-    current->begin_time = rdtsc();
+    if(set_ti){
+        current->t_intermediary = rdtsc() - begin_time;
+        set_ti = false;
+    }
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : "memory");
 
     UNREACHED;
@@ -295,10 +301,16 @@ void Ec::ret_user_iret() {
 
         current->save_state();
         current->launch_state = Ec::IRET;
+//        wbinvd();
+        begin_time = rdtsc();
     }
-    if(!current->cow_faulted) // cow page faults must not lead to reset the begin_time
-        current->begin_time = rdtsc();
-    current->cow_faulted = false;
+//    if(!current->cow_faulted) // cow page faults must not lead to reset the begin_time
+//        begin_time = rdtsc();
+//    current->cow_faulted = false;
+    if(set_ti){
+        current->t_intermediary = rdtsc() - begin_time;
+        set_ti = false;
+    }
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR LOAD_SEG RET_USER_EXC) : : "m" (current->regs) : "memory");
 
     UNREACHED;
@@ -642,6 +654,7 @@ void Ec::incr_count(unsigned cs) {
 
 void Ec::restore_state() {
     pd->restore_state();
+    regs_1 = regs;
     regs = regs_0;
 }
 
@@ -652,6 +665,7 @@ void Ec::rollback() {
 
 void Ec::saveRegs(Exc_regs *r) {
     if(r->cs & 3){
+        end_time = rdtsc() - begin_time;
         last_rip = r->REG(ip);
         last_rcx = r->REG(cx);
         Ec::exc_counter++;
@@ -667,4 +681,56 @@ mword Ec::get_regsRIP(){
 
 mword Ec::get_regsRCX(){
     return regs.REG(cx);
+}
+
+int Ec::compare_ok(int reason){
+    if(regs.r15 != regs_1.r15)
+        return 1;
+    if(regs.r14 != regs_1.r14)
+        return 2;
+    if(regs.r13 != regs_1.r13)
+        return 3;
+    if(regs.r12 != regs_1.r12)
+        return 4;
+    if(regs.r11 != regs_1.r11){
+        // resume flag  or trap flag may be set if reason is step-mode
+        // but it is unclear why. Must be fixed later
+        if(((regs.r11 | 1u<<16) == regs_1.r11) || (regs.r11 == (regs_1.r11 | 1u<<8)))
+            return 0;
+        else{
+            Console::print("R11: %lx  R11_1: %lx  R11or1: %lx", regs.r11, regs_1.r11, regs.r11 | 1u<<8);
+            return 5;
+        }
+    }
+    if(regs.r10 != regs_1.r10)
+        return 6;
+    if(regs.r9 != regs_1.r9)
+        return 7;
+    if(regs.r8 != regs_1.r8)
+        return 8;
+    if(regs.REG(di) != regs_1.REG(di))
+        return 9;
+    if(regs.REG(si) != regs_1.REG(si))
+        return 10;
+    if(regs.REG(bp) != regs_1.REG(bp))
+        return 11;
+    if(regs.REG(bx) != regs_1.REG(bx))
+        return 12;
+    if(regs.REG(cx) != regs_1.REG(cx))
+        return 13;
+    if(regs.REG(dx) != regs_1.REG(dx))
+        return 14;
+    if(regs.REG(ax) != regs_1.REG(ax))
+        return 15;
+    if(reason == 1258) // following checks are not valid if reason is Sysenter
+        return 0;
+    if((regs.REG(ip) != regs_1.REG(ip)))
+        return 16;
+    if((regs.REG(fl) != regs_1.REG(fl)) && ((regs.REG(fl) | (1u<<16)) != regs_1.REG(fl)))
+        // resume flag may be set if reason is step-mode but it is curious why this flag is set in regs_1 and not in regs.
+        // the contrary would be understandable. Must be fixed later
+       return 17;
+    if(regs.REG(sp) != regs_1.REG(sp))
+        return 18;
+    return 0;
 }

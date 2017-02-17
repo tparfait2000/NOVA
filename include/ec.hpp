@@ -45,7 +45,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc> {
 
 private:
     void (*cont)() ALIGNED(16);
-    Cpu_regs regs, regs_0;
+    Cpu_regs regs, regs_0, regs_1;
     Ec * rcap;
     Utcb * utcb;
     Refptr<Pd> pd;
@@ -210,13 +210,13 @@ public:
     uint8 run_number = 0;
     int launch_state = UNLAUNCHED;
     bool debug = false, hardening_started = false, in_step_mode = false, cow_faulted = false;
-    unsigned nb_fail = 0, nbInstr_to_execute = 0;
+    unsigned nb_fail = 0, nbInstr_to_execute = 0, affich_num = 0, affich_mod = 1000;
     int previous_reason = 0, nb_extint = 0;
     mword io_addr, io_attr;
     int step_reason = NIL;
     Paddr io_phys;
-    uint64 begin_time;        
-    static bool ec_debug;
+    uint64 runtime1 = 0, runtime2 = 0, total_runtime = 0, t_intermediary = 0, tour = 0, step_debug_time = 0;        
+    static bool ec_debug, set_ti;
     enum Launch_type {
         UNLAUNCHED = 0,
         SYSEXIT = 1,
@@ -236,7 +236,7 @@ public:
     static unsigned step_nb, exc_counter, exc_counter1, exc_counter2, gsi_counter1, lvt_counter1, msi_counter1, ipi_counter1,
             gsi_counter2, lvt_counter2, msi_counter2, ipi_counter2;
     static mword prev_rip, last_rip, last_rcx, end_rip, end_rcx;
-    
+    static uint64 begin_time, end_time, static_tour, t_cache, t_check1;
     Ec(Pd *, void (*)(), unsigned);
     Ec(Pd *, mword, Pd *, void (*)(), unsigned, unsigned, mword, mword, Pt *);
     Ec(Pd *, Pd *, void (*f)(), unsigned, Ec *);
@@ -547,8 +547,10 @@ public:
     static uint64 readReset_instCounter();
     static void clear_instCounter();
     void reset_counter();
-    static void check_exit(unsigned);
+    static void check_exit(Ec*);
     bool activate_timer();
     mword get_regsRIP();
     mword get_regsRCX();
+    int compare_ok(int);
+    void print_stat_reset(bool);
 };
