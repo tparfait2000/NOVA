@@ -107,11 +107,20 @@ class Lapic
         static unsigned freq_tsc;
         static unsigned freq_bus;
         static uint64 prev_tsc;
-
-        static unsigned const max_time = 10; // 1000 => 1µs (ou 1000ns) si freq_tsc/1000000
+        static uint64 end_time, begin_time;
+        
+        /**
+         * Formules fondamentales 
+         * ----- Delta TSC -----
+         * Delta TSC = Delta T * Frequence tsc
+         * 
+         * ----- Delta IRC (Initial Reset Count) ----
+         * Delta IRC = Delta T * Frequence bus        
+         */
+        static unsigned const max_time = 1000; // 1000 => 1µs (ou 1000ns) si freq_tsc/1000000
                                                // 1000 => 1000µs (ou 1ms) si freq_tsc/1000 
-        static uint64 begin_time;
-       
+        static uint64 max_tsc;
+         
         ALWAYS_INLINE
         static inline unsigned id()
         {
@@ -140,10 +149,7 @@ class Lapic
         static inline void set_timer (uint64 tsc)
         {
             begin_time = rdtsc();
-//            Console::print("T : %llu ms  %llu ns", (tsc - begin_time)/freq_tsc, (tsc - begin_time)* 1000000/freq_tsc);
-//            if((tsc - begin_time) * 1000000/freq_tsc > max_time )
-//                Console::print("TSC : %lld", (tsc - begin_time) * 1000000/freq_tsc);
-            tsc = (tsc - begin_time)* 1000/freq_tsc > max_time ? begin_time + static_cast<uint64>(freq_tsc) * max_time/1000 : tsc;
+            tsc = tsc - begin_time > max_tsc ? begin_time + max_tsc : tsc;
             if (freq_bus) {
                 uint32 icr;
                 write (LAPIC_TMR_ICR, tsc > begin_time && (icr = static_cast<uint32>(tsc - begin_time) / (freq_tsc / freq_bus)) > 0 ? icr : 1);
@@ -161,15 +167,22 @@ class Lapic
 
         static void send_ipi (unsigned, unsigned, Delivery_mode = DLV_FIXED, Shorthand = DSH_NONE);
 
-        REGPARM (1)
-        static void lvt_vector (unsigned) asm ("lvt_vector");
-
+        REGPARM (2)
+        static void lvt_vector (unsigned, unsigned) asm ("lvt_vector");
+        
+        static void lvt_vector(unsigned);
+        
         REGPARM (1)
         static void ipi_vector (unsigned) asm ("ipi_vector");
         
-        static void set_pmi(unsigned);
+        static void set_pmi(uint64);
         
         static void activate_pmi();
         
         static void reset_counter();
+        
+        static void activate_timer(){
+            max_tsc = freq_bus ? freq_bus/1000 * max_time : freq_tsc/1000 * max_time;
+        }
+
 };

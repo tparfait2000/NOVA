@@ -35,13 +35,12 @@
 
 INIT_PRIORITY(PRIO_SLAB)
 Slab_cache Ec::cache(sizeof (Ec), 32);
-unsigned Ec::exc_counter = 0, Ec::gsi_counter1 = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, 
-        Ec::lvt_counter1 = 0, Ec::msi_counter1 = 0, Ec::ipi_counter1 = 0, Ec::gsi_counter2 = 0,
-        Ec::lvt_counter2 = 0, Ec::msi_counter2 = 0, Ec::ipi_counter2 = 0;
-unsigned Ec::step_nb = 100, Ec::compteur = 0, Ec::instr_count0 = 0;
+unsigned Ec::affich_num = 0, Ec::affich_mod = 1000, Ec::step_nb = 100, step_reason = Ec::NIL, launch_state = Ec::UNLAUNCHED;
 mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx;
-bool Ec::ec_debug = false, Ec::set_ti = false;
-uint64 Ec::static_tour = 0, Ec::begin_time = 0, Ec::end_time = 0, Ec::t_cache = 0, Ec::t_check1 = 0;
+bool Ec::ec_debug = false, Ec::debug = false, Ec::hardening_started = false, Ec::in_step_mode = false;
+uint64 Ec::static_tour = 0, Ec::begin_time = 0, Ec::end_time = 0, Ec::exc_counter = 0, Ec::gsi_counter1 = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::lvt_counter1 = 0, Ec::msi_counter1 = 0, Ec::ipi_counter1 = 0, Ec::gsi_counter2 = 0, Ec::lvt_counter2 = 0, Ec::msi_counter2 = 0, Ec::ipi_counter2 = 0, Ec::counter1 = 0, Ec::counter2 = 0, Ec::runtime1 = 0, Ec::runtime2 = 0, Ec::total_runtime = 0, Ec::step_debug_time = 0, Ec::compteur = 0, Ec::instr_count0 = 0, Ec::nbInstr_to_execute = 0;
+uint8 Ec::run_number = 0, Ec::launch_state = 0, Ec::step_reason = 0;
+
 Ec *Ec::current, *Ec::fpowner;
 // Constructors
 
@@ -280,13 +279,9 @@ void Ec::ret_user_sysexit() {
 
         current->save_state();
         current->launch_state = Ec::SYSEXIT;
-//        wbinvd();
         begin_time = rdtsc(); //normalement, cette instruction devrait etre dans le if precedant
     }
-    if(set_ti){
-        current->t_intermediary = rdtsc() - begin_time;
-        set_ti = false;
-    }
+    
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : "memory");
 
     UNREACHED;
@@ -301,16 +296,9 @@ void Ec::ret_user_iret() {
 
         current->save_state();
         current->launch_state = Ec::IRET;
-//        wbinvd();
         begin_time = rdtsc();
     }
-//    if(!current->cow_faulted) // cow page faults must not lead to reset the begin_time
-//        begin_time = rdtsc();
-//    current->cow_faulted = false;
-    if(set_ti){
-        current->t_intermediary = rdtsc() - begin_time;
-        set_ti = false;
-    }
+
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR LOAD_SEG RET_USER_EXC) : : "m" (current->regs) : "memory");
 
     UNREACHED;
@@ -539,6 +527,8 @@ bool Ec::is_temporal_exc(mword v) {
     uint16 *ptr = reinterpret_cast<uint16 *> (v);
     if (*ptr == 0x310f) {// rdtsc 0f 31
         return true;
+    } else if (*ptr == 0xf901) {// rdtsc 0F 01 F9
+        return true;
     } else
         return false;
 }
@@ -547,7 +537,7 @@ bool Ec::is_io_exc(mword v) {
     /*TODO
      * Firstly we must ensure that the port the process is trying to access is 
      * within its I/O port space
-     * We must also deal with the REP prefix
+     * We must also deal with the REP prefix: solved because rep prefix makes instr code = 6cf3, 6df3 e4f3 ...
      */
     uint8 *ptr = reinterpret_cast<uint8 *> (v);
     switch (*ptr) {
@@ -665,10 +655,10 @@ void Ec::rollback() {
 
 void Ec::saveRegs(Exc_regs *r) {
     if(r->cs & 3){
-        end_time = rdtsc() - begin_time;
+        end_time = rdtsc();
         last_rip = r->REG(ip);
         last_rcx = r->REG(cx);
-        Ec::exc_counter++;
+        exc_counter++;
 //        if(ec_debug)
 //            Console::print("vector: %lu  cs: %lx  rip: %lx  rcx: %lx  compteur: %lld", r->vec, r->cs, r->REG(ip), r->REG(cx), Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
     }
@@ -683,7 +673,7 @@ mword Ec::get_regsRCX(){
     return regs.REG(cx);
 }
 
-int Ec::compare_ok(int reason){
+int Ec::compare_regs(int reason){
     if(regs.r15 != regs_1.r15)
         return 1;
     if(regs.r14 != regs_1.r14)

@@ -55,8 +55,7 @@ private:
     Fpu * fpu;
     Vmcb *vmcb_backup, *vmcb1, *vmcb2;
     Vmcs *vmcs_backup, *vmcs1, *vmcs2;
-    static unsigned compteur, instr_count0;
-
+    
     union {
 
         struct {
@@ -207,16 +206,10 @@ public:
     static Ec *current CPULOCAL_HOT;
     static Ec *fpowner CPULOCAL;
 
-    uint8 run_number = 0;
-    int launch_state = UNLAUNCHED;
-    bool debug = false, hardening_started = false, in_step_mode = false, cow_faulted = false;
-    unsigned nb_fail = 0, nbInstr_to_execute = 0, affich_num = 0, affich_mod = 1000;
     int previous_reason = 0, nb_extint = 0;
+    uint64 tour = 0;
     mword io_addr, io_attr;
-    int step_reason = NIL;
     Paddr io_phys;
-    uint64 runtime1 = 0, runtime2 = 0, total_runtime = 0, t_intermediary = 0, tour = 0, step_debug_time = 0;        
-    static bool ec_debug, set_ti;
     enum Launch_type {
         UNLAUNCHED = 0,
         SYSEXIT = 1,
@@ -232,11 +225,13 @@ public:
         RDTSC = 3,
     };
     
-    uint64 counter1 = 0, counter2 = 0;
-    static unsigned step_nb, exc_counter, exc_counter1, exc_counter2, gsi_counter1, lvt_counter1, msi_counter1, ipi_counter1,
-            gsi_counter2, lvt_counter2, msi_counter2, ipi_counter2;
+    static unsigned step_nb, affich_num, affich_mod;
     static mword prev_rip, last_rip, last_rcx, end_rip, end_rcx;
-    static uint64 begin_time, end_time, static_tour, t_cache, t_check1;
+    static uint64 begin_time, end_time, runtime1, runtime2, total_runtime, step_debug_time, static_tour, counter1, counter2, compteur, instr_count0, nbInstr_to_execute, exc_counter, exc_counter1, exc_counter2, gsi_counter1, lvt_counter1, msi_counter1, ipi_counter1,
+            gsi_counter2, lvt_counter2, msi_counter2, ipi_counter2;
+    static uint8 run_number, launch_state, step_reason;
+    static bool ec_debug, debug, hardening_started, in_step_mode;
+    
     Ec(Pd *, void (*)(), unsigned);
     Ec(Pd *, mword, Pd *, void (*)(), unsigned, unsigned, mword, mword, Pt *);
     Ec(Pd *, Pd *, void (*f)(), unsigned, Ec *);
@@ -247,7 +242,7 @@ public:
     inline void add_tsc_offset(uint64 tsc) {
         regs.add_tsc_offset(tsc);
     }
-
+    
     ALWAYS_INLINE
     inline bool blocked() const {
         return next || !cont;
@@ -520,11 +515,11 @@ public:
         return run_number == 2;
     }
 
-    bool one_run_ok() {
+    static bool one_run_ok() {
         return run_number == 1;
     }
 
-    bool is_idle() {
+    static bool is_idle() {
         return launch_state == UNLAUNCHED;
     }
 
@@ -543,14 +538,16 @@ public:
     
     void restore_state();
     void rollback();
-    
-    static uint64 readReset_instCounter();
-    static void clear_instCounter();
-    void reset_counter();
-    static void check_exit(Ec*);
-    bool activate_timer();
     mword get_regsRIP();
     mword get_regsRCX();
-    int compare_ok(int);
-    void print_stat_reset(bool);
+    int compare_regs(int);
+    
+    static bool activate_timer();
+    static uint64 readReset_instCounter();
+    static void clear_instCounter();
+    static void reset_counter();
+    static void check_exit(Ec*);
+    static void print_stat(bool);
+    static void reset_time();
+    static void reset_all();
 };

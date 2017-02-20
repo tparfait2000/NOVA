@@ -123,10 +123,9 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
 bool Ec::handle_exc_pf(Exc_regs *r) {
     mword addr = r->cr2;
 
-    if ((r->err & Hpt::ERR_U) && Pd::current->Space_mem::loc[Cpu::id].is_cow_fault(Pd::current->quota, addr, r->err)) {
-        current->cow_faulted = true;
+    if ((r->err & Hpt::ERR_U) && Pd::current->Space_mem::loc[Cpu::id].is_cow_fault(Pd::current->quota, addr, r->err))
         return true;
-    }
+    
     check_memory(1254);
     if (r->err & Hpt::ERR_U)
         return addr < USER_ADDR && Pd::current->Space_mem::loc[Cpu::id].sync_from(Pd::current->quota, Pd::current->Space_mem::hpt, addr, USER_ADDR);
@@ -168,8 +167,8 @@ void Ec::handle_exc(Exc_regs *r) {
     switch (r->vec) {
         case Cpu::EXC_NMI:
             if (Msr::read<uint64>(Msr::IA32_PERF_GLOBAL_STATUS) & 1ull << 32) {
-                current->runtime2 = rdtsc() - begin_time;
-                current->in_step_mode = true;
+                runtime2 = rdtsc();
+                in_step_mode = true;
                 current->regs.REG(fl) |= Cpu::EFL_TF;
                 uint64 instr_count = Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0);
                 if(instr_count > step_nb){
@@ -179,7 +178,7 @@ void Ec::handle_exc(Exc_regs *r) {
                 compteur = step_nb - instr_count + 1;
                 prev_rip = current->regs.REG(ip);
                 instr_count0 = instr_count;
-                //                Console::print("PERF INTERRUPT OVERFLOW MSR_PERF_FIXED_CTR0 %lld  compteur %u", instr_count, compteur);
+//                Console::print("PERF INTERRUPT OVERFLOW MSR_PERF_FIXED_CTR0 %llu  compteur %llu", instr_count, compteur);
                 return;
             }
             break;
@@ -231,7 +230,7 @@ void Ec::handle_exc(Exc_regs *r) {
             if (r->user()) {
                 Ec::current->disable_step_debug();
                 current->launch_state = Ec::UNLAUNCHED;
-                current->reset_counter();
+                current->reset_all();
                 return;
             } else {
                 Console::print("Debug in kernel");
@@ -275,10 +274,10 @@ void Ec::handle_exc(Exc_regs *r) {
 void Ec::check_memory(int pmi) {
     Ec *ec = current;
     Pd *pd = ec->getPd();
-    if (ec->is_idle() || !pd->cow_list) {
-        ec->run_number = 0;
-        ec->launch_state = Ec::UNLAUNCHED;
-        ec->reset_counter();
+    if (is_idle() || !pd->cow_list) {
+        run_number = 0;
+        launch_state = UNLAUNCHED;
+        reset_all();
         return;
     }
 
@@ -286,18 +285,18 @@ void Ec::check_memory(int pmi) {
     //        Console::print(".....  Checking memory from %d ", pmi);
     //        //        current->ec_debug= true;
     //    }
-    if (ec->one_run_ok()) {
+    if (one_run_ok()) {
         if (pmi == 1251) {
             //            Console::print("PMI = 1251 en 2nd run");
             return;
         }
         if(pmi == 3001){
-            ec->step_debug_time = rdtsc() - begin_time;
+            step_debug_time = rdtsc();
         }else{
-            ec->runtime2 = rdtsc() - begin_time; 
+            runtime2 = rdtsc(); 
         }
-        ec->exc_counter2 = Ec::exc_counter;
-        ec->counter2 = readReset_instCounter();
+        exc_counter2 = Ec::exc_counter;
+        counter2 = readReset_instCounter();
         ec->tour++;
         static_tour++;
         //        if (ec_debug) {
@@ -309,51 +308,52 @@ void Ec::check_memory(int pmi) {
         //            Console::print("PMI: %d  counter2: %lld  exc: %d Run = 2  PMC0: %lld  EIP: %lx tour: %lld  s_tour: %lld",
         //                    pmi, ec->counter2, ec->exc_counter2, Msr::read<uint64>(Msr::IA32_PMC0), ec->regs.REG(ip), ec->tour, static_tour);
         //        }
-        ec->reset_counter();
-        int reason = ec->compare_ok(pmi);
+        int reason = ec->compare_regs(pmi);
         if (reason)
             Console::print("REGS does not match %d  reason: %d  tour: %lld  s_tour: %lld", pmi, reason, ec->tour, static_tour);
         if (pd->compare_and_commit()) {
             pd->cow_list = nullptr;
-            ec->run_number = 0;
-            ec->launch_state = Ec::UNLAUNCHED;
-            ec->total_runtime = rdtsc() - begin_time;
+            run_number = 0;
+            launch_state = Ec::UNLAUNCHED;
+            total_runtime = rdtsc();
+            reset_all();
 //            if (ec_debug) {
-//                ec->print_stat_reset(true);
+//                ec->print_stat(true);
 //                ec_debug = false;
 //            } else if (ec->tour % ec->affich_mod == 0) {
 //                ec->affich_num++;
 //                ec->affich_mod += 1000 * (ec->affich_num / 10);
-//                ec->print_stat_reset(false);
+//                ec->print_stat(false);
 //            }
             return;
         } else {
             Console::print("Checking failed Ec: %p  PMI: %d tour: %lld  s_tour: %lld", ec, pmi, ec->tour, static_tour);
             ec->rollback();
-            ec->run_number = 0;
             pd->cow_list = nullptr;
+            run_number = 0;
+            ec->reset_all();
             check_exit(ec);
         }
     } else {
-        ec->exc_counter1 = exc_counter;
-        ec->counter1 = readReset_instCounter();
-        uint64 instruction_num = ec->counter1 - exc_counter1;
+        exc_counter1 = exc_counter;
+        counter1 = readReset_instCounter();
+        uint64 instruction_num = counter1 - exc_counter1;
         if (pmi == 1251 && instruction_num <= 0) {
             //            Console::print("instruction_num: %lld", instruction_num);
             return;
         }
-        //if reason is sysenter, end_time is not calculated so we better use rdtsc() - begin_time
-        ec->runtime1 = end_time ? end_time : rdtsc() - begin_time;
+        //if reason is sysenter, end_time is not calculated so we better use rdtsc()
+        runtime1 = end_time ? end_time : rdtsc();
         ec->tour++;
         static_tour++;
         //        Console::print("PMI: %d  counter1: %lld  exc: %u Run = 1  PMC0: %lld  EIP: %lx  RCX: %lx tour: %lld  s_tour: %lld",
         //            pmi, ec->counter1, ec->exc_counter1, Msr::read<uint64>(Msr::IA32_PMC0), ec->regs.REG(ip), ec->regs.REG(cx), ec->tour, static_tour);
         ec->restore_state();
-        ec->run_number++;
+        run_number++;
         if (pmi == 1251) {
-//            Console::print("PMI: %d  counter1: %lld  exc: %u Run = 1  PMC0: %lld  EIP: %lx  RCX: %lx tour: %lld  s_tour: %lld",
+//            Console::print("PMI: %d  counter1: %llu  exc: %llu Run = 1  PMC0: %llu  EIP: %lx  RCX: %lx tour: %llu  s_tour: %llu",
 //                    pmi, ec->counter1, ec->exc_counter1, Msr::read<uint64>(Msr::IA32_PMC0), ec->regs.REG(ip), ec->regs.REG(cx), ec->tour, static_tour);
-            ec->activate_timer();
+            activate_timer();
             ec_debug = true;
         }
         Msr::write(Msr::IA32_PERFEVTSEL0, 0x000100c5);
@@ -366,10 +366,6 @@ void Ec::check_memory(int pmi) {
 }
 
 void Ec::check_exit(Ec *ec) {
-    t_check1 = rdtsc() - begin_time;
-//    wbinvd();
-    t_cache = rdtsc() - begin_time;
-    set_ti = true;
     switch (ec->launch_state) {
         case SYSEXIT:
             ret_user_sysexit();
@@ -395,9 +391,9 @@ bool Ec::activate_timer() {
         Lapic::set_pmi(instruction_num - step_nb);
     } else {
         if (instruction_num > 0) {
-            current->runtime2 = rdtsc() - begin_time;
+            runtime2 = rdtsc();
             in_step_mode = true;
-            regs.REG(fl) |= Cpu::EFL_TF;
+            current->regs.REG(fl) |= Cpu::EFL_TF;
             nbInstr_to_execute = instruction_num;
             compteur = instruction_num;
             if (launch_state == SYSEXIT) {
@@ -424,32 +420,30 @@ void Ec::reset_counter() {
     Lapic::reset_counter();
 }
 
-void Ec::print_stat_reset(bool pmi) {
+void Ec::print_stat(bool pmi) {
     if(pmi){
-        Console::print("Overhead  Ec: %p tour: %lld  Ot1: %lld  Ocheck1: %lld  Ocache: %lld  Oexit: %lld  Ot2: %lld  db: %lld  Ocheck2: %lld O: %lld  TT: %lld",
-            this, tour, 10000 * runtime1 / total_runtime,
-            10000 * (t_check1 - runtime1) / total_runtime,
-            10000 * (t_cache - t_check1) / total_runtime,
-            10000 * (t_intermediary - t_cache) / total_runtime,
-            10000 * (runtime2 - t_intermediary) / total_runtime,
+        Console::print("Overhead  Ec: %p tour: %lld  Ot1: %lld  db: %lld  Ocheck2: %lld  TT: %lld",
+            current, current->tour, 10000 * runtime1 / total_runtime,
             10000 * (step_debug_time - runtime2) / total_runtime,
             10000 * (total_runtime - runtime2) / total_runtime,
-            10000 * total_runtime / (runtime2 - t_intermediary),
             1000 * total_runtime / Lapic::freq_tsc
-            );
+        );
     }else
-        Console::print("Overhead  Ec: %p tour: %lld  Ot1: %lld  Ocheck1: %lld  Ocache: %lld  Oexit: %lld  Ot2: %lld  Ocheck2: %lld O: %lld  TT: %lld",
-            this, tour, 10000 * runtime1 / total_runtime,
-            10000 * (t_check1 - runtime1) / total_runtime,
-            10000 * (t_cache - t_check1) / total_runtime,
-            10000 * (t_intermediary - t_cache) / total_runtime,
-            10000 * (runtime2 - t_intermediary) / total_runtime,
+        Console::print("Overhead  Ec: %p tour: %lld  Ot1: %lld  Ocheck2: %lld  TT: %lld",
+            current, current->tour, 10000 * runtime1 / total_runtime,
             10000 * (total_runtime - runtime2) / total_runtime,
-            10000 * total_runtime / (runtime2 - t_intermediary),
             1000 * total_runtime / Lapic::freq_tsc
-            );
+        );
+}
+
+void Ec::reset_all(){
+    reset_counter();
+    reset_time();
+}
+
+void Ec::reset_time(){
     runtime1 = 0;
     runtime2 = 0;
     total_runtime = 0;
-    end_time = 0; //if reason is sysenter, end_time could not be update so we have to reset it to 0 after every use
+    begin_time = end_time = 0; //if reason is sysenter, end_time could not be update so we have to reset it to 0 after every use
 }

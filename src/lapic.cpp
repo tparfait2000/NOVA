@@ -32,7 +32,7 @@
 unsigned    Lapic::freq_tsc;
 unsigned    Lapic::freq_bus;
 uint64    Lapic::prev_tsc;
-uint64    Lapic::begin_time;
+uint64      Lapic::end_time = 0, Lapic::begin_time = 0, Lapic::max_tsc = 0;
 
 void Lapic::init()
 {
@@ -127,21 +127,11 @@ void Lapic::timer_handler()
         Timeout::check();        
 
     Rcu::update();
-//    if (expired){
-//        eoi();
-//        Ec::check_memory(1251);
-//    }
 }
 
-void Lapic::lvt_vector (unsigned vector)
-{
-//    if(Ec::current->one_run_ok())
-//        Ec::lvt_counter2++;
-//    else
-//        Ec::lvt_counter1++;
-    
-    uint64 run1_time = begin_time > Ec::begin_time ? Ec::end_time + Ec::begin_time - begin_time : Ec::end_time;
-    uint64 now1 = rdtsc(), time1 = begin_time > Ec::begin_time ? begin_time : Ec::begin_time;
+void Lapic::lvt_vector (unsigned vector, unsigned cs)
+{    
+    Ec::end_time = rdtsc();
     unsigned lvt = vector - VEC_LVT;
 
     switch (vector) {
@@ -152,13 +142,14 @@ void Lapic::lvt_vector (unsigned vector)
     }
 
     eoi();
-    uint64 now = rdtsc(), time = begin_time > Ec::begin_time ? begin_time : Ec::begin_time;
-    if((vector == VEC_LVT_TIMER) && ((now - time) > max_time * freq_tsc/1000)){
-//  if((vector == VEC_LVT_TIMER) && (run1_time > max_time * static_cast<uint64>(freq_tsc)/1000)){
-//    Console::print("run1_time: %lld  now - time: %lld  now1 - time1: %lld", run1_time, now - time, now1 - time1);
-        Ec::end_rip = Ec::last_rip;
-        Ec::end_rcx = Ec::last_rcx;
-        Ec::check_memory(1251);
+    if(!Ec::one_run_ok() && (vector == VEC_LVT_TIMER) && (cs & 3) && Ec::begin_time !=0){
+        uint64 diff = Ec::end_time - Ec::begin_time;
+        if(diff > max_tsc){
+//            Console::print("begin_time %llu  end_time %llu  diff %llu", Ec::begin_time, Ec::end_time, diff);
+            Ec::end_rip = Ec::last_rip;
+            Ec::end_rcx = Ec::last_rcx;
+            Ec::check_memory(1251);
+        }
     }
     Counter::print<1,16> (++Counter::lvt[lvt], Console_vga::COLOR_LIGHT_BLUE, lvt + SPN_LVT);
 }
@@ -182,12 +173,15 @@ void Lapic::ipi_vector (unsigned vector)
     Counter::print<1,16> (++Counter::ipi[ipi], Console_vga::COLOR_LIGHT_GREEN, ipi + SPN_IPI);
 }
 
-void Lapic::set_pmi(unsigned count){
-    if(count==0)
+void Lapic::set_pmi(uint64 count){
+    unsigned nb_inst = static_cast<unsigned>(count);
+    if(nb_inst<=0){
+        Console::print("ODJE LO %d", nb_inst);
         return;
+    }
     set_lvt(LAPIC_LVT_PERFM, DLV_NMI, VEC_LVT_PERFM);
     Msr::write(Msr::IA32_PERF_GLOBAL_OVF_CTRL, 1ull << 32);
-    Msr::write(Msr::MSR_PERF_FIXED_CTR0, -count | 0xFFFF00000000);
+    Msr::write(Msr::MSR_PERF_FIXED_CTR0, -nb_inst | 0xFFFF00000000);
 //    Console::print("MSR_PERF_FIXED_CTR0 %llx", Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
 }
 
@@ -204,4 +198,8 @@ void Lapic::reset_counter(){
     Msr::write(Msr::IA32_PERFEVTSEL0, 0x000100c5);
     Msr::write(Msr::IA32_PMC0, 0x0);
     Msr::write(Msr::IA32_PERFEVTSEL0, 0x004100c5);
+}
+
+void Lapic::lvt_vector (unsigned vector){
+    lvt_vector(vector, 0);
 }
