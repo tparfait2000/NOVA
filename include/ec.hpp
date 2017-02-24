@@ -223,14 +223,16 @@ public:
         MMIO = 1,
         PIO = 2,
         RDTSC = 3,
+        TIMER = 4,
+        PMI = 5,
     };
     
     static unsigned step_nb, affich_num, affich_mod;
     static mword prev_rip, last_rip, last_rcx, end_rip, end_rcx;
-    static uint64 begin_time, end_time, runtime1, runtime2, total_runtime, step_debug_time, static_tour, counter1, counter2, compteur, instr_count0, nbInstr_to_execute, exc_counter, exc_counter1, exc_counter2, gsi_counter1, lvt_counter1, msi_counter1, ipi_counter1,
-            gsi_counter2, lvt_counter2, msi_counter2, ipi_counter2;
+    static uint64 begin_time, end_time, runtime1, runtime2, total_runtime, step_debug_time, static_tour, counter1, counter2, nbInstr_to_execute, exc_counter, exc_counter1, exc_counter2, gsi_counter1, lvt_counter1, msi_counter1, ipi_counter1,
+            gsi_counter2, lvt_counter2, msi_counter2, ipi_counter2, debug_compteur;
     static uint8 run_number, launch_state, step_reason;
-    static bool ec_debug, debug, hardening_started, in_step_mode;
+    static bool ec_debug, debug, hardening_started, in_rep_instruction;
     
     Ec(Pd *, void (*)(), unsigned);
     Ec(Pd *, mword, Pd *, void (*)(), unsigned, unsigned, mword, mword, Pt *);
@@ -494,7 +496,7 @@ public:
     void resolve_PIO_execption();
     void resolve_temp_exception();
 
-    void enable_step_debug(mword fault_addr = 0, Paddr fault_phys = 0, mword fault_attr = 0, Step_reason raison = NIL); 
+    void enable_step_debug(Step_reason raison = NIL, mword fault_addr = 0, Paddr fault_phys = 0, mword fault_attr = 0); 
     void disable_step_debug();
        
     void save_state() {

@@ -37,8 +37,8 @@ INIT_PRIORITY(PRIO_SLAB)
 Slab_cache Ec::cache(sizeof (Ec), 32);
 unsigned Ec::affich_num = 0, Ec::affich_mod = 1000, Ec::step_nb = 100, step_reason = Ec::NIL, launch_state = Ec::UNLAUNCHED;
 mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx;
-bool Ec::ec_debug = false, Ec::debug = false, Ec::hardening_started = false, Ec::in_step_mode = false;
-uint64 Ec::static_tour = 0, Ec::begin_time = 0, Ec::end_time = 0, Ec::exc_counter = 0, Ec::gsi_counter1 = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::lvt_counter1 = 0, Ec::msi_counter1 = 0, Ec::ipi_counter1 = 0, Ec::gsi_counter2 = 0, Ec::lvt_counter2 = 0, Ec::msi_counter2 = 0, Ec::ipi_counter2 = 0, Ec::counter1 = 0, Ec::counter2 = 0, Ec::runtime1 = 0, Ec::runtime2 = 0, Ec::total_runtime = 0, Ec::step_debug_time = 0, Ec::compteur = 0, Ec::instr_count0 = 0, Ec::nbInstr_to_execute = 0;
+bool Ec::ec_debug = false, Ec::debug = false, Ec::hardening_started = false, Ec::in_rep_instruction = false;
+uint64 Ec::static_tour = 0, Ec::begin_time = 0, Ec::end_time = 0, Ec::exc_counter = 0, Ec::gsi_counter1 = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::lvt_counter1 = 0, Ec::msi_counter1 = 0, Ec::ipi_counter1 = 0, Ec::gsi_counter2 = 0, Ec::lvt_counter2 = 0, Ec::msi_counter2 = 0, Ec::ipi_counter2 = 0, Ec::counter1 = 0, Ec::counter2 = 0, Ec::runtime1 = 0, Ec::runtime2 = 0, Ec::total_runtime = 0, Ec::step_debug_time = 0, Ec::nbInstr_to_execute = 0, Ec::debug_compteur = 0;
 uint8 Ec::run_number = 0, Ec::launch_state = 0, Ec::step_reason = 0;
 
 Ec *Ec::current, *Ec::fpowner;
@@ -281,7 +281,7 @@ void Ec::ret_user_sysexit() {
         current->launch_state = Ec::SYSEXIT;
         begin_time = rdtsc(); //normalement, cette instruction devrait etre dans le if precedant
     }
-    
+
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : "memory");
 
     UNREACHED;
@@ -572,28 +572,47 @@ void Ec::resolve_PIO_execption() {
     hpt.lookup(LOCAL_IOP_REMAP, phys, attr);
     hpt.update(quota, SPC_LOCAL_IOP, 1, phys, attr, Hpt::TYPE_DF, false);
     hpt.cow_flush(SPC_LOCAL_IOP);
-    Ec::current->enable_step_debug(SPC_LOCAL_IOP, phys, attr, Step_reason::PIO);
+    Ec::current->enable_step_debug(PIO, SPC_LOCAL_IOP, phys, attr);
 }
 
-void Ec::resolve_temp_exception() {
-    //    Console::print("Read TSC Ec: %p, is_idle(): %d  IP: %p", current, current->is_idle(), current->regs.REG(ip));
-    set_cr4(get_cr4() & ~Cpu::CR4_TSD);
-    Ec::current->enable_step_debug(0, 0, 0, Step_reason::RDTSC);
-}
+//void Ec::resolve_temp_exception() {
+//    //    Console::print("Read TSC Ec: %p, is_idle(): %d  IP: %p", current, current->is_idle(), current->regs.REG(ip));
+//    set_cr4(get_cr4() & ~Cpu::CR4_TSD);
+//    Ec::current->enable_step_debug(0, 0, 0, Step_reason::RDTSC);
+//}
 
-void Ec::enable_step_debug(mword fault_addr, Paddr fault_phys, mword fault_attr, Step_reason reason) {
+void Ec::enable_step_debug(Step_reason reason, mword fault_addr, Paddr fault_phys, mword fault_attr) {
     regs.REG(fl) |= Cpu::EFL_TF;
-    io_addr = fault_addr;
-    io_phys = fault_phys;
-    io_attr = fault_attr;
     step_reason = reason;
-    current->launch_state = Launch_type::IRET; // to ensure that this will finished before any other thread is scheduled
-    //            if (io_addr == 0x7fffd6a0) {
-    //                Ec::count++;
-    //            }
-    //            if (Ec::count > 1) {
-    //                Console::print("io_addr: %08lx  io_phys: %08lx  io_attr: %08lx", io_addr, io_phys, io_attr);
-    //            }
+    switch (reason) {
+        case PIO:
+        case MMIO:
+            io_addr = fault_addr;
+            io_phys = fault_phys;
+            io_attr = fault_attr;
+            current->launch_state = Launch_type::IRET; // to ensure that this will finished before any other thread is scheduled
+            break;
+        case RDTSC:
+            set_cr4(get_cr4() & ~Cpu::CR4_TSD);
+            current->launch_state = Launch_type::IRET; // to ensure that this will finished before any other thread is scheduled
+            break;
+        case PMI:
+        case TIMER:
+        {
+            uint8 *ptr = reinterpret_cast<uint8 *> (end_rip);
+            if(*ptr == 0xf3 || *ptr == 0xf2){
+                Console::print("Rep prefix detected");
+                in_rep_instruction = true;
+                Cpu::disable_fast_string();
+            }
+            break;
+        }
+        case NIL:
+        default:
+            Console::print("Unknown debug reason -- Enable");
+            die("Unknown debug reason -- Enable");
+            break;
+    }
 }
 
 void Ec::disable_step_debug() {
@@ -619,8 +638,16 @@ void Ec::disable_step_debug() {
             //            Console::print("TSC read Ec: %p, is_idle(): %d  IP: %p", current, current->is_idle(), current->regs.REG(ip));
             set_cr4(get_cr4() | Cpu::CR4_TSD);
             break;
+        case PMI:
+        case TIMER:
+            if (in_rep_instruction) {
+                Cpu::enable_fast_string();
+                in_rep_instruction = false;
+            }
+            nbInstr_to_execute = 0;
+            break;
         default:
-            Console::print("Unknown reason");
+            Console::print("Unknown debug reason -- Disable");
             break;
     }
     step_reason = NIL;
@@ -634,7 +661,7 @@ void Ec::clear_instCounter() {
     //Msr::write (Msr::IA32_PERFEVTSEL0, 0x004100c0);
     //Msr::write (Msr::IA32_PERFEVTSEL1, 0x004100c8);
     Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);
-    Msr::write(Msr::IA32_PERF_GLOBAL_OVF_CTRL, 1ull<<32);
+    Msr::write(Msr::IA32_PERF_GLOBAL_OVF_CTRL, 1ull << 32);
 }
 
 void Ec::incr_count(unsigned cs) {
@@ -654,73 +681,73 @@ void Ec::rollback() {
 }
 
 void Ec::saveRegs(Exc_regs *r) {
-    if(r->cs & 3){
+    if (r->cs & 3) {
         end_time = rdtsc();
         last_rip = r->REG(ip);
         last_rcx = r->REG(cx);
         exc_counter++;
-//        if(ec_debug)
-//            Console::print("vector: %lu  cs: %lx  rip: %lx  rcx: %lx  compteur: %lld", r->vec, r->cs, r->REG(ip), r->REG(cx), Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
+        //        if(ec_debug)
+        //            Console::print("vector: %lu  cs: %lx  rip: %lx  rcx: %lx  compteur: %lld", r->vec, r->cs, r->REG(ip), r->REG(cx), Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
     }
     return;
 }
 
-mword Ec::get_regsRIP(){
+mword Ec::get_regsRIP() {
     return regs.REG(ip);
 }
 
-mword Ec::get_regsRCX(){
+mword Ec::get_regsRCX() {
     return regs.REG(cx);
 }
 
-int Ec::compare_regs(int reason){
-    if(regs.r15 != regs_1.r15)
+int Ec::compare_regs(int reason) {
+    if (regs.r15 != regs_1.r15)
         return 1;
-    if(regs.r14 != regs_1.r14)
+    if (regs.r14 != regs_1.r14)
         return 2;
-    if(regs.r13 != regs_1.r13)
+    if (regs.r13 != regs_1.r13)
         return 3;
-    if(regs.r12 != regs_1.r12)
+    if (regs.r12 != regs_1.r12)
         return 4;
-    if(regs.r11 != regs_1.r11){
+    if (regs.r11 != regs_1.r11) {
         // resume flag  or trap flag may be set if reason is step-mode
         // but it is unclear why. Must be fixed later
-        if(((regs.r11 | 1u<<16) == regs_1.r11) || (regs.r11 == (regs_1.r11 | 1u<<8)))
+        if (((regs.r11 | 1u << 16) == regs_1.r11) || (regs.r11 == (regs_1.r11 | 1u << 8)))
             return 0;
-        else{
-            Console::print("R11: %lx  R11_1: %lx  R11or1: %lx", regs.r11, regs_1.r11, regs.r11 | 1u<<8);
+        else {
+            Console::print("R11: %lx  R11_1: %lx  R11or1: %lx", regs.r11, regs_1.r11, regs.r11 | 1u << 8);
             return 5;
         }
     }
-    if(regs.r10 != regs_1.r10)
+    if (regs.r10 != regs_1.r10)
         return 6;
-    if(regs.r9 != regs_1.r9)
+    if (regs.r9 != regs_1.r9)
         return 7;
-    if(regs.r8 != regs_1.r8)
+    if (regs.r8 != regs_1.r8)
         return 8;
-    if(regs.REG(di) != regs_1.REG(di))
+    if (regs.REG(di) != regs_1.REG(di))
         return 9;
-    if(regs.REG(si) != regs_1.REG(si))
+    if (regs.REG(si) != regs_1.REG(si))
         return 10;
-    if(regs.REG(bp) != regs_1.REG(bp))
+    if (regs.REG(bp) != regs_1.REG(bp))
         return 11;
-    if(regs.REG(bx) != regs_1.REG(bx))
+    if (regs.REG(bx) != regs_1.REG(bx))
         return 12;
-    if(regs.REG(cx) != regs_1.REG(cx))
+    if (regs.REG(cx) != regs_1.REG(cx))
         return 13;
-    if(regs.REG(dx) != regs_1.REG(dx))
+    if (regs.REG(dx) != regs_1.REG(dx))
         return 14;
-    if(regs.REG(ax) != regs_1.REG(ax))
+    if (regs.REG(ax) != regs_1.REG(ax))
         return 15;
-    if(reason == 1258) // following checks are not valid if reason is Sysenter
+    if (reason == 1258) // following checks are not valid if reason is Sysenter
         return 0;
-    if((regs.REG(ip) != regs_1.REG(ip)))
+    if ((regs.REG(ip) != regs_1.REG(ip)))
         return 16;
-    if((regs.REG(fl) != regs_1.REG(fl)) && ((regs.REG(fl) | (1u<<16)) != regs_1.REG(fl)))
+    if ((regs.REG(fl) != regs_1.REG(fl)) && ((regs.REG(fl) | (1u << 16)) != regs_1.REG(fl)))
         // resume flag may be set if reason is step-mode but it is curious why this flag is set in regs_1 and not in regs.
         // the contrary would be understandable. Must be fixed later
-       return 17;
-    if(regs.REG(sp) != regs_1.REG(sp))
+        return 17;
+    if (regs.REG(sp) != regs_1.REG(sp))
         return 18;
     return 0;
 }

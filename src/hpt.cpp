@@ -136,7 +136,7 @@ bool Hpt::is_cow_fault(Quota &quota, mword v, mword err) {
             update(quota, v, 0, phys, a | Hpt::HPT_P, Hpt::TYPE_UP, false); // the old frame may have been released; so we have to retain it
             cow_flush(v);
             //            Console::print("Read MMIO");
-            ec->enable_step_debug(v, phys, a, Ec::MMIO);
+            ec->enable_step_debug(Ec::MMIO, v, phys, a);
             return true;
         } else if ((err & Hpt::ERR_W) && !(a & Hpt::HPT_W)) {
             //            if (Ec::current->ec_debug) {

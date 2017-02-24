@@ -110,7 +110,7 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
 
     mword eip = r->REG(ip);
     if (current->is_temporal_exc(eip)) {
-        current->resolve_temp_exception();
+        current->enable_step_debug(RDTSC);
         return true;
     } else if (current->is_io_exc(eip)) {
         current->resolve_PIO_execption();
@@ -168,72 +168,71 @@ void Ec::handle_exc(Exc_regs *r) {
         case Cpu::EXC_NMI:
             if (Msr::read<uint64>(Msr::IA32_PERF_GLOBAL_STATUS) & 1ull << 32) {
                 runtime2 = rdtsc();
-                in_step_mode = true;
-                current->regs.REG(fl) |= Cpu::EFL_TF;
                 uint64 instr_count = Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0);
                 if(instr_count > step_nb){
                     Console::print("OVERFLOW OF EXECUTION, increase step_nb");
                     die("OVERFLOW OF EXECUTION, increase step_nb");
                 }
-                compteur = step_nb - instr_count + 1;
+                nbInstr_to_execute = step_nb - instr_count;
                 prev_rip = current->regs.REG(ip);
-                instr_count0 = instr_count;
-//                Console::print("PERF INTERRUPT OVERFLOW MSR_PERF_FIXED_CTR0 %llu  compteur %llu", instr_count, compteur);
+                debug_compteur++;
+                current->enable_step_debug(PMI);
+//              Console::print("PERF INTERRUPT OVERFLOW MSR_PERF_FIXED_CTR0 %llu  nbInstr_to_execute %llu", instr_count, nbInstr_to_execute);
                 return;
             }
             break;
         case Cpu::EXC_DB:
-            if (current->in_step_mode) {
-                if (prev_rip == current->regs.REG(ip)) {
-                    //                    Console::print("EIP: %lx  prev_rip: %lx MSR_PERF_FIXED_CTR0: %lld instr: %lx", 
-                    //                        current->regs.REG(ip), prev_rip, Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), *reinterpret_cast<mword *>(current->regs.REG(ip)));
-                    //It may happen that this is the final instruction
-                    if ((current->regs.REG(ip) == end_rip) && (current->regs.REG(cx) == end_rcx)) {
-                        compteur = 0;
-                        current->regs.REG(fl) &= ~Cpu::EFL_TF;
-                        current->in_step_mode = false;
-                        check_memory(3001);
-                        return;
-                    }
-                } else {
-                    compteur--;
-                }
-                prev_rip = current->regs.REG(ip);
-                //                if(Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0) - instr_count0 != 2){
-                //                    Console::print("EIP: %lx  MSR_PERF_FIXED_CTR0: %lld instr_count0: %u instr: %lx", 
-                //                        current->regs.REG(ip), Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), instr_count0, *reinterpret_cast<mword *>(current->regs.REG(ip)));
-                //                }
-                //                instr_count0 = Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0);
-                if (compteur > 0) {
-                    current->regs.REG(fl) |= Cpu::EFL_TF;
-                    return;
-                }
-                //                Console::print("EIP %lx|%lx  RCX: %lx|%lx  MSR_PERF_FIXED_CTR0: %lld  IA32_PMC0: %lld", 
-                //                        end_rip, current->regs.REG(ip), end_rcx, current->regs.REG(cx),
-                //                        Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), Msr::read<uint64>(Msr::IA32_PMC0));
-                if ((current->regs.REG(ip) == end_rip) && (current->regs.REG(cx) == end_rcx)) {
-                    compteur = 0;
-                    current->regs.REG(fl) &= ~Cpu::EFL_TF;
-                    current->in_step_mode = false;
-                    check_memory(3001);
-                    return;
-                } else {
-                    //                    if(current->regs.REG(ip) == end_rip)
-                    //                        Console::print("RIP matches but RCX not");
-                    //                    if(current->regs.REG(cx) == end_rcx)
-                    //                        Console::print("RCX matches but RIP not");
-                    current->regs.REG(fl) |= Cpu::EFL_TF;
-                    compteur = 1;
-                    return;
-                }
-            }
             if (r->user()) {
-                Ec::current->disable_step_debug();
-                current->launch_state = Ec::UNLAUNCHED;
-                current->reset_all();
-                return;
+                switch (step_reason){
+                    case MMIO:
+                    case PIO:
+                    case RDTSC:
+                        Ec::current->disable_step_debug();
+                        current->launch_state = Ec::UNLAUNCHED;
+                        current->reset_all();
+                        return;
+                    case PMI:
+                    case TIMER:
+                        if (prev_rip == current->regs.REG(ip)) {
+                            // Console::print("EIP: %lx  prev_rip: %lx MSR_PERF_FIXED_CTR0: %lld instr: %lx", 
+                            // current->regs.REG(ip), prev_rip, Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), *reinterpret_cast<mword *>(current->regs.REG(ip)));
+                            // It may happen that this is the final instruction
+                            if ((current->regs.REG(ip) == end_rip) && (current->regs.REG(cx) == end_rcx)) {
+                                current->disable_step_debug();
+                                check_memory(3001);
+                                return;
+                            }
+                        } else {
+                            nbInstr_to_execute--;
+                        }
+                        prev_rip = current->regs.REG(ip);
+                        if (nbInstr_to_execute > 0) {
+                            current->regs.REG(fl) |= Cpu::EFL_TF;
+                            return;
+                        }
+                        // Console::print("EIP %lx|%lx  RCX: %lx|%lx  MSR_PERF_FIXED_CTR0: %lld  IA32_PMC0: %lld", 
+                        //      end_rip, current->regs.REG(ip), end_rcx, current->regs.REG(cx),
+                        //      Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), Msr::read<uint64>(Msr::IA32_PMC0));
+                        if ((current->regs.REG(ip) == end_rip) && (current->regs.REG(cx) == end_rcx)) {
+                            current->disable_step_debug();
+                            check_memory(3001);
+                            return;
+                        } else {
+                            // if(current->regs.REG(ip) == end_rip)
+                            //      Console::print("RIP matches but RCX not");
+                            // if(current->regs.REG(cx) == end_rcx)
+                            //      Console::print("RCX matches but RIP not");
+                            current->regs.REG(fl) |= Cpu::EFL_TF;
+                            nbInstr_to_execute = 1;
+                            return;
+                        }
+                        break;
+                    default:
+                        Console::print("No step Reason");
+                        die("No step Reason");
+                }
             } else {
-                Console::print("Debug in kernel");
+                Console::print("Debug in kernel Step Reason %d  nbInstr_to_execute %llu  debug_compteur %llu  end_rip %lx  end_rcx %lx", step_reason,nbInstr_to_execute, debug_compteur, end_rip, end_rcx);
                 break;
             }
 
@@ -335,6 +334,12 @@ void Ec::check_memory(int pmi) {
             check_exit(ec);
         }
     } else {
+        if (pmi == 1251 && !Cpu::fast_string_featured()){
+            uint8 *ptr = reinterpret_cast<uint8 *> (end_rip);
+            if(*ptr == 0xf3 || *ptr == 0xf2){
+                return;
+            }
+        }    
         exc_counter1 = exc_counter;
         counter1 = readReset_instCounter();
         uint64 instruction_num = counter1 - exc_counter1;
@@ -392,13 +397,9 @@ bool Ec::activate_timer() {
     } else {
         if (instruction_num > 0) {
             runtime2 = rdtsc();
-            in_step_mode = true;
-            current->regs.REG(fl) |= Cpu::EFL_TF;
+            step_reason = TIMER;
             nbInstr_to_execute = instruction_num;
-            compteur = instruction_num;
-            if (launch_state == SYSEXIT) {
-                compteur++;
-            }
+            current->enable_step_debug(TIMER);
         } else {
             return false;
         }
