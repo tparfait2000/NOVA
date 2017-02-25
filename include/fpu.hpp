@@ -24,6 +24,7 @@
 #include "hazards.hpp"
 #include "slab.hpp"
 #include "x86.hpp"
+#include "string.hpp"
 
 class Fpu
 {
@@ -31,8 +32,13 @@ class Fpu
         char data[512];
 
         static Slab_cache cache;
+        
+        ALWAYS_INLINE
+        static inline bool is_enabled() { return !(get_cr0() & (Cpu::CR0_TS|Cpu::CR0_EM)); }
+
 
     public:
+        static Fpu *fpu_0, *fpu_1, *fpu_2;
         ALWAYS_INLINE
         inline void save() { asm volatile ("fxsave %0" : "=m" (*data)); }
 
@@ -44,7 +50,7 @@ class Fpu
 
         ALWAYS_INLINE
         static inline void enable() { asm volatile ("clts"); Cpu::hazard |= HZD_FPU; }
-
+        
         ALWAYS_INLINE
         static inline void disable() { set_cr0 (get_cr0() | Cpu::CR0_TS); Cpu::hazard &= ~HZD_FPU; }
 
@@ -53,4 +59,29 @@ class Fpu
 
         ALWAYS_INLINE
         static inline void destroy(Fpu *obj, Quota &quota) { obj->~Fpu(); cache.free (obj, quota); }
+        
+        void dwc_save(){ 
+            if(is_enabled())
+                fpu_0->save();
+        }
+        
+        void dwc_restore(){
+            if(is_enabled()){
+                fpu_1->save();
+                fpu_0->load();
+            }
+        }
+        
+        int dwc_check(){
+            if(is_enabled()){
+                fpu_2->save();
+                return memcmp(fpu_1->data, fpu_2->data, 512);
+            }
+            return 0;
+        }
+        
+        void dwc_rollback(){
+            if(is_enabled())
+                fpu_0->load();
+        }
 };

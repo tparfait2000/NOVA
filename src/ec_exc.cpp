@@ -257,6 +257,9 @@ void Ec::handle_exc(Exc_regs *r) {
                 return;
             break;
 
+        case Cpu::EXC_AC:
+            Console::print("Alignement check exception");
+            
         case Cpu::EXC_MC:
             Mca::vector();
             break;

@@ -44,6 +44,8 @@ uint8 Ec::run_number = 0, Ec::launch_state = 0, Ec::step_reason = 0;
 Ec *Ec::current, *Ec::fpowner;
 // Constructors
 
+Cpu_regs Ec::regs_0, Ec::regs_1;
+
 Ec::Ec(Pd *own, void (*f)(), unsigned c) : Kobject(EC, static_cast<Space_obj *> (own)), cont(f), utcb(nullptr), pd(own), partner(nullptr), prev(nullptr), next(nullptr), fpu(nullptr), cpu(static_cast<uint16> (c)), glb(true), evt(0), timeout(this), user_utcb(0), xcpu_sm(nullptr), pt_oom(nullptr) {
     trace(TRACE_SYSCALL, "EC:%p created (PD:%p Kernel)", this, own);
 
@@ -673,10 +675,12 @@ void Ec::restore_state() {
     pd->restore_state();
     regs_1 = regs;
     regs = regs_0;
+    fpu->dwc_restore();
 }
 
 void Ec::rollback() {
     regs = regs_0;
+    fpu->dwc_rollback();
     pd->rollback();
 }
 
@@ -749,5 +753,7 @@ int Ec::compare_regs(int reason) {
         return 17;
     if (regs.REG(sp) != regs_1.REG(sp))
         return 18;
+    if(fpu->dwc_check())
+        return 19;
     return 0;
 }

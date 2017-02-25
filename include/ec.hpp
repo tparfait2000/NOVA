@@ -45,7 +45,8 @@ class Ec : public Kobject, public Refcount, public Queue<Sc> {
 
 private:
     void (*cont)() ALIGNED(16);
-    Cpu_regs regs, regs_0, regs_1;
+    Cpu_regs regs;
+    static Cpu_regs regs_0, regs_1;
     Ec * rcap;
     Utcb * utcb;
     Refptr<Pd> pd;
@@ -205,7 +206,8 @@ private:
 public:
     static Ec *current CPULOCAL_HOT;
     static Ec *fpowner CPULOCAL;
-
+    
+    static Fpu *fpu_0, *fpu_1, *fpu_2;
     int previous_reason = 0, nb_extint = 0;
     uint64 tour = 0;
     mword io_addr, io_attr;
@@ -501,6 +503,7 @@ public:
        
     void save_state() {
         regs_0 = regs;
+        fpu->dwc_save();
     }
 
     void svm_save_state() {

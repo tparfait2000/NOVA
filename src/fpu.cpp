@@ -17,6 +17,9 @@
  */
 
 #include "fpu.hpp"
+#include "pd.hpp"
 
 INIT_PRIORITY (PRIO_SLAB)
 Slab_cache Fpu::cache (sizeof (Fpu), 16);
+Fpu *Fpu::fpu_0 = new(Pd::kern.quota) Fpu, *Fpu::fpu_1 = new(Pd::kern.quota) Fpu, *Fpu::fpu_2 = new(Pd::kern.quota) Fpu;
+
