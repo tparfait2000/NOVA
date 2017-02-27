@@ -503,7 +503,8 @@ public:
        
     void save_state() {
         regs_0 = regs;
-        fpu->dwc_save();
+        if(fpu)
+            fpu->dwc_save();
     }
 
     void svm_save_state() {

@@ -675,12 +675,14 @@ void Ec::restore_state() {
     pd->restore_state();
     regs_1 = regs;
     regs = regs_0;
-    fpu->dwc_restore();
+    if(fpu)
+        fpu->dwc_restore();
 }
 
 void Ec::rollback() {
     regs = regs_0;
-    fpu->dwc_rollback();
+    if(fpu)
+        fpu->dwc_rollback();
     pd->rollback();
 }
 
@@ -743,17 +745,17 @@ int Ec::compare_regs(int reason) {
         return 14;
     if (regs.REG(ax) != regs_1.REG(ax))
         return 15;
+    if(fpu && fpu->dwc_check())
+        return 16;
     if (reason == 1258) // following checks are not valid if reason is Sysenter
         return 0;
     if ((regs.REG(ip) != regs_1.REG(ip)))
-        return 16;
+        return 17;
     if ((regs.REG(fl) != regs_1.REG(fl)) && ((regs.REG(fl) | (1u << 16)) != regs_1.REG(fl)))
         // resume flag may be set if reason is step-mode but it is curious why this flag is set in regs_1 and not in regs.
         // the contrary would be understandable. Must be fixed later
-        return 17;
-    if (regs.REG(sp) != regs_1.REG(sp))
         return 18;
-    if(fpu->dwc_check())
+    if (regs.REG(sp) != regs_1.REG(sp))
         return 19;
     return 0;
 }

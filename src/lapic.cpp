@@ -131,7 +131,6 @@ void Lapic::timer_handler()
 
 void Lapic::lvt_vector (unsigned vector, unsigned cs)
 {    
-    Ec::end_time = rdtsc();
     unsigned lvt = vector - VEC_LVT;
 
     switch (vector) {
