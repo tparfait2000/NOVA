@@ -280,10 +280,12 @@ void Ec::ret_user_sysexit() {
             handle_hazard(hzd, ret_user_sysexit);
 
         current->save_state();
-        current->launch_state = Ec::SYSEXIT;
+        launch_state = Ec::SYSEXIT;
         begin_time = rdtsc(); //normalement, cette instruction devrait etre dans le if precedant
     }
-
+//    Console::print("Sysret  rip: %lx  instr %llu", current->regs.REG(cx), Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
+    if (current->is_idle()) 
+        begin_time = rdtsc(); 
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : "memory");
 
     UNREACHED;
@@ -297,10 +299,13 @@ void Ec::ret_user_iret() {
             handle_hazard(hzd, ret_user_iret);
 
         current->save_state();
-        current->launch_state = Ec::IRET;
+        launch_state = Ec::IRET;
         begin_time = rdtsc();
     }
-
+    if (static_tour == 1)
+        Console::print("Iret  rip: %lx  eflags %lx  instr %llu", current->regs.REG(ip), current->regs.REG(fl), Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
+    if (current->is_idle()) 
+        begin_time = rdtsc(); 
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR LOAD_SEG RET_USER_EXC) : : "m" (current->regs) : "memory");
 
     UNREACHED;
@@ -325,7 +330,7 @@ void Ec::ret_user_vmresume() {
         current->regs.vmcs->make_current();
 
         current->vmx_save_state();
-        current->launch_state = Ec::VMRESUME;
+        launch_state = Ec::VMRESUME;
     }
 
     if (EXPECT_FALSE(Pd::current->gtlb.chk(Cpu::id))) {
@@ -357,7 +362,7 @@ void Ec::ret_user_vmrun() {
             handle_hazard(hzd, ret_user_vmrun);
 
         current->svm_save_state();
-        current->launch_state = Ec::VMRUN;
+        launch_state = Ec::VMRUN;
     }
     if (EXPECT_FALSE(Pd::current->gtlb.chk(Cpu::id))) {
         Pd::current->gtlb.clr(Cpu::id);
@@ -592,17 +597,17 @@ void Ec::enable_step_debug(Step_reason reason, mword fault_addr, Paddr fault_phy
             io_addr = fault_addr;
             io_phys = fault_phys;
             io_attr = fault_attr;
-            current->launch_state = Launch_type::IRET; // to ensure that this will finished before any other thread is scheduled
+            launch_state = Launch_type::IRET; // to ensure that this will finished before any other thread is scheduled
             break;
         case RDTSC:
             set_cr4(get_cr4() & ~Cpu::CR4_TSD);
-            current->launch_state = Launch_type::IRET; // to ensure that this will finished before any other thread is scheduled
+            launch_state = Launch_type::IRET; // to ensure that this will finished before any other thread is scheduled
             break;
         case PMI:
         case TIMER:
         {
             uint8 *ptr = reinterpret_cast<uint8 *> (end_rip);
-            if(*ptr == 0xf3 || *ptr == 0xf2){
+            if (*ptr == 0xf3 || *ptr == 0xf2) {
                 Console::print("Rep prefix detected");
                 in_rep_instruction = true;
                 Cpu::disable_fast_string();
@@ -675,13 +680,13 @@ void Ec::restore_state() {
     pd->restore_state();
     regs_1 = regs;
     regs = regs_0;
-    if(fpu)
+    if (fpu)
         fpu->dwc_restore();
 }
 
 void Ec::rollback() {
     regs = regs_0;
-    if(fpu)
+    if (fpu)
         fpu->dwc_rollback();
     pd->rollback();
 }
@@ -693,7 +698,7 @@ void Ec::saveRegs(Exc_regs *r) {
         last_rcx = r->REG(cx);
         exc_counter++;
         //        if(ec_debug)
-        //            Console::print("vector: %lu  cs: %lx  rip: %lx  rcx: %lx  compteur: %lld", r->vec, r->cs, r->REG(ip), r->REG(cx), Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
+//        Console::print("vector: %lu  cs: %lx  rip: %lx  rcx: %lx  instr %llu", r->vec, r->cs, r->REG(ip), r->REG(cx), Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
     }
     return;
 }
@@ -745,7 +750,7 @@ int Ec::compare_regs(int reason) {
         return 14;
     if (regs.REG(ax) != regs_1.REG(ax))
         return 15;
-    if(fpu && fpu->dwc_check())
+    if (fpu && fpu->dwc_check())
         return 16;
     if (reason == 1258) // following checks are not valid if reason is Sysenter
         return 0;

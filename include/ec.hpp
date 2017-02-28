@@ -549,10 +549,9 @@ public:
     int compare_regs(int);
     
     static bool activate_timer();
-    static uint64 readReset_instCounter();
     static void clear_instCounter();
     static void reset_counter();
-    static void check_exit(Ec*);
+    static void check_exit();
     static void print_stat(bool);
     static void reset_time();
     static void reset_all();

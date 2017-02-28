@@ -144,9 +144,6 @@ void Lapic::lvt_vector (unsigned vector, unsigned cs)
     if(!Ec::one_run_ok() && (vector == VEC_LVT_TIMER) && (cs & 3) && Ec::begin_time !=0){
         uint64 diff = Ec::end_time - Ec::begin_time;
         if(diff > max_tsc){
-//            Console::print("begin_time %llu  end_time %llu  diff %llu", Ec::begin_time, Ec::end_time, diff);
-            Ec::end_rip = Ec::last_rip;
-            Ec::end_rcx = Ec::last_rcx;
             Ec::check_memory(1251);
         }
     }
@@ -174,10 +171,6 @@ void Lapic::ipi_vector (unsigned vector)
 
 void Lapic::set_pmi(uint64 count){
     unsigned nb_inst = static_cast<unsigned>(count);
-    if(nb_inst<=0){
-        Console::print("ODJE LO %d", nb_inst);
-        return;
-    }
     set_lvt(LAPIC_LVT_PERFM, DLV_NMI, VEC_LVT_PERFM);
     Msr::write(Msr::IA32_PERF_GLOBAL_OVF_CTRL, 1ull << 32);
     Msr::write(Msr::MSR_PERF_FIXED_CTR0, -nb_inst | 0xFFFF00000000);
@@ -187,18 +180,25 @@ void Lapic::set_pmi(uint64 count){
 void Lapic::activate_pmi() {
     Msr::write(Msr::MSR_PERF_GLOBAL_CTRL, 0x700000003);
     Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);
-    Msr::write (Msr::IA32_PMC0, 0x0);
-    Msr::write(Msr::IA32_PERFEVTSEL0, 0x004100c5);
+//    Msr::write (Msr::IA32_PMC0, 0x0);
+//    Msr::write(Msr::IA32_PERFEVTSEL0, 0x004100c0);
 }
 
 void Lapic::reset_counter(){
     Msr::write(Msr::MSR_PERF_FIXED_CTR0, 0x0);
     
-    Msr::write(Msr::IA32_PERFEVTSEL0, 0x000100c5);
-    Msr::write(Msr::IA32_PMC0, 0x0);
-    Msr::write(Msr::IA32_PERFEVTSEL0, 0x004100c5);
+//    Msr::write(Msr::IA32_PERFEVTSEL0, 0x000100c5);
+////    Msr::write(Msr::IA32_PMC0, 0x0);
+//    Msr::write(Msr::IA32_PERFEVTSEL0, 0x004100c5);
 }
 
 void Lapic::lvt_vector (unsigned vector){
     lvt_vector(vector, 0);
+}
+
+uint64 Lapic::readReset_instCounter() {
+    Ec::exc_counter = 0;
+    uint64 val = Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0); //no need to stop the counter because he is not supposed to count (according to config) when we are in kernl mode
+    Msr::write(Msr::MSR_PERF_FIXED_CTR0, 0x0);
+    return val;
 }

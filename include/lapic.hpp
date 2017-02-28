@@ -185,4 +185,5 @@ class Lapic
             max_tsc = freq_bus ? freq_bus/1000 * max_time : freq_tsc/1000 * max_time;
         }
 
+        static uint64 readReset_instCounter();
 };
