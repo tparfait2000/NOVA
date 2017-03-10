@@ -37,6 +37,8 @@ class Msr
             IA32_FEATURE_CONTROL    = 0x3a,
             IA32_BIOS_SIGN_ID       = 0x8b,
             IA32_SMM_MONITOR_CTL    = 0x9b,
+            MSR_FSB_FREQ            = 0xcd,
+            MSR_PLATFORM_INFO       = 0xce,
             IA32_MTRR_CAP           = 0xfe,
             IA32_SYSENTER_CS        = 0x174,
             IA32_SYSENTER_ESP       = 0x175,
