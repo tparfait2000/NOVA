@@ -73,16 +73,18 @@ void Lapic::init()
 
         write (LAPIC_TMR_ICR, ~0U);
 
-        uint32 v1 = read (LAPIC_TMR_CCR);
-        uint32 t1 = static_cast<uint32>(rdtsc());
-        Acpi::delay (10);
-        uint32 v2 = read (LAPIC_TMR_CCR);
-        uint32 t2 = static_cast<uint32>(rdtsc());
+        do {
+            uint32 v1 = read (LAPIC_TMR_CCR);
+            uint32 t1 = static_cast<uint32>(rdtsc());
+            Acpi::delay (10);
+            uint32 v2 = read (LAPIC_TMR_CCR);
+            uint32 t2 = static_cast<uint32>(rdtsc());
 
-        freq_tsc = (t2 - t1) / 10;
-        freq_bus = (v1 - v2) / 10;
+            freq_tsc = (t2 - t1) / 10;
+            freq_bus = (v1 - v2) / 10;
 
-        trace (TRACE_APIC, "TSC:%u kHz BUS:%u kHz", freq_tsc, freq_bus);
+            trace (0, "TSC:%u kHz BUS:%u kHz", freq_tsc, freq_bus);
+        } while (freq_bus && freq_tsc < freq_bus);
 
         send_ipi (0, 1, DLV_SIPI, DSH_EXC_SELF);
         Acpi::delay (1);
