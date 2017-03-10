@@ -69,6 +69,13 @@ uint32      Cpu::features[6];
 bool        Cpu::bsp;
 bool        Cpu::preemption;
 
+bool invariant_tsc()
+{
+    uint32 eax, ebx, ecx, edx;
+    Cpu::cpuid (0x80000007, eax, ebx, ecx, edx);
+    return edx & 0x100;
+}
+
 void Cpu::check_features()
 {
     unsigned top, tpp = 1, cpp = 1;
@@ -201,7 +208,7 @@ void Cpu::init()
     // Initialize CPU number and check features
     check_features();
 
-    Lapic::init();
+    Lapic::init(invariant_tsc());
 
     row = Console_vga::con.spinner (id);
 
