@@ -283,9 +283,6 @@ void Ec::ret_user_sysexit() {
         launch_state = Ec::SYSEXIT;
         begin_time = rdtsc(); //normalement, cette instruction devrait etre dans le if precedant
     }
-//    Console::print("Sysret  rip: %lx  instr %llu", current->regs.REG(cx), Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
-    if (current->is_idle()) 
-        begin_time = rdtsc(); 
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : "memory");
 
     UNREACHED;
@@ -302,10 +299,6 @@ void Ec::ret_user_iret() {
         launch_state = Ec::IRET;
         begin_time = rdtsc();
     }
-    if (static_tour == 1)
-        Console::print("Iret  rip: %lx  eflags %lx  instr %llu", current->regs.REG(ip), current->regs.REG(fl), Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
-    if (current->is_idle()) 
-        begin_time = rdtsc(); 
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR LOAD_SEG RET_USER_EXC) : : "m" (current->regs) : "memory");
 
     UNREACHED;
@@ -344,6 +337,7 @@ void Ec::ret_user_vmresume() {
     if (EXPECT_FALSE(get_cr2() != current->regs.cr2))
         set_cr2(current->regs.cr2);
     current->regs.disable_rdtsc<Vmcs>();
+    Console::print("VMRun");
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR)
                 "vmresume;"
                 "vmlaunch;"
