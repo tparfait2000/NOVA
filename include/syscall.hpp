@@ -55,6 +55,9 @@ class Sys_create_pd : public Sys_regs
 
         ALWAYS_INLINE
         inline unsigned long limit_upper() const { return ARG_4 >> (sizeof(mword) * 4); }
+
+        ALWAYS_INLINE
+        inline char* name() const { return reinterpret_cast<char*>(ARG_6); }
 };
 
 class Sys_create_ec : public Sys_regs

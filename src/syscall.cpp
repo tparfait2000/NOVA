@@ -316,7 +316,7 @@ void Ec::sys_create_pd()
         sys_finish<Sys_regs::QUO_OOM>();
     }
 
-    Pd *pd = new (Pd::current->quota) Pd (Pd::current, r->sel(), cap.prm());
+    Pd *pd = new (Pd::current->quota) Pd (Pd::current, r->sel(), cap.prm(), r->name());
 
     if (!pd->quota.set_limit(r->limit_lower(), r->limit_upper(), pd_src->quota)) {
         trace (0, "Insufficient kernel memory for creating new PD");
@@ -333,6 +333,7 @@ void Ec::sys_create_pd()
     Crd crd = r->crd();
     pd->del_crd (Pd::current, Crd (Crd::OBJ), crd);
 
+//    Console::print("EC:%p SYS_CREATE PD:%#lx Pd: %p name: %s", current, r->sel(), pd, pd->get_name());
     sys_finish<Sys_regs::SUCCESS>();
 }
 

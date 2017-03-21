@@ -29,6 +29,7 @@
 
 class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, public Space_obj {
 private:
+    char* const name;
     static Slab_cache cache;
 
     WARN_UNUSED_RESULT
@@ -74,7 +75,7 @@ public:
     Pd(Pd *);
     ~Pd();
 
-    Pd(Pd *own, mword sel, mword a);
+    Pd(Pd *own, mword sel, mword a, char* const s = const_cast<char* const>("Unknown"));
 
     ALWAYS_INLINE HOT
     inline void make_current() {
@@ -150,6 +151,7 @@ public:
 
         cache.free(ptr, pd_to->quota);
     }
+    char *get_name() {return name;}
 
     Cow::cow_elt* find_cow_elt(mword gpa);
     bool is_mapped_elsewhere(Paddr phys, Cow::cow_elt* cow);

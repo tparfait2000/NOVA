@@ -116,7 +116,7 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
         current->resolve_PIO_execption();
         return true;
     }
-    Console::print("GP Here: Ec: %p  err: %08lx  addr: %08lx  eip: %08lx  val: %08x", current, r->err, r->cr2, eip, *(reinterpret_cast<uint32 *> (eip)));
+    Console::print("GP Here: Ec: %p  Pd: %p  err: %08lx  addr: %08lx  eip: %08lx  val: %08x", current, current->getPd(), r->err, r->cr2, eip, *(reinterpret_cast<uint32 *> (eip)));
     return false;
 }
 
