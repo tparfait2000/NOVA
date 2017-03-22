@@ -29,7 +29,7 @@
 
 class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, public Space_obj {
 private:
-    char* const name;
+    char name[str_max_length];
     static Slab_cache cache;
 
     WARN_UNUSED_RESULT

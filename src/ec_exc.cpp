@@ -109,14 +109,15 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
     }
 
     mword eip = r->REG(ip);
-    if (current->is_temporal_exc(eip)) {
-        current->enable_step_debug(RDTSC);
+    Ec* ec = current;
+    if (ec->is_temporal_exc(eip)) {
+        ec->enable_step_debug(RDTSC);
         return true;
-    } else if (current->is_io_exc(eip)) {
-        current->resolve_PIO_execption();
+    } else if (ec->is_io_exc(eip)) {
+        ec->resolve_PIO_execption();
         return true;
     }
-    Console::print("GP Here: Ec: %p  Pd: %p  err: %08lx  addr: %08lx  eip: %08lx  val: %08x", current, current->getPd(), r->err, r->cr2, eip, *(reinterpret_cast<uint32 *> (eip)));
+    Console::print("GP Here: Ec: %p  Pd: %p  err: %08lx  addr: %08lx  eip: %08lx  val: %08x Pd: %s", ec, ec->getPd(), r->err, r->cr2, eip, *(reinterpret_cast<uint32 *> (eip)), ec->getPd()->get_name());
     return false;
 }
 

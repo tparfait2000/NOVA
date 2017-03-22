@@ -34,7 +34,8 @@ INIT_PRIORITY(PRIO_BUDDY)
 ALIGNED(32) Pd Pd::kern(&Pd::kern);
 ALIGNED(32) Pd Pd::root(&Pd::root, NUM_EXC, 0x1f);
 
-Pd::Pd(Pd *own) : Kobject(PD, static_cast<Space_obj *> (own)), name(const_cast<char* const>("root_pd")) {
+Pd::Pd(Pd *own) : Kobject(PD, static_cast<Space_obj *> (own)) {
+    copy_string(name, const_cast<char* const> ("kern_pd"));
     hpt = Hptp(reinterpret_cast<mword> (&PDBR));
 
     Mtrr::init();
@@ -49,10 +50,13 @@ Pd::Pd(Pd *own) : Kobject(PD, static_cast<Space_obj *> (own)), name(const_cast<c
     Space_pio::addreg(own->quota, 0, 1UL << 16, 7);
 }
 
-Pd::Pd(Pd *own, mword sel, mword a, char* const s) : Kobject(PD, static_cast<Space_obj *> (own), sel, a, free, pre_free), name(s) {
+Pd::Pd(Pd *own, mword sel, mword a, char* const s) : Kobject(PD, static_cast<Space_obj *> (own), sel, a, free, pre_free) {
     if (this == &Pd::root) {
+        copy_string(name, const_cast<char* const> ("root"));
         bool res = Quota::init.transfer_to(quota, Quota::init.limit());
         assert(res);
+    } else {
+        copy_string(name, s);
     }
 }
 
