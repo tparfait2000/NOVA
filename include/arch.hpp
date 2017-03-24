@@ -131,11 +131,8 @@
                         pop     PREG(cx);               \
                         pop     PREG(ax);
 
-#define RET_USER_HYP    push	PREG(11);		\
-                        mov     0x48(PREG(sp)), PREG(11); \
-                        and     $0x100, PREG(11);       \
-                        or      $0x200, PREG(11);       \
-			mov     (PREG(sp)), PREG(sp);     \
+#define RET_USER_HYP    mov     PREG(11), PREG(sp);     \
+                        mov     $0x200, PREG(11);       \
                         sysretq;
 
 #define RET_USER_EXC    iretq;
