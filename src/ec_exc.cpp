@@ -117,7 +117,11 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
         ec->resolve_PIO_execption();
         return true;
     }
-    Console::print("GP Here: Ec: %p  Pd: %p  err: %08lx  addr: %08lx  eip: %08lx  val: %08x Pd: %s", ec, ec->getPd(), r->err, r->cr2, eip, *(reinterpret_cast<uint32 *> (eip)), ec->getPd()->get_name());
+    Console::print("GP Here: Ec: %p  Pd: %p  err: %08lx  addr: %08lx  eip: %08lx  val: %08x rdi: %lx Pd: %s  lauch_state: %d", ec, ec->getPd(), r->err, r->cr2, eip, *(reinterpret_cast<uint32 *> (eip)), ec->regs.REG(di), ec->getPd()->get_name(), launch_state);
+
+    Console::print("eip0: %lx  rcx0: %lx  r11_0: %lx  rdi_0: %lx", regs_0.REG(ip), regs_0.REG(cx), regs_0.r11, regs_0.REG(di));
+    Console::print("eip1: %lx  rcx1: %lx  r11_1: %lx  rdi_1: %lx", regs_1.REG(ip), regs_1.REG(cx), regs_1.r11, regs_1.REG(di));
+    Pd::current->Space_mem::loc[Cpu::id].print_table(Pd::current->quota, USER_ADDR);
     return false;
 }
 
@@ -126,7 +130,7 @@ bool Ec::handle_exc_pf(Exc_regs *r) {
 
     if ((r->err & Hpt::ERR_U) && Pd::current->Space_mem::loc[Cpu::id].is_cow_fault(Pd::current->quota, addr, r->err))
         return true;
-    if(r->cs & 3)
+    if (r->cs & 3)
         check_memory(1254);
 
     if (r->err & Hpt::ERR_U)
@@ -189,9 +193,15 @@ void Ec::handle_exc(Exc_regs *r) {
                     case MMIO:
                     case PIO:
                     case RDTSC:
+                        if (current->getPd()->cow_list) {
+                            Console::print("step_reason: %d eip: %lx name: %s", step_reason, current->regs.REG(ip), current->getPd()->get_name());
+                            //                            current->getPd()->cow_list = nullptr;
+                        }
                         Ec::current->disable_step_debug();
                         launch_state = Ec::UNLAUNCHED;
-                        current->reset_all();
+                        run_number = 0;
+                        reset_counter();
+                        reset_time();
                         return;
                     case PMI:
                     case TIMER:
@@ -268,7 +278,8 @@ void Ec::handle_exc(Exc_regs *r) {
     }
 
     if (r->user()) {
-        check_memory(1256);
+        if (!is_idle() || current->getPd()->cow_list)
+            check_memory(1256);
         send_msg<ret_user_iret>();
     }
 
@@ -278,8 +289,9 @@ void Ec::handle_exc(Exc_regs *r) {
 void Ec::check_memory(int pmi) {
     Ec *ec = current;
     Pd *pd = ec->getPd();
-    if (is_idle() || !pd->cow_list) {
-        run_number = 0;
+    if (is_idle())
+        Console::print("TCHA HOHO Must not be idle here, sth wrong. pmi: %d cowlist: %p Pd: %s", pmi, current->getPd()->cow_list, current->getPd()->get_name());
+    if (!pd->cow_list) {
         launch_state = UNLAUNCHED;
         reset_all();
         return;
@@ -312,13 +324,11 @@ void Ec::check_memory(int pmi) {
         //            Console::print("PMI: %d  counter2: %lld  exc: %d Run = 2  PMC0: %lld  EIP: %lx tour: %lld  s_tour: %lld",
         //                    pmi, ec->counter2, ec->exc_counter2, Msr::read<uint64>(Msr::IA32_PMC0), ec->regs.REG(ip), ec->tour, static_tour);
         //        }
-//        Console::print("pmi %d  begin_time %llu  end_time %llu  diff %llu  rip %lx  rcx %lx", pmi, begin_time, end_time, end_time - begin_time, last_rip, last_rcx);
+        //        Console::print("pmi %d  begin_time %llu  end_time %llu  diff %llu  rip %lx  rcx %lx", pmi, begin_time, end_time, end_time - begin_time, last_rip, last_rcx);
         int reason = ec->compare_regs(pmi);
         if (reason)
             Console::print("REGS does not match %d  reason: %d  tour: %lld  s_tour: %lld", pmi, reason, ec->tour, static_tour);
         if (pd->compare_and_commit()) {
-            pd->cow_list = nullptr;
-            run_number = 0;
             launch_state = Ec::UNLAUNCHED;
             total_runtime = rdtsc();
             reset_all();
@@ -332,10 +342,11 @@ void Ec::check_memory(int pmi) {
             //            }
             return;
         } else {
-            Console::print("Checking failed Ec: %p  PMI: %d tour: %lld  s_tour: %lld", ec, pmi, ec->tour, static_tour);
+            Console::print("Checking failed Ec: %p  PMI: %d Pd: %s tour: %lld  s_tour: %lld  launch_state: %d", ec, pmi, pd->get_name(), ec->tour, static_tour, launch_state);
+            Console::print("eip0: %lx  rcx0: %lx  r11_0: %lx  rdi_0: %lx", regs_0.REG(ip), regs_0.REG(cx), regs_0.r11, regs_0.REG(di));
+            Console::print("eip1: %lx  rcx1: %lx  r11_1: %lx  rdi_1: %lx", regs_1.REG(ip), regs_1.REG(cx), regs_1.r11, regs_1.REG(di));
+            Console::print("eip: %lx  rcx: %lx  r11: %lx  rdi: %lx", ec->regs.REG(ip), ec->regs.REG(cx), ec->regs.r11, ec->regs.REG(di));
             ec->rollback();
-            pd->cow_list = nullptr;
-            run_number = 0;
             ec->reset_all();
             check_exit();
         }
@@ -366,11 +377,11 @@ void Ec::check_memory(int pmi) {
             //                    pmi, ec->counter1, ec->exc_counter1, Msr::read<uint64>(Msr::IA32_PMC0), ec->regs.REG(ip), ec->regs.REG(cx), ec->tour, static_tour);
             end_rip = last_rip;
             end_rcx = last_rcx;
-//            Console::print("begin_time %llu  end_time %llu  diff %llu  rip %lx  rcx %lx  nb_inst %llu:%llu", begin_time, end_time, end_time - begin_time, end_rip, end_rcx, counter1, exc_counter1);
+            //            Console::print("begin_time %llu  end_time %llu  diff %llu  rip %lx  rcx %lx  nb_inst %llu:%llu", begin_time, end_time, end_time - begin_time, end_rip, end_rcx, counter1, exc_counter1);
             activate_timer();
             ec_debug = true;
         }
-//        Console::print("pmi %d  begin_time %llu  end_time %llu  diff %llu  rip %lx  rcx %lx  launchS %d", pmi, begin_time, end_time, end_time - begin_time, last_rip, last_rcx, launch_state);
+        //        Console::print("pmi %d  begin_time %llu  end_time %llu  diff %llu  rip %lx  rcx %lx  launchS %d", pmi, begin_time, end_time, end_time - begin_time, last_rip, last_rcx, launch_state);
         Msr::write(Msr::IA32_PERFEVTSEL0, 0x000100c5);
         Msr::write(Msr::IA32_PMC0, 0x0);
         Msr::write(Msr::IA32_PERFEVTSEL0, 0x004100c5);
@@ -405,14 +416,14 @@ bool Ec::activate_timer() {
     if (instruction_num > step_nb) {
         Lapic::set_pmi(instruction_num - step_nb);
     } else {
-//        if (instruction_num > 0) {
-            runtime2 = rdtsc();
-            step_reason = TIMER;
-            nbInstr_to_execute = instruction_num > 0? instruction_num : 1;
-            current->enable_step_debug(TIMER);
-//        } else {
-//            return false;
-//        }
+        //        if (instruction_num > 0) {
+        runtime2 = rdtsc();
+        step_reason = TIMER;
+        nbInstr_to_execute = instruction_num > 0 ? instruction_num : 1;
+        current->enable_step_debug(TIMER);
+        //        } else {
+        //            return false;
+        //        }
     }
     return true;
 }
@@ -441,6 +452,8 @@ void Ec::print_stat(bool pmi) {
 }
 
 void Ec::reset_all() {
+    current->pd->cow_list = nullptr;
+    run_number = 0;
     reset_counter();
     reset_time();
 }

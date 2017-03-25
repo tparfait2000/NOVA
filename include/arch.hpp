@@ -134,6 +134,10 @@
 #define RET_USER_HYP    mov     PREG(11), PREG(sp);     \
                         mov     $0x200, PREG(11);       \
                         sysretq;
+//for single-steping after sysret
+#define RET_USER_HYP_SS mov     PREG(11), PREG(sp);     \
+                        mov     $0x300, PREG(11);       \
+                        sysretq;
 
 #define RET_USER_EXC    iretq;
 #define SAVE_FLAGS      pushfq;

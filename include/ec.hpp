@@ -526,7 +526,7 @@ public:
     }
 
     static bool is_idle() {
-        return launch_state == UNLAUNCHED;
+        return launch_state == UNLAUNCHED && step_reason == NIL;
     }
 
     void set_env(uint64 t) {

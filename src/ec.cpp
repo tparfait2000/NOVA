@@ -283,8 +283,11 @@ void Ec::ret_user_sysexit() {
         launch_state = Ec::SYSEXIT;
         begin_time = rdtsc(); //normalement, cette instruction devrait etre dans le if precedant
     }
-    asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : "memory");
-
+    if(step_reason == NIL){
+        asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : "memory");
+    }else{
+        asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP_SS) : : "m" (current->regs) : "memory");
+    }
     UNREACHED;
 }
 
@@ -294,7 +297,7 @@ void Ec::ret_user_iret() {
         mword hzd = (Cpu::hazard | current->regs.hazard()) & (HZD_RECALL | HZD_STEP | HZD_RCU | HZD_FPU | HZD_SCHED);
         if (EXPECT_FALSE(hzd))
             handle_hazard(hzd, ret_user_iret);
-
+        
         current->save_state();
         launch_state = Ec::IRET;
         begin_time = rdtsc();

@@ -58,3 +58,8 @@
 #define NB_TS_ELT       10000
 #define NB_BLOCK_ELT    10
 #define END_SPACE_LIM   (~0UL + 1)
+
+
+#define I386_PT_ENTRIES	(1 << PTE_BPL)
+#define I386_VM_PFA(e)	( (e) & PAGE_MASK)
+#define I386_BIG_PAGE_SIZE	(PAGE_SIZE* (1 << 10))

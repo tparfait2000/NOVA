@@ -133,4 +133,6 @@ public:
     }
     static bool is_mmio(E p);
     static void set_cow_page(E virt, E &entry);
+    
+    void print_walk(Quota &quota, E, mword);
 };

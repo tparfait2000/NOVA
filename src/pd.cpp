@@ -485,12 +485,14 @@ bool Pd::compare_and_commit() {
     Quota q = this->quota;
     while (cow != nullptr) {
         //        Console::print("Compare v: %p  phys: %p  ce: %p  phys1: %p  phys2: %p", cow->page_addr_or_gpa, cow->old_phys, cow, cow->new_phys[0]->phys_addr, cow->new_phys[1]->phys_addr);
-        const void *ptr1 = reinterpret_cast<const void*> (Hpt::remap_cow(q, cow->new_phys[0]->phys_addr)),
-                *ptr2 = reinterpret_cast<const void*> (cow->page_addr_or_gpa);
+        void *ptr1 = reinterpret_cast<void*> (Hpt::remap_cow(q, cow->new_phys[0]->phys_addr)),
+                *ptr2 = reinterpret_cast<void*> (cow->page_addr_or_gpa);
         int missmatch_addr = memcmp(ptr1, ptr2, PAGE_SIZE);
         if (missmatch_addr) {
-            Console::print("Pd: %p  ptr1: %p  ptr2: %p  missmatch_addr: %x",
-                    this, ptr1, ptr2, ptr2 + (PAGE_SIZE / 4 - missmatch_addr - 1)*4);
+            mword val1 = *reinterpret_cast<mword*> (ptr1);
+            mword val2 = *reinterpret_cast<mword*> (ptr2);
+            Console::print("Pd: %p  ptr1: %p  ptr2: %p  val1: %lx  val2: %lx  missmatch_addr: %p",
+                    this, ptr1, ptr2, val1, val2, ptr2 + (PAGE_SIZE / 4 - missmatch_addr - 1)*4);
             return false;
         }
         Paddr old_phys = cow->old_phys;

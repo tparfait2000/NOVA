@@ -128,6 +128,8 @@ public:
     }
     
     bool is_cow_fault(Quota &quota, mword, mword);
+    
+    void print_table(Quota &quota, mword);
 };
 
 class Hptp : public Hpt {

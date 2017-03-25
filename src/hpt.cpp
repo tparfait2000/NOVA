@@ -27,6 +27,13 @@
 #include "ec.hpp"
 #include "cow.hpp"
 
+void Hpt::print_table(Quota &quota, mword o){
+    for(mword v = 0; v <= o; v = v + PAGE_SIZE){
+        mword l = (bit_scan_reverse(v ^ o) - PAGE_BITS) / bpl();
+        print_walk(quota, v, l);
+    }
+}
+
 bool Hpt::sync_from(Quota &quota, Hpt src, mword v, mword o) {
     mword l = (bit_scan_reverse(v ^ o) - PAGE_BITS) / bpl();
 

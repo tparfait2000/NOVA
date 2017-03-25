@@ -64,6 +64,33 @@ P *Pte<P, E, L, B, F>::walk(Quota &quota, E v, unsigned long n, bool a) {
 }
 
 template <typename P, typename E, unsigned L, unsigned B, bool F>
+void Pte<P, E, L, B, F>::print_walk(Quota &quota, E v, mword l) {
+    unsigned long n = 1UL << B;
+    bool v_not_print = true;
+    P *e = static_cast<P *> (this);
+
+    if (!e)
+        return;
+        
+    for (unsigned long i = 0; i < n; i++) {
+
+        if (!e[i].val)
+            continue;
+        
+        P *e1 = static_cast<P *> (Buddy::phys_to_ptr(e->addr()));
+        if(v_not_print){
+           Console::print("--- Print for v %lx n: %u-----", v, n);
+           v_not_print = false;
+        }
+        Console::print("e[%u].val %lx", i, e[i].val);
+        
+        if (e[i].super()) {
+            Console::print("Big");
+        }
+    }
+}
+
+template <typename P, typename E, unsigned L, unsigned B, bool F>
 size_t Pte<P, E, L, B, F>::lookup(E v, Paddr &p, mword &a) {
     unsigned long l = L;
 
@@ -94,8 +121,8 @@ bool Pte<P, E, L, B, F>::update(Quota &quota, E v, mword o, E p, mword a, Type t
     if (!e)
         return false;
 
-//    if(((v & ~PAGE_MASK) == SPC_LOCAL_IOP) || ((v & ~PAGE_MASK) == SPC_LOCAL_IOP + PAGE_SIZE))
-//        Console::print("PIOMAPP  v: %16lx  p: %16lx", v, p);
+    //    if(((v & ~PAGE_MASK) == SPC_LOCAL_IOP) || ((v & ~PAGE_MASK) == SPC_LOCAL_IOP + PAGE_SIZE))
+    //        Console::print("PIOMAPP  v: %16lx  p: %16lx", v, p);
     if (a) {
         p |= P::order(o % B) | (l ? P::PTE_S : 0) | a;
         s = 1UL << (l * B + PAGE_BITS);

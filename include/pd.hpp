@@ -75,7 +75,7 @@ public:
     Pd(Pd *);
     ~Pd();
 
-    Pd(Pd *own, mword sel, mword a, char* const s = const_cast<char* const>("Unknown"));
+    Pd(Pd *own, mword sel, mword a, char* const s = const_cast<char* const> ("Unknown"));
 
     ALWAYS_INLINE HOT
     inline void make_current() {
