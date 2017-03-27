@@ -110,10 +110,10 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
 
     mword eip = r->REG(ip);
     Ec* ec = current;
-    if (ec->is_temporal_exc(eip)) {
+    if (ec->is_temporal_exc()) {
         ec->enable_step_debug(RDTSC);
         return true;
-    } else if (ec->is_io_exc(eip)) {
+    } else if (ec->is_io_exc()) {
         ec->resolve_PIO_execption();
         return true;
     }
@@ -193,15 +193,20 @@ void Ec::handle_exc(Exc_regs *r) {
                     case MMIO:
                     case PIO:
                     case RDTSC:
+                        if(not_nul_cowlist && step_reason != PIO){
+                            Console::print("cow_list not null was noticed Pd: %s", current->getPd()->get_name());
+                            not_nul_cowlist = false;
+                        }
                         if (current->getPd()->cow_list) {
-                            Console::print("step_reason: %d eip: %lx name: %s", step_reason, current->regs.REG(ip), current->getPd()->get_name());
-                            //                            current->getPd()->cow_list = nullptr;
+                            if(step_reason != PIO)
+                                Console::print("cow_list not null, noticed! Pd: %s", current->getPd()->get_name());
+                            else{
+                                not_nul_cowlist = true;
+                            }
                         }
                         Ec::current->disable_step_debug();
                         launch_state = Ec::UNLAUNCHED;
-                        run_number = 0;
-                        reset_counter();
-                        reset_time();
+                        reset_all();
                         return;
                     case PMI:
                     case TIMER:

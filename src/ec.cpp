@@ -37,7 +37,7 @@ INIT_PRIORITY(PRIO_SLAB)
 Slab_cache Ec::cache(sizeof (Ec), 32);
 unsigned Ec::affich_num = 0, Ec::affich_mod = 1000, Ec::step_nb = 100, step_reason = Ec::NIL, launch_state = Ec::UNLAUNCHED;
 mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx;
-bool Ec::ec_debug = false, Ec::debug = false, Ec::hardening_started = false, Ec::in_rep_instruction = false;
+bool Ec::ec_debug = false, Ec::debug = false, Ec::hardening_started = false, Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false;
 uint64 Ec::static_tour = 0, Ec::begin_time = 0, Ec::end_time = 0, Ec::exc_counter = 0, Ec::gsi_counter1 = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::lvt_counter1 = 0, Ec::msi_counter1 = 0, Ec::ipi_counter1 = 0, Ec::gsi_counter2 = 0, Ec::lvt_counter2 = 0, Ec::msi_counter2 = 0, Ec::ipi_counter2 = 0, Ec::counter1 = 0, Ec::counter2 = 0, Ec::runtime1 = 0, Ec::runtime2 = 0, Ec::total_runtime = 0, Ec::step_debug_time = 0, Ec::nbInstr_to_execute = 0, Ec::debug_compteur = 0;
 uint8 Ec::run_number = 0, Ec::launch_state = 0, Ec::step_reason = 0;
 
@@ -527,7 +527,8 @@ void Ec::idl_handler() {
         Rcu::update();
 }
 
-bool Ec::is_temporal_exc(mword v) {
+bool Ec::is_temporal_exc() {
+    mword v = regs.REG(ip);
     uint16 *ptr = reinterpret_cast<uint16 *> (v);
     if (*ptr == 0x310f) {// rdtsc 0f 31
         return true;
@@ -537,12 +538,13 @@ bool Ec::is_temporal_exc(mword v) {
         return false;
 }
 
-bool Ec::is_io_exc(mword v) {
+bool Ec::is_io_exc(mword eip) {
     /*TODO
      * Firstly we must ensure that the port the process is trying to access is 
      * within its I/O port space
      * We must also deal with the REP prefix: solved because rep prefix makes instr code = 6cf3, 6df3 e4f3 ...
      */
+    mword v = eip ? eip : regs.REG(ip);
     uint8 *ptr = reinterpret_cast<uint8 *> (v);
     switch (*ptr) {
         case 0xe4: // IN AL, imm8

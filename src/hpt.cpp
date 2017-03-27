@@ -27,8 +27,8 @@
 #include "ec.hpp"
 #include "cow.hpp"
 
-void Hpt::print_table(Quota &quota, mword o){
-    for(mword v = 0; v <= o; v = v + PAGE_SIZE){
+void Hpt::print_table(Quota &quota, mword o) {
+    for (mword v = 0; v <= o; v = v + PAGE_SIZE) {
         mword l = (bit_scan_reverse(v ^ o) - PAGE_BITS) / bpl();
         print_walk(quota, v, l);
     }
@@ -156,6 +156,19 @@ bool Hpt::is_cow_fault(Quota &quota, mword v, mword err) {
                 update(quota, v, 0, phys, a | Hpt::HPT_W, Type::TYPE_UP, false);
                 //              Console::print("Cow Error above USER_ADDR");
             } else {
+                if (Ec::step_reason) {//Cow error in single stepping : why this? we don't know; qemu oddities
+                    if (Ec::step_reason != Ec::PIO)
+                        Console::print("Cow error in single stepping v: %lx  phys: %lx  Pd: %s", v, phys, pd->get_name());
+                    if (ec->is_io_exc()) {
+                        update(quota, v, 0, phys, a | Hpt::HPT_W, Type::TYPE_UP, false);
+                        cow_flush(v);
+                        return true;
+                    } else {// IO instruction already executed but still in single stepping
+                        ec->disable_step_debug();
+                        if(Ec::launch_state)
+                            Ec::launch_state = Ec::UNLAUNCHED;
+                    }
+                }
                 Cow::cow_elt *ce = nullptr;
                 if (!Cow::get_cow_list_elt(&ce)) //get new cow_elt
                     ec->die("Cow elt exhausted");
@@ -168,10 +181,10 @@ bool Hpt::is_cow_fault(Quota &quota, mword v, mword err) {
                 pd->add_cow(ce);
                 update(quota, v, 0, ce->new_phys[0]->phys_addr, a | Hpt::HPT_W, Type::TYPE_UP, false);
                 cow_flush(v);
-//                Console::print("Cow error Ec: %p  v: %p  phys: %p  ce: %p  phys1: %p  phys2: %p", ec, v, phys, ce, ce->new_phys[0]->phys_addr, ce->new_phys[1]->phys_addr);
-//                update(quota, v, 0, phys, a | Hpt::HPT_W, Type::TYPE_UP, false);
-//                cow_flush(v);
-//                Console::print("Cow error Ec: %p  v: %p  phys: %p", ec, v, phys);
+                //                Console::print("Cow error Ec: %p  v: %p  phys: %p  ce: %p  phys1: %p  phys2: %p", ec, v, phys, ce, ce->new_phys[0]->phys_addr, ce->new_phys[1]->phys_addr);
+                //                update(quota, v, 0, phys, a | Hpt::HPT_W, Type::TYPE_UP, false);
+                //                cow_flush(v);
+                //                Console::print("Cow error Ec: %p  v: %p  phys: %p", ec, v, phys);
             }
             return true;
         } else
