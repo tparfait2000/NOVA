@@ -25,7 +25,6 @@
 #include "memory.hpp"
 #include "msr.hpp"
 #include "x86.hpp"
-#include "console.hpp"
 
 class Lapic
 {
@@ -106,21 +105,7 @@ class Lapic
     public:
         static unsigned freq_tsc;
         static unsigned freq_bus;
-        static uint64 prev_tsc;
-        static uint64 end_time, begin_time;
         
-        /**
-         * Formules fondamentales 
-         * ----- Delta TSC -----
-         * Delta TSC = Delta T * Frequence tsc
-         * 
-         * ----- Delta IRC (Initial Reset Count) ----
-         * Delta IRC = Delta T * Frequence bus        
-         */
-        static unsigned const max_time = 1000; // 1000 => 1µs (ou 1000ns) si freq_tsc/1000000
-                                               // 1000 => 1000µs (ou 1ms) si freq_tsc/1000 
-        static uint64 max_tsc;
-         
         ALWAYS_INLINE
         static inline unsigned id()
         {
@@ -148,11 +133,10 @@ class Lapic
         ALWAYS_INLINE
         static inline void set_timer (uint64 tsc)
         {
-            begin_time = rdtsc();
-            tsc = tsc - begin_time > max_tsc ? begin_time + max_tsc : tsc;
             if (freq_bus) {
+                uint64 now = rdtsc();
                 uint32 icr;
-                write (LAPIC_TMR_ICR, tsc > begin_time && (icr = static_cast<uint32>(tsc - begin_time) / (freq_tsc / freq_bus)) > 0 ? icr : 1);
+                write (LAPIC_TMR_ICR, tsc > now && (icr = static_cast<uint32>(tsc - now) / (freq_tsc / freq_bus)) > 0 ? icr : 1);
             } else
                 Msr::write (Msr::IA32_TSC_DEADLINE, tsc);
         }
@@ -170,20 +154,9 @@ class Lapic
         REGPARM (2)
         static void lvt_vector (unsigned, unsigned) asm ("lvt_vector");
         
+        REGPARM (1)
         static void lvt_vector(unsigned);
         
         REGPARM (1)
         static void ipi_vector (unsigned) asm ("ipi_vector");
-        
-        static void set_pmi(uint64);
-        
-        static void activate_pmi();
-        
-        static void reset_counter();
-        
-        static void activate_timer(){
-            max_tsc = freq_bus ? freq_bus/1000 * max_time : freq_tsc/1000 * max_time;
-        }
-
-        static uint64 readReset_instCounter();
 };
