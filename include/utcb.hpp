@@ -90,7 +90,7 @@ class Utcb_data
                 uint64          tsc_val, tsc_off;
             };
 
-            mword mr[];
+            mword mr[(PAGE_SIZE - sizeof (Utcb_head)) / sizeof(mword)];
         };
 };
 
