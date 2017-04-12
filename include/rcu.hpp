@@ -64,7 +64,7 @@ class Rcu_list
         ALWAYS_INLINE
         inline bool enqueue (Rcu_elem *e)
         {
-            Rcu_elem * const unused = reinterpret_cast<Rcu_elem *>(0);
+            Rcu_elem * const unused = nullptr;
             Rcu_elem * const in_use = reinterpret_cast<Rcu_elem *>(1);
 
             if ((e->next && e->next != in_use))

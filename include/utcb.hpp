@@ -56,8 +56,6 @@ class Utcb_head
 class Utcb_data
 {
     protected:
-        union {
-            struct {
                 mword           mtd, inst_len, rip, rflags;
                 uint32          intr_state, actv_state;
                 union {
@@ -88,10 +86,6 @@ class Utcb_data
                 mword           dr7, sysenter_cs, sysenter_rsp, sysenter_rip;
                 Utcb_segment    es, cs, ss, ds, fs, gs, ld, tr, gd, id;
                 uint64          tsc_val, tsc_off;
-            };
-
-            mword mr[];
-        };
 };
 
 class Utcb : public Utcb_head, private Utcb_data
@@ -119,13 +113,8 @@ class Utcb : public Utcb_head, private Utcb_data
             register mword n = ui();
 
             dst->items = items;
-#if 0
-            mword *d = dst->mr, *s = mr;
-            asm volatile ("rep; movsl" : "+D" (d), "+S" (s), "+c" (n) : : "memory");
-#else
-            for (unsigned long i = 0; i < n; i++)
-                dst->mr[i] = mr[i];
-#endif
+            for (mword i = 0; i < n; i++)
+                reinterpret_cast<mword *>(&dst->mtd)[i] = reinterpret_cast<mword *>(&mtd)[i];
         }
 
         ALWAYS_INLINE
