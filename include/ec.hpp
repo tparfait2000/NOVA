@@ -93,7 +93,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         static inline void svm_exception (mword);
 
         NORETURN
-        static inline void svm_cr();
+        static inline void svm_cr(mword);
 
         NORETURN
         static inline void svm_invlpg();
