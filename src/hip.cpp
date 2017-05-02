@@ -107,8 +107,22 @@ void Hip::build_mbi2(Hip_mem *&mem, mword addr)
 
         if (tag->type == Multiboot2::TAG_ACPI_2)
             Acpi_rsdp::parse(tag->rsdp());
+
+        if (tag->type == Multiboot2::TAG_FB)
+            Hip::add_fb(mem, tag->framebuffer());
     });
 }
+
+template <typename T>
+void Hip::add_fb(Hip_mem *&mem, T const *fb)
+{
+    mem->addr = fb->addr;
+    mem->size = (static_cast<uint64>(fb->width)) << 32 | fb->height;
+    mem->type = Hip_mem::MB2_FB;
+    mem->aux = (static_cast<uint32>(fb->type)) << 8 | fb->bpp;
+    mem++;
+}
+
 
 template <typename T>
 void Hip::add_mod(Hip_mem *&mem, T const * mod, uint32 aux)
