@@ -43,7 +43,8 @@ class Hip_mem
             HYPERVISOR  = -1u,
             MB_MODULE   = -2u,
             ACPI_RSDT   = -3u,
-            ACPI_XSDT   = -4u
+            ACPI_XSDT   = -4u,
+            MB2_FB      = -5u
         };
 
         uint64  addr;
@@ -119,6 +120,10 @@ class Hip
 
         INIT
         static void build_mbi2 (Hip_mem *&, mword);
+        
+        template <typename T>
+        INIT
+        static void add_fb (Hip_mem *&, T const *);
 
         template <typename T>
         INIT
