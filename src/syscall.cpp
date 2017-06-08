@@ -793,7 +793,8 @@ void Ec::sys_sm_ctrl()
         case 1:
             if (sm->space == static_cast<Space_obj *>(&Pd::kern)) {
                 Gsi::unmask (static_cast<unsigned>(sm->node_base - NUM_CPU));
-                break;
+                if (sm->is_signal())
+                    break;
             }
 
             if (sm->is_signal())
