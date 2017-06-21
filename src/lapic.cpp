@@ -32,7 +32,7 @@
 unsigned    Lapic::freq_tsc;
 unsigned    Lapic::freq_bus;
 
-void Lapic::init()
+void Lapic::init(bool invariant_tsc)
 {
     Paddr apic_base = Msr::read<Paddr>(Msr::IA32_APIC_BASE);
 
@@ -68,11 +68,24 @@ void Lapic::init()
     Cpu::id = Cpu::find_by_apic_id (id());
 
     if ((Cpu::bsp = apic_base & 0x100)) {
+        uint64 ratio = 0;
+
+        /* read out tsc freq if supported */
+        if (Cpu::vendor == Cpu::Vendor::INTEL && Cpu::family >= 6) {
+            ratio = static_cast<unsigned>(Msr::read<uint64>(Msr::MSR_PLATFORM_INFO) >> 8) & 0xff;
+            if (Cpu::model >= 0x3a) { /* Nehalem and later */
+                freq_tsc = static_cast<unsigned>(ratio * 100000);
+                freq_bus = dl ? 0 : 100000;
+            } else {
+                freq_tsc = static_cast<unsigned>(ratio * 133330);
+                freq_bus = dl ? 0 : 133330;
+            }
+        }
 
         send_ipi (0, 0, DLV_INIT, DSH_EXC_SELF);
 
-        do {
-            uint32 const delay = dl ? 10 : 1000;
+        if (!freq_tsc) {
+            uint32 const delay = (dl || !invariant_tsc) ? 10 : 500;
 
             write (LAPIC_TMR_ICR, ~0U);
 
@@ -84,9 +97,15 @@ void Lapic::init()
 
             freq_tsc = (t2 - t1) / delay;
             freq_bus = (v1 - v2) / delay;
+        }
 
-            trace (0, "TSC:%u kHz BUS:%u kHz", freq_tsc, freq_bus);
-        } while (freq_bus && freq_tsc < freq_bus);
+        trace (0, "TSC:%u kHz BUS:%u kHz%s%s", freq_tsc, freq_bus, !ratio ? " (measured)" : "", dl ? " DL" : "");
+
+        if ((freq_bus && freq_tsc < freq_bus) || !invariant_tsc) {
+           freq_bus = 1000 * 1000;
+           freq_tsc = 2 * freq_bus;
+           trace (0, "TSC:%u kHz BUS:%u kHz (adjusted due to instable TSC)", freq_tsc, freq_bus);
+        }
 
         send_ipi (0, AP_BOOT_PADDR >> PAGE_BITS, DLV_SIPI, DSH_EXC_SELF);
         Acpi::delay (1);
