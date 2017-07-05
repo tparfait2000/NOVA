@@ -158,7 +158,6 @@ INTRGATE                0
 entry_lvt:              push    $0
                         SAVE_STATE
                         SAVE_REGS
-                        mov     OFS_CS (%REG(bx)), %ARG_2
                         mov     OFS_VEC (%REG(bx)), %ARG_1
                         call    lvt_vector
                         jmp     ret_from_interrupt

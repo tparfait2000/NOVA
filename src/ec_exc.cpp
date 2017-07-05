@@ -172,20 +172,10 @@ void Ec::handle_exc(Exc_regs *r) {
         Console::print("Vec Heater: %lx", r->vec);
     switch (r->vec) {
         case Cpu::EXC_NMI:
-            if (Msr::read<uint64>(Msr::IA32_PERF_GLOBAL_STATUS) & 1ull << 32) {
-                runtime2 = rdtsc();
-                uint64 instr_count = Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0);
-                if (instr_count > step_nb) {
-                    Console::print("OVERFLOW OF EXECUTION, increase step_nb");
-                    die("OVERFLOW OF EXECUTION, increase step_nb");
-                }
-                nbInstr_to_execute = step_nb - instr_count;
-                prev_rip = current->regs.REG(ip);
-                debug_compteur++;
-                current->enable_step_debug(PMI);
-                //              Console::print("PERF INTERRUPT OVERFLOW MSR_PERF_FIXED_CTR0 %llu  nbInstr_to_execute %llu", instr_count, nbInstr_to_execute);
-                return;
-            }
+            //            if (Msr::read<uint64>(Msr::IA32_PERF_GLOBAL_STATUS) & 1ull << 32) {
+            //                check_memory(3002);
+            return;
+            //            }
             break;
         case Cpu::EXC_DB:
             if (r->user()) {
@@ -193,14 +183,15 @@ void Ec::handle_exc(Exc_regs *r) {
                     case MMIO:
                     case PIO:
                     case RDTSC:
-                        if(not_nul_cowlist && step_reason != PIO){
+                        //                        Console::print("EXC_DB step_reason: %d", step_reason);
+                        if (not_nul_cowlist && step_reason != PIO) {
                             Console::print("cow_list not null was noticed Pd: %s", current->getPd()->get_name());
                             not_nul_cowlist = false;
                         }
                         if (current->getPd()->cow_list) {
-                            if(step_reason != PIO)
+                            if (step_reason != PIO)
                                 Console::print("cow_list not null, noticed! Pd: %s", current->getPd()->get_name());
-                            else{
+                            else {
                                 not_nul_cowlist = true;
                             }
                         }
@@ -209,7 +200,6 @@ void Ec::handle_exc(Exc_regs *r) {
                         reset_all();
                         return;
                     case PMI:
-                    case TIMER:
                         if (prev_rip == current->regs.REG(ip)) {
                             // Console::print("EIP: %lx  prev_rip: %lx MSR_PERF_FIXED_CTR0: %lld instr: %lx", 
                             // current->regs.REG(ip), prev_rip, Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), *reinterpret_cast<mword *>(current->regs.REG(ip)));
@@ -249,7 +239,7 @@ void Ec::handle_exc(Exc_regs *r) {
                         die("No step Reason");
                 }
             } else {
-                Console::print("Debug in kernel Step Reason %d  nbInstr_to_execute %llu  debug_compteur %llu  end_rip %lx  end_rcx %lx", step_reason, nbInstr_to_execute, debug_compteur, end_rip, end_rcx);
+                Console::print("Debug in kernel Step Reason %d  nbInstr_to_execute %ld  debug_compteur %llu  end_rip %lx  end_rcx %lx", step_reason, nbInstr_to_execute, debug_compteur, end_rip, end_rcx);
                 break;
             }
 
@@ -307,10 +297,6 @@ void Ec::check_memory(int pmi) {
     //        //        current->ec_debug= true;
     //    }
     if (one_run_ok()) {
-        if (pmi == 1251) {
-            //            Console::print("PMI = 1251 en 2nd run");
-            return;
-        }
         if (pmi == 3001) {
             step_debug_time = rdtsc();
         } else {
@@ -318,6 +304,25 @@ void Ec::check_memory(int pmi) {
         }
         exc_counter2 = Ec::exc_counter;
         counter2 = Lapic::readReset_instCounter();
+        if (pmi == 3002) {
+            long diff = static_cast<long>(counter1 - (counter2 - exc_counter2));
+            nbInstr_to_execute = step_nb + diff;
+            if (nbInstr_to_execute > 0) {
+                //                if (step_reason != PIO)
+                Console::print("PMI inf counter1 %llu exc1 %llu counter2 %llu exc2 %llu", counter1, exc_counter1, counter2, exc_counter2);
+                prev_rip = current->regs.REG(ip);
+                current->enable_step_debug(PMI);
+                ret_user_iret();
+            } else if (nbInstr_to_execute < 0) {
+                //                if (step_reason != PIO)
+                Console::print("PMI sup counter1 %llu exc1 %llu counter2 %llu exc2 %llu", counter1, exc_counter1, counter2, exc_counter2);
+                ec->rollback();
+                ec->reset_all();
+                check_exit();
+            } else {
+                Console::print("PMI equal counter1 %llu exc1 %llu counter2 %llu exc2 %llu", counter1, exc_counter1, counter2, exc_counter2);
+            }
+        }
         ec->tour++;
         static_tour++;
         //        if (ec_debug) {
@@ -356,40 +361,18 @@ void Ec::check_memory(int pmi) {
             check_exit();
         }
     } else {
-        if (pmi == 1251 && !Cpu::fast_string_featured()) {
-            uint8 *ptr = reinterpret_cast<uint8 *> (last_rip);
-            if (*ptr == 0xf3 || *ptr == 0xf2) {
-                return;
-            }
-        }
         exc_counter1 = exc_counter;
-        counter1 = Lapic::readReset_instCounter();
-        uint64 instruction_num = counter1 - exc_counter1;
-        if (pmi == 1251 && instruction_num <= 0) {
-            //            Console::print("instruction_num: %lld", instruction_num);
-            return;
-        }
+        counter1 = Lapic::readReset_instCounter(exc_counter1 + step_nb);
         //if reason is sysenter, end_time is not calculated so we better use rdtsc()
         runtime1 = end_time ? end_time : rdtsc();
         ec->tour++;
         static_tour++;
-        //        Console::print("PMI: %d  counter1: %lld  exc: %u Run = 1  PMC0: %lld  EIP: %lx  RCX: %lx tour: %lld  s_tour: %lld",
-        //            pmi, ec->counter1, ec->exc_counter1, Msr::read<uint64>(Msr::IA32_PMC0), ec->regs.REG(ip), ec->regs.REG(cx), ec->tour, static_tour);
         ec->restore_state();
         run_number++;
-        if (pmi == 1251) {
-            //            Console::print("PMI: %d  counter1: %llu  exc: %llu Run = 1  PMC0: %llu  EIP: %lx  RCX: %lx tour: %llu  s_tour: %llu",
-            //                    pmi, ec->counter1, ec->exc_counter1, Msr::read<uint64>(Msr::IA32_PMC0), ec->regs.REG(ip), ec->regs.REG(cx), ec->tour, static_tour);
+        if (pmi == 3002) {
             end_rip = last_rip;
             end_rcx = last_rcx;
-            //            Console::print("begin_time %llu  end_time %llu  diff %llu  rip %lx  rcx %lx  nb_inst %llu:%llu", begin_time, end_time, end_time - begin_time, end_rip, end_rcx, counter1, exc_counter1);
-            activate_timer();
-            ec_debug = true;
         }
-        //        Console::print("pmi %d  begin_time %llu  end_time %llu  diff %llu  rip %lx  rcx %lx  launchS %d", pmi, begin_time, end_time, end_time - begin_time, last_rip, last_rcx, launch_state);
-        Msr::write(Msr::IA32_PERFEVTSEL0, 0x000100c5);
-        Msr::write(Msr::IA32_PMC0, 0x0);
-        Msr::write(Msr::IA32_PERFEVTSEL0, 0x004100c5);
         check_exit();
     }
 
@@ -414,23 +397,6 @@ void Ec::check_exit() {
             Console::print("Bad Run");
             die("Bad Run");
     }
-}
-
-bool Ec::activate_timer() {
-    uint64 instruction_num = counter1 - exc_counter1;
-    if (instruction_num > step_nb) {
-        Lapic::set_pmi(instruction_num - step_nb);
-    } else {
-        //        if (instruction_num > 0) {
-        runtime2 = rdtsc();
-        step_reason = TIMER;
-        nbInstr_to_execute = instruction_num > 0 ? instruction_num : 1;
-        current->enable_step_debug(TIMER);
-        //        } else {
-        //            return false;
-        //        }
-    }
-    return true;
 }
 
 void Ec::reset_counter() {

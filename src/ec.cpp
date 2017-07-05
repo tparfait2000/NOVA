@@ -35,12 +35,13 @@
 
 INIT_PRIORITY(PRIO_SLAB)
 Slab_cache Ec::cache(sizeof (Ec), 32);
-unsigned Ec::affich_num = 0, Ec::affich_mod = 1000, Ec::step_nb = 100, step_reason = Ec::NIL, launch_state = Ec::UNLAUNCHED;
+unsigned Ec::affich_num = 0, Ec::affich_mod = 50000, step_reason = Ec::NIL, launch_state = Ec::UNLAUNCHED;
 mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx;
 bool Ec::ec_debug = false, Ec::debug = false, Ec::hardening_started = false, Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false;
-uint64 Ec::static_tour = 0, Ec::begin_time = 0, Ec::end_time = 0, Ec::exc_counter = 0, Ec::gsi_counter1 = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::lvt_counter1 = 0, Ec::msi_counter1 = 0, Ec::ipi_counter1 = 0, Ec::gsi_counter2 = 0, Ec::lvt_counter2 = 0, Ec::msi_counter2 = 0, Ec::ipi_counter2 = 0, Ec::counter1 = 0, Ec::counter2 = 0, Ec::runtime1 = 0, Ec::runtime2 = 0, Ec::total_runtime = 0, Ec::step_debug_time = 0, Ec::nbInstr_to_execute = 0, Ec::debug_compteur = 0;
+uint64 Ec::static_tour = 0, Ec::begin_time = 0, Ec::end_time = 0, Ec::exc_counter = 0, Ec::gsi_counter1 = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::lvt_counter1 = 0, Ec::msi_counter1 = 0, Ec::ipi_counter1 = 0, Ec::gsi_counter2 = 0, Ec::lvt_counter2 = 0, Ec::msi_counter2 = 0, Ec::ipi_counter2 = 0, Ec::counter1 = 0, Ec::counter2 = 0, Ec::runtime1 = 0, Ec::runtime2 = 0, Ec::total_runtime = 0, Ec::step_debug_time = 0, Ec::debug_compteur = 0;
 uint8 Ec::run_number = 0, Ec::launch_state = 0, Ec::step_reason = 0;
-
+long Ec::step_nb = 100, Ec::nbInstr_to_execute = 0;
+        
 Ec *Ec::current, *Ec::fpowner;
 // Constructors
 
@@ -606,16 +607,15 @@ void Ec::enable_step_debug(Step_reason reason, mword fault_addr, Paddr fault_phy
             launch_state = Launch_type::IRET; // to ensure that this will finished before any other thread is scheduled
             break;
         case PMI:
-        case TIMER:
-        {
-            uint8 *ptr = reinterpret_cast<uint8 *> (end_rip);
-            if (*ptr == 0xf3 || *ptr == 0xf2) {
-                Console::print("Rep prefix detected");
-                in_rep_instruction = true;
-                Cpu::disable_fast_string();
-            }
+//        {
+//            uint8 *ptr = reinterpret_cast<uint8 *> (end_rip);
+//            if (*ptr == 0xf3 || *ptr == 0xf2) {
+////                Console::print("Rep prefix detected");
+//                in_rep_instruction = true;
+//                Cpu::disable_fast_string();
+//            }
             break;
-        }
+//        }
         case NIL:
         default:
             Console::print("Unknown debug reason -- Enable");
@@ -648,7 +648,6 @@ void Ec::disable_step_debug() {
             set_cr4(get_cr4() | Cpu::CR4_TSD);
             break;
         case PMI:
-        case TIMER:
             if (in_rep_instruction) {
                 Cpu::enable_fast_string();
                 in_rep_instruction = false;
@@ -660,22 +659,6 @@ void Ec::disable_step_debug() {
             break;
     }
     step_reason = NIL;
-}
-
-void Ec::clear_instCounter() {
-    //Msr::write (Msr::IA32_PMC0, 0x0);
-    //Msr::write (Msr::IA32_PMC1, 0x0);
-    Msr::write(Msr::MSR_PERF_GLOBAL_CTRL, 0x700000003);
-    Msr::write(Msr::MSR_PERF_FIXED_CTR0, 0x0);
-    //Msr::write (Msr::IA32_PERFEVTSEL0, 0x004100c0);
-    //Msr::write (Msr::IA32_PERFEVTSEL1, 0x004100c8);
-    Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);
-    Msr::write(Msr::IA32_PERF_GLOBAL_OVF_CTRL, 1ull << 32);
-}
-
-void Ec::incr_count(unsigned cs) {
-    if (cs & 3)
-        Ec::exc_counter++;
 }
 
 void Ec::restore_state() {

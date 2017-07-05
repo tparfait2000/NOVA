@@ -223,16 +223,16 @@ public:
         MMIO = 1,
         PIO = 2,
         RDTSC = 3,
-        TIMER = 4,
-        PMI = 5,
+        PMI = 4,
     };
     
-    static unsigned step_nb, affich_num, affich_mod;
+    static unsigned affich_num, affich_mod;
     static mword prev_rip, last_rip, last_rcx, end_rip, end_rcx;
-    static uint64 begin_time, end_time, runtime1, runtime2, total_runtime, step_debug_time, static_tour, counter1, counter2, nbInstr_to_execute, exc_counter, exc_counter1, exc_counter2, gsi_counter1, lvt_counter1, msi_counter1, ipi_counter1,
+    static uint64 begin_time, end_time, runtime1, runtime2, total_runtime, step_debug_time, static_tour, counter1, counter2, exc_counter, exc_counter1, exc_counter2, gsi_counter1, lvt_counter1, msi_counter1, ipi_counter1,
             gsi_counter2, lvt_counter2, msi_counter2, ipi_counter2, debug_compteur;
     static uint8 run_number, launch_state, step_reason;
     static bool ec_debug, debug, hardening_started, in_rep_instruction, not_nul_cowlist;
+    static long step_nb, nbInstr_to_execute;
     
     Ec(Pd *, void (*)(), unsigned, char* const nm = const_cast<char* const> ("Unknown"));
     Ec(Pd *, mword, Pd *, void (*)(), unsigned, unsigned, mword, mword, Pt *, char* const nm = const_cast<char* const> ("Unknown"));
@@ -490,8 +490,6 @@ public:
     REGPARM(1)
     static void check_memory(int pmi = 0) asm ("memory_checker");
     REGPARM(1)
-    static void incr_count(unsigned) asm ("incr_count");
-    REGPARM(1)
     static void saveRegs(Exc_regs *) asm ("saveRegs");
     
     bool is_temporal_exc();
@@ -553,8 +551,6 @@ public:
     mword get_regsRCX();
     int compare_regs(int);
     
-    static bool activate_timer();
-    static void clear_instCounter();
     static void reset_counter();
     static void check_exit();
     static void print_stat(bool);

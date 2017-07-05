@@ -19,7 +19,6 @@
  */
 
 #include "pd.hpp"
-#include "tss.hpp"
 #include "ec.hpp"
 
 Space_mem *Space_pio::space_mem()

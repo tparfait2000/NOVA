@@ -31,8 +31,8 @@
 
 unsigned    Lapic::freq_tsc;
 unsigned    Lapic::freq_bus;
-uint64    Lapic::prev_tsc;
-uint64      Lapic::end_time = 0, Lapic::begin_time = 0, Lapic::max_tsc = 0;
+uint64 Lapic::max_instruction = 0x100000;
+uint64 Lapic::max_tsc = 0; 
 
 void Lapic::init()
 {
@@ -53,7 +53,7 @@ void Lapic::init()
         default:
             set_lvt (LAPIC_LVT_THERM, DLV_FIXED, VEC_LVT_THERM);
         case 4:
-            set_lvt (LAPIC_LVT_PERFM, DLV_NMI, VEC_LVT_PERFM);
+            set_lvt (LAPIC_LVT_PERFM, DLV_FIXED, VEC_LVT_PERFM);
         case 3:
             set_lvt (LAPIC_LVT_ERROR, DLV_FIXED, VEC_LVT_ERROR);
         case 2:
@@ -110,6 +110,9 @@ void Lapic::therm_handler() {
 }
 
 void Lapic::perfm_handler() {
+//    Console::print("MSR_PERF_FIXED_CTR0: %llx    ", Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
+    eoi();
+    Ec::check_memory(3002);
 }
 
 void Lapic::error_handler()
@@ -121,7 +124,6 @@ void Lapic::error_handler()
 
 void Lapic::timer_handler()
 {
-
     bool expired = (freq_bus ? read (LAPIC_TMR_CCR) : Msr::read<uint64>(Msr::IA32_TSC_DEADLINE)) == 0;
     if (expired)
         Timeout::check();        
@@ -129,33 +131,23 @@ void Lapic::timer_handler()
     Rcu::update();
 }
 
-void Lapic::lvt_vector (unsigned vector, unsigned cs)
-{    
+void Lapic::lvt_vector (unsigned vector){    
     unsigned lvt = vector - VEC_LVT;
 
     switch (vector) {
-        case VEC_LVT_TIMER: timer_handler(); break;
-        case VEC_LVT_ERROR: error_handler(); break;
+        case VEC_LVT_TIMER: timer_handler(); eoi(); break;
+        case VEC_LVT_ERROR: error_handler(); eoi(); break;
         case VEC_LVT_PERFM: perfm_handler(); break;
-        case VEC_LVT_THERM: therm_handler(); break;
+        case VEC_LVT_THERM: therm_handler(); eoi(); break;
     }
 
-    eoi();
-    if(!Ec::one_run_ok() && (vector == VEC_LVT_TIMER) && (cs & 3) && Ec::begin_time !=0){
-        uint64 diff = Ec::end_time - Ec::begin_time;
-        if(diff > max_tsc){
-            Ec::check_memory(1251);
-        }
-    }
+    
+
     Counter::print<1,16> (++Counter::lvt[lvt], Console_vga::COLOR_LIGHT_BLUE, lvt + SPN_LVT);
 }
 
 void Lapic::ipi_vector (unsigned vector)
 {
-//    if(Ec::current->one_run_ok())
-//        Ec::ipi_counter2++;
-//    else
-//        Ec::ipi_counter1++;
     unsigned ipi = vector - VEC_IPI;
 
     switch (vector) {
@@ -171,8 +163,7 @@ void Lapic::ipi_vector (unsigned vector)
 
 void Lapic::set_pmi(uint64 count){
     unsigned nb_inst = static_cast<unsigned>(count);
-    set_lvt(LAPIC_LVT_PERFM, DLV_NMI, VEC_LVT_PERFM);
-    Msr::write(Msr::IA32_PERF_GLOBAL_OVF_CTRL, 1ull << 32);
+    set_lvt(LAPIC_LVT_PERFM, DLV_FIXED, VEC_LVT_PERFM);
     Msr::write(Msr::MSR_PERF_FIXED_CTR0, -nb_inst | 0xFFFF00000000);
 //    Console::print("MSR_PERF_FIXED_CTR0 %llx", Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
 }
@@ -180,25 +171,21 @@ void Lapic::set_pmi(uint64 count){
 void Lapic::activate_pmi() {
     Msr::write(Msr::MSR_PERF_GLOBAL_CTRL, 0x700000003);
     Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);
-//    Msr::write (Msr::IA32_PMC0, 0x0);
-//    Msr::write(Msr::IA32_PERFEVTSEL0, 0x004100c0);
+    Msr::write(Msr::IA32_PERF_GLOBAL_OVF_CTRL, 1ull << 32);
+    set_pmi(max_instruction);
 }
 
 void Lapic::reset_counter(){
-    Msr::write(Msr::MSR_PERF_FIXED_CTR0, 0x0);
+    set_pmi(max_instruction);
     
 //    Msr::write(Msr::IA32_PERFEVTSEL0, 0x000100c5);
 ////    Msr::write(Msr::IA32_PMC0, 0x0);
 //    Msr::write(Msr::IA32_PERFEVTSEL0, 0x004100c5);
 }
 
-void Lapic::lvt_vector (unsigned vector){
-    lvt_vector(vector, 0);
-}
-
-uint64 Lapic::readReset_instCounter() {
+uint64 Lapic::readReset_instCounter(uint64 number) {
     Ec::exc_counter = 0;
     uint64 val = Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0); //no need to stop the counter because he is not supposed to count (according to config) when we are in kernl mode
-    Msr::write(Msr::MSR_PERF_FIXED_CTR0, 0x0);
+    set_pmi(max_instruction - number);
     return val;
 }

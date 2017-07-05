@@ -1,4 +1,5 @@
 User process hardenning consist of:
+    - Enlarge mem pool . += 128M; (hypervisor.ld)
     - set the TSD bit in register CR4 : cpu.cpp (228), set_cr4 (get_cr4() | Cpu::CR4_TSD) 
     - set user processes page Read Only : 
         space_mem.cpp (113), {,(s & 2) ? false : true);}
