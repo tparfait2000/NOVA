@@ -162,6 +162,7 @@ void Lapic::ipi_vector (unsigned vector)
 }
 
 void Lapic::set_pmi(uint64 count){
+    return;
     unsigned nb_inst = static_cast<unsigned>(count);
     set_lvt(LAPIC_LVT_PERFM, DLV_FIXED, VEC_LVT_PERFM);
     Msr::write(Msr::MSR_PERF_FIXED_CTR0, -nb_inst | 0xFFFF00000000);

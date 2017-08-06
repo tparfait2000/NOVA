@@ -216,6 +216,7 @@ public:
         IRET = 2,
         VMRESUME = 3,
         VMRUN = 4,
+        EXT_INT = 5,
     };
 
     enum Step_reason {
@@ -490,6 +491,8 @@ public:
     REGPARM(1)
     static void check_memory(int pmi = 0) asm ("memory_checker");
     REGPARM(1)
+    static void check_memory_vmx(int pmi = 0) asm ("memory_checker_vmx");
+    REGPARM(1)
     static void saveRegs(Exc_regs *) asm ("saveRegs");
     
     bool is_temporal_exc();
@@ -525,7 +528,7 @@ public:
     }
 
     static bool is_idle() {
-        return launch_state == UNLAUNCHED && step_reason == NIL;
+        return (launch_state == UNLAUNCHED || launch_state == EXT_INT) && step_reason == NIL;
     }
 
     void set_env(uint64 t) {

@@ -24,7 +24,18 @@
 #include "atomic.hpp"
 #include "buddy.hpp"
 #include "x86.hpp"
-
+/**
+ * P: Type (Hpt, Dpt or Ept)
+ * E: length (mword (64 bits or 32 bits)
+ * L: level (3 or 4)
+ * B: base page length (offset length: 10 for 32 bits (L = 3) or 9 for 64 bits (L = 4))
+ * 
+ * |**********|**********|************|
+ * P = Hpt
+ * E = 32 bits (mword)
+ * L = 3
+ * B = 10  
+ */
 template <typename P, typename E, unsigned L, unsigned B, bool F>
 class Pte {
 protected:

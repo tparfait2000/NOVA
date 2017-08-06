@@ -344,7 +344,7 @@ void Ec::ret_user_vmresume() {
     if (EXPECT_FALSE(get_cr2() != current->regs.cr2))
         set_cr2(current->regs.cr2);
     current->regs.disable_rdtsc<Vmcs>();
-    Console::print("VMRun");
+//    Console::print("VMRun");
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR)
                 "vmresume;"
                 "vmlaunch;"
@@ -492,11 +492,11 @@ bool Ec::fixup(mword &eip) {
 void Ec::die(char const *reason, Exc_regs *r) {
     if (current->utcb || current->pd == &Pd::kern) {
         if (strcmp(reason, "PT not found"))
-            trace(0, "Killed EC:%p SC:%p V:%#lx CS:%#lx EIP:%#lx CR2:%#lx ERR:%#lx (%s)",
-                current, Sc::current, r->vec, r->cs, r->REG(ip), r->cr2, r->err, reason);
+            trace(0, "Killed EC:%p SC:%p V:%#lx CS:%#lx EIP:%#lx CR2:%#lx ERR:%#lx (%s) Pd: %s Ec: %s",
+                current, Sc::current, r->vec, r->cs, r->REG(ip), r->cr2, r->err, reason, Pd::current->get_name(), Ec::current->get_name());
     } else
-        trace(0, "Killed EC:%p SC:%p V:%#lx CR0:%#lx CR3:%#lx CR4:%#lx (%s)",
-            current, Sc::current, r->vec, r->cr0_shadow, r->cr3_shadow, r->cr4_shadow, reason);
+        trace(0, "Killed EC:%p SC:%p V:%#lx CR0:%#lx CR3:%#lx CR4:%#lx (%s) Pd: %s Ec: %s",
+            current, Sc::current, r->vec, r->cr0_shadow, r->cr3_shadow, r->cr4_shadow, reason, Pd::current->get_name(), Ec::current->get_name());
 
     Ec *ec = current->rcap;
 

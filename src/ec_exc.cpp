@@ -128,6 +128,8 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
 bool Ec::handle_exc_pf(Exc_regs *r) {
     mword addr = r->cr2;
 
+//    if(((addr & ~PAGE_MASK) >= 0x9800000) && ((addr & ~PAGE_MASK) <= 0x9a00000))
+//        Console::print("addr 0x9800000");
     if ((r->err & Hpt::ERR_U) && Pd::current->Space_mem::loc[Cpu::id].is_cow_fault(Pd::current->quota, addr, r->err))
         return true;
     if (r->cs & 3)

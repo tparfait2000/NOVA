@@ -52,8 +52,8 @@
 
 #define COW_ADDR        (SPC_LOCAL_REMAP - 0x1000000)   //0xde000000    0xFFFFFFFFDE000000
 #define LOCAL_IOP_REMAP (COW_ADDR - 0x1000000)          //0xdd000000    0xFFFFFFFFDD000000
-#define NB_COW_FRAME_ORDER    14  // means 2¹⁴ = 16 * 1024 frames
-#define NB_COW_FRAME    (1UL << NB_COW_FRAME_ORDER)  
+#define NB_COW_FRAME_ORDER    12  // means 2¹⁴ = 16 * 1024 frames
+#define NB_COW_FRAME    (0x1eUL << NB_COW_FRAME_ORDER)  
 #define NB_COW_ELT      (NB_COW_FRAME)
 #define NB_TS_ELT       10000
 #define NB_BLOCK_ELT    10

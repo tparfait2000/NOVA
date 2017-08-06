@@ -74,6 +74,7 @@ public:
         PTE_N = TLB_A | TLB_U | TLB_W | TLB_P,
         PTE_COW = TLB_COW,
         PTE_COW_IO = 1UL << 3,
+        TLB_COW_IO = PTE_COW_IO,
         PTE_W = TLB_W,
         PTE_U = ~0ULL,
     };
@@ -94,10 +95,12 @@ public:
     void flush(mword);
     void flush(bool);
 
-    static Reason miss(Exc_regs *, mword, mword &, mword &, Paddr &);
+    static Reason miss(Exc_regs *, mword, mword &);
     bool is_cow_fault(mword virt, mword gpa, Paddr hpa, mword err);
     void update(mword, Paddr, mword);
-
+    bool is_cow_pf(uint64 &, mword);
+    static void set_cow_page_vmx(uint64, uint64 &);
+        
     ALWAYS_INLINE
     static inline void *operator new (size_t, Quota &quota) {
         return Buddy::allocator.alloc(0, quota, Buddy::NOFILL);

@@ -50,11 +50,12 @@ void Ec::vmx_exception()
             break;
 
         case 0x202:         // NMI
+            check_memory_vmx(5961);
             asm volatile ("int $0x2" : : : "memory");
             ret_user_vmresume();
 
         case 0x307:         // #NM
-            check_memory(2962);
+            check_memory_vmx(5962);
             handle_exc_nm();
             ret_user_vmresume();
 
@@ -64,7 +65,7 @@ void Ec::vmx_exception()
 
             mword phys;
             Paddr host;    
-            switch (Vtlb::miss (&current->regs, cr2, err, phys, host)) {
+            switch (Vtlb::miss (&current->regs, cr2, err)) {
                 case Vtlb::GPA_HPA:
                     current->regs.dst_portal = Vmcs::VMX_EPT_VIOLATION;
                     break;
@@ -81,7 +82,7 @@ void Ec::vmx_exception()
                     break;
             }
     }
-    check_memory(2963);
+    check_memory_vmx(5964);
             
     send_msg<ret_user_vmresume>();
 }
@@ -201,26 +202,42 @@ void Ec::handle_vmx()
     
     switch (reason) {
         case Vmcs::VMX_EXC_NMI:     vmx_exception();
-        case Vmcs::VMX_EXTINT:      vmx_extint();
-        case Vmcs::VMX_INVLPG:      vmx_invlpg();
-        case Vmcs::VMX_CR:          {check_memory(2964); vmx_cr();}
+        case Vmcs::VMX_EXTINT:      {launch_state = EXT_INT; vmx_extint();}
+        case Vmcs::VMX_INVLPG:      {check_memory_vmx(5965); vmx_invlpg();}
+        case Vmcs::VMX_CR:          {check_memory_vmx(5966); vmx_cr();}
         case Vmcs::VMX_EPT_VIOLATION:
+            check_memory_vmx(5967);
             current->regs.nst_error = Vmcs::read (Vmcs::EXI_QUALIFICATION);
             current->regs.nst_fault = Vmcs::read (Vmcs::INFO_PHYS_ADDR);
             break;
         case Vmcs::VMX_RDTSC: 
-            check_memory(2965);
+            check_memory_vmx(5968);
             current->regs.resolve_rdtsc<Vmcs>(rdtsc());
             ret_user_vmresume();
             break;
         case Vmcs::VMX_RDTSCP:
+            check_memory_vmx(5969);
             Console::print("RDTSCP in VM");
             ret_user_vmrun();
             break;
     }
 
-    check_memory(2966);
+    check_memory_vmx(5970);
     current->regs.dst_portal = reason;
 
     send_msg<ret_user_vmresume>();
+}
+
+void Ec::check_memory_vmx(int pmi){
+//    if (one_run_ok()) {
+//        
+//        run_number = 0;
+//        return;
+//    }else{
+//        ec->restore_state_vmx();
+//        run_number++;
+//        return;
+//    }
+    launch_state = UNLAUNCHED;
+    return;
 }

@@ -268,7 +268,8 @@ void Pd::xlt_crd(Pd *pd, Crd xlt, Crd &crd) {
 }
 
 bool Pd::chunk_delegate(Pd* pd, mword sb, mword rb, mword ord, mword a, mword sub) {
-    if (ord < (sub & 2 ? 9 : 10)) {//if sub & 2 == 1: ept or npt mapping, else hpt mapping 
+//    if (ord < (sub & 2 ? 9 : 10)) {//if sub & 2 == 1: ept or npt mapping, else hpt mapping 
+    if (ord < 9) {//Seoul allocate 2M pages if ord = 9, we must construct 2M cow page before allowing this
         bool s = delegate<Space_mem>(pd, sb, rb, ord, a, sub, "MEM");
         //        Console::print("s in chunk %d", s);
         return s;

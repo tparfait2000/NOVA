@@ -63,7 +63,7 @@ void Ec::svm_exception(mword reason) {
 
             mword phys;
             Paddr host;
-            switch (Vtlb::miss(&current->regs, cr2, err, phys, host)) {
+            switch (Vtlb::miss(&current->regs, cr2, err)) {
 
                 case Vtlb::GPA_HPA:
                     current->regs.nst_error = 0;

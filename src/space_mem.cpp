@@ -110,7 +110,7 @@ bool Space_mem::update (Quota_guard &quota, Mdb *mdb, mword r)
             return f;
         }
 
-        f |= hpt.update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), Hpt::hw_attr (a), r ? Hpt::TYPE_DN : Hpt::TYPE_UP, (s & 2) ? false : true);
+        f |= hpt.update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), Hpt::hw_attr (a), r ? Hpt::TYPE_DN : Hpt::TYPE_UP, true);
     }
 
     if (r || f) {
@@ -125,7 +125,7 @@ bool Space_mem::update (Quota_guard &quota, Mdb *mdb, mword r)
                     return (r || f);
                 }
 
-                loc[j].update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), Hpt::hw_attr (a), Hpt::TYPE_DF);
+                loc[j].update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), Hpt::hw_attr (a), Hpt::TYPE_DF, true);
             }
         }
 
