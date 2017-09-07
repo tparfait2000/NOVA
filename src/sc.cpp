@@ -43,6 +43,8 @@ unsigned Sc::prio_top;
 Sc::Sc (Pd *own, mword sel, Ec *e) : Kobject (SC, static_cast<Space_obj *>(own), sel, 0x1, free), ec (e), cpu (static_cast<unsigned>(sel)), prio (0), budget (Lapic::freq_tsc * 1000), left (0)
 {
     trace (TRACE_SYSCALL, "SC:%p created (PD:%p Kernel)", this, own);
+
+    tsc = rdtsc();
 }
 
 Sc::Sc (Pd *own, mword sel, Ec *e, unsigned c, unsigned p, unsigned q) : Kobject (SC, static_cast<Space_obj *>(own), sel, 0x1, free), ec (e), cpu (c), prio (p), budget (Lapic::freq_tsc / 1000 * q), left (0)
