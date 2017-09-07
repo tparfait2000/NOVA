@@ -191,6 +191,9 @@ class Sys_sc_ctrl : public Sys_regs
         inline unsigned long sc() const { return ARG_1 >> 8; }
 
         ALWAYS_INLINE
+        inline unsigned op() const { return flags() & 0x1; }
+
+        ALWAYS_INLINE
         inline void set_time (uint64 val)
         {
             ARG_2 = static_cast<mword>(val >> 32);
