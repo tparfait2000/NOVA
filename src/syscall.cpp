@@ -731,6 +731,20 @@ void Ec::sys_ec_ctrl()
             Sc::schedule (false, true);
             break;
 
+        case 4: /* execution time */
+        {
+            Kobject *obj = Space_obj::lookup (r->ec()).obj();
+
+            if (EXPECT_FALSE (obj->type() != Kobject::EC))
+                sys_finish<Sys_regs::BAD_CAP>();
+
+            Ec *ec = static_cast<Ec *>(obj);
+
+            uint32 dummy;
+            r->set_time (div64 (ec->time * 1000, Lapic::freq_tsc, &dummy));
+            break;
+        }
+
         default:
             sys_finish<Sys_regs::BAD_PAR>();
     }

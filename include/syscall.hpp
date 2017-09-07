@@ -187,10 +187,17 @@ class Sys_ec_ctrl : public Sys_regs
         inline unsigned long cnt() const { return ARG_2; }
 
         ALWAYS_INLINE
-        inline unsigned op() const { return flags() & 0x3; }
+        inline unsigned op() const { return flags() & 0x7; }
 
         ALWAYS_INLINE
         inline bool state() const { return ARG_2 == 1; }
+
+        ALWAYS_INLINE
+        inline void set_time (uint64 val)
+        {
+            ARG_2 = static_cast<mword>(val >> 32);
+            ARG_3 = static_cast<mword>(val);
+        }
 };
 
 class Sys_sc_ctrl : public Sys_regs
