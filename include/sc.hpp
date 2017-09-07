@@ -68,10 +68,24 @@ class Sc : public Kobject, public Refcount
             }
         }
 
+        static void free_x (Rcu_elem * a) {
+            Sc * s = static_cast<Sc *>(a);
+
+            bool r = s->del_ref();
+            assert (r);
+            assert(Sc::current != s);
+            assert(s->cpu < sizeof(cross_time) / sizeof(cross_time[0]));
+
+            Atomic::add(cross_time[s->cpu], s->time);
+
+            delete s;
+        }
+
     public:
         static Sc *     current     CPULOCAL_HOT;
         static unsigned ctr_link    CPULOCAL;
         static unsigned ctr_loop    CPULOCAL;
+        static uint64   cross_time[NUM_CPU];
 
         static unsigned const default_prio = 1;
         static unsigned const default_quantum = 10000;

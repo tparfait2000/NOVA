@@ -634,8 +634,15 @@ void Ec::sys_sc_ctrl()
         sys_finish<Sys_regs::BAD_CAP>();
     }
 
+    Sc *sc = static_cast<Sc *>(cap.obj());
+
+    uint64 sc_time = sc->time;
+
+    if (EXPECT_FALSE (r->op() && sc->space == static_cast<Space_obj *>(&Pd::kern)))
+       sc_time = Sc::cross_time[sc->cpu];
+
     uint32 dummy;
-    r->set_time (div64 (static_cast<Sc *>(cap.obj())->time * 1000, Lapic::freq_tsc, &dummy));
+    r->set_time (div64 (sc_time * 1000, Lapic::freq_tsc, &dummy));
 
     sys_finish<Sys_regs::SUCCESS>();
 }
