@@ -502,5 +502,5 @@ void Ec::xcpu_return()
 void Ec::idl_handler()
 {
     if (Ec::current->cont == Ec::idle)
-        Rcu::update();
+        Ec::current->update_rcu();
 }

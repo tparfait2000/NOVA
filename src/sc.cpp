@@ -35,6 +35,7 @@ Sc *        Sc::current;
 unsigned    Sc::ctr_link;
 unsigned    Sc::ctr_loop;
 uint64      Sc::cross_time[NUM_CPU];
+uint64      Sc::rcu_time[NUM_CPU];
 
 Sc *Sc::list[Sc::priorities];
 

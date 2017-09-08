@@ -768,8 +768,14 @@ void Ec::sys_sc_ctrl()
 
     uint64 sc_time = sc->time;
 
-    if (EXPECT_FALSE (r->op() && sc->space == static_cast<Space_obj *>(&Pd::kern)))
-       sc_time = Sc::cross_time[sc->cpu];
+    if (EXPECT_FALSE (r->op() && sc->space == static_cast<Space_obj *>(&Pd::kern))) {
+       if (r->op() == 1)
+           sc_time = Sc::cross_time[sc->cpu];
+       else if (r->op() == 2)
+           sc_time = Sc::rcu_time[sc->cpu];
+       else
+           sys_finish<Sys_regs::BAD_PAR>();
+    }
 
     uint32 dummy;
     r->set_time (div64 (sc_time * 1000, Lapic::freq_tsc, &dummy));

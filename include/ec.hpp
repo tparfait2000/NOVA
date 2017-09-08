@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include "barrier.hpp"
 #include "counter.hpp"
 #include "fpu.hpp"
 #include "mtd.hpp"
@@ -327,6 +328,21 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
                 Rcu::call(s);
             }
+        }
+
+        ALWAYS_INLINE
+        inline void update_rcu()
+        {
+            uint64 t_s = rdtsc();
+            barrier();
+
+            Rcu::update();
+
+            uint64 t_e = rdtsc() - t_s;
+
+            Sc::rcu_time[Sc::current->cpu] += t_e;
+            Sc::current->time -= t_e;
+            Ec::current->time -= t_e;
         }
 
         HOT NORETURN
