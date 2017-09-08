@@ -36,6 +36,7 @@ class Sc : public Kobject, public Refcount
         unsigned const prio;
         uint64 const budget;
         uint64 time { 0 };
+        uint64 time_m { 0 };
 
         static unsigned const priorities = 128;
 
@@ -63,6 +64,9 @@ class Sc : public Kobject, public Refcount
             Sc * s = static_cast<Sc *>(a);
               
             if (s->del_ref()) {
+                assert(s->time >= s->time_m);
+                killed_time[s->cpu] += s->time - s->time_m;
+
                 assert(Sc::current != s);
                 delete s;
             }
@@ -90,6 +94,7 @@ class Sc : public Kobject, public Refcount
         static unsigned ctr_loop    CPULOCAL;
         static uint64   cross_time[NUM_CPU];
         static uint64   rcu_time[NUM_CPU];
+        static uint64   killed_time[NUM_CPU];
 
         static unsigned const default_prio = 1;
         static unsigned const default_quantum = 10000;
