@@ -71,8 +71,10 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
         uint64      tsc { 0 };
         uint64      time { 0 };
+        uint64      time_m { 0 };
 
         static Slab_cache cache;
+        static uint64     killed_time[NUM_CPU];
 
         REGPARM (1)
         static void handle_exc (Exc_regs *) asm ("exc_handler");

@@ -36,6 +36,7 @@ INIT_PRIORITY (PRIO_SLAB)
 Slab_cache Ec::cache (sizeof (Ec), 32);
 
 Ec *Ec::current, *Ec::fpowner;
+uint64 Ec::killed_time[NUM_CPU];
 
 // Constructors
 Ec::Ec (Pd *own, void (*f)(), unsigned c) : Kobject (EC, static_cast<Space_obj *>(own)), cont (f), pd (own), partner (nullptr), prev (nullptr), next (nullptr), fpu (nullptr), cpu (static_cast<uint16>(c)), glb (true), evt (0), timeout (this), user_utcb (0), xcpu_sm (nullptr), pt_oom(nullptr)
@@ -160,6 +161,8 @@ Ec::~Ec()
 
     if (fpu)
         Fpu::destroy(fpu, pd->quota);
+
+    Ec::killed_time[this->cpu] += this->time - this->time_m;
 
     if (utcb) {
         Utcb::destroy(utcb, pd->quota);
