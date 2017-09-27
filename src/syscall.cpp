@@ -354,6 +354,11 @@ void Ec::sys_create_pt()
 
     trace (TRACE_SYSCALL, "EC:%p SYS_CREATE PT:%#lx EC:%#lx EIP:%#lx", current, r->sel(), r->ec(), r->eip());
 
+    if (EXPECT_FALSE (r->eip() >= USER_ADDR)) {
+        trace (TRACE_ERROR, "%s: Invalid instruction pointer (%#lx)", __func__, r->eip());
+        sys_finish<Sys_regs::BAD_PAR>();
+    }
+
     Capability cap = Space_obj::lookup (r->pd());
     if (EXPECT_FALSE (cap.obj()->type() != Kobject::PD) || !(cap.prm() & 1UL << Kobject::PT)) {
         trace (TRACE_ERROR, "%s: Non-PD CAP (%#lx)", __func__, r->pd());
@@ -845,3 +850,4 @@ template void Ec::sys_finish<Sys_regs::COM_ABT>();
 template void Ec::send_msg<Ec::ret_user_vmresume>();
 template void Ec::send_msg<Ec::ret_user_vmrun>();
 template void Ec::send_msg<Ec::ret_user_iret>();
+template void Ec::send_msg<Ec::ret_user_sysexit>();
