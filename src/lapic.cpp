@@ -162,6 +162,8 @@ void Lapic::timer_handler()
 
 void Lapic::lvt_vector (unsigned vector)
 {
+    Counter::ip_in = Counter::ip_out = reinterpret_cast<mword>(Lapic::lvt_vector);
+
     unsigned lvt = vector - VEC_LVT;
 
     switch (vector) {
@@ -174,10 +176,14 @@ void Lapic::lvt_vector (unsigned vector)
     eoi();
 
     Counter::print<1,16> (++Counter::lvt[lvt], Console_vga::COLOR_LIGHT_BLUE, lvt + SPN_LVT);
+
+    Counter::ip_out = reinterpret_cast<mword>(Lapic::lvt_vector) + 0x8;
 }
 
 void Lapic::ipi_vector (unsigned vector)
 {
+    Counter::ip_in = Counter::ip_out = reinterpret_cast<mword>(Lapic::ipi_vector);
+
     unsigned ipi = vector - VEC_IPI;
 
     switch (vector) {
@@ -189,4 +195,6 @@ void Lapic::ipi_vector (unsigned vector)
     eoi();
 
     Counter::print<1,16> (++Counter::ipi[ipi], Console_vga::COLOR_LIGHT_GREEN, ipi + SPN_IPI);
+
+    Counter::ip_out = reinterpret_cast<mword>(Lapic::ipi_vector) + 0x8;
 }

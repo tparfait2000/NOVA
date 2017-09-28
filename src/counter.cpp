@@ -34,6 +34,63 @@ unsigned    Counter::vtlb_flush;
 unsigned    Counter::schedule;
 unsigned    Counter::helping;
 uint64      Counter::cycles_idle;
+mword       Counter::ip_in;
+mword       Counter::ip_out;
+
+void Counter::remote_dump(unsigned c)
+{
+    volatile mword    * ip_in    = reinterpret_cast<volatile mword    *>(reinterpret_cast<mword>(&Counter::ip_in) - CPU_LOCAL_DATA + HV_GLOBAL_CPUS + c * PAGE_SIZE);
+    volatile mword    * ip_out   = reinterpret_cast<volatile mword    *>(reinterpret_cast<mword>(&Counter::ip_out) - CPU_LOCAL_DATA + HV_GLOBAL_CPUS + c * PAGE_SIZE);
+    volatile uint64   * idle     = reinterpret_cast<volatile uint64   *>(reinterpret_cast<mword>(&Counter::cycles_idle) - CPU_LOCAL_DATA + HV_GLOBAL_CPUS + c * PAGE_SIZE);
+    volatile unsigned * gpf      = reinterpret_cast<volatile unsigned *>(reinterpret_cast<mword>(&Counter::vtlb_gpf) - CPU_LOCAL_DATA + HV_GLOBAL_CPUS + c * PAGE_SIZE);
+    volatile unsigned * hpf      = reinterpret_cast<volatile unsigned *>(reinterpret_cast<mword>(&Counter::vtlb_hpf) - CPU_LOCAL_DATA + HV_GLOBAL_CPUS + c * PAGE_SIZE);
+    volatile unsigned * fill     = reinterpret_cast<volatile unsigned *>(reinterpret_cast<mword>(&Counter::vtlb_fill) - CPU_LOCAL_DATA + HV_GLOBAL_CPUS + c * PAGE_SIZE);
+    volatile unsigned * flush    = reinterpret_cast<volatile unsigned *>(reinterpret_cast<mword>(&Counter::vtlb_flush) - CPU_LOCAL_DATA + HV_GLOBAL_CPUS + c * PAGE_SIZE);
+    volatile unsigned * schedule = reinterpret_cast<volatile unsigned *>(reinterpret_cast<mword>(&Counter::schedule) - CPU_LOCAL_DATA + HV_GLOBAL_CPUS + c * PAGE_SIZE);
+    volatile unsigned * helping  = reinterpret_cast<volatile unsigned *>(reinterpret_cast<mword>(&Counter::helping) - CPU_LOCAL_DATA + HV_GLOBAL_CPUS + c * PAGE_SIZE);
+
+    trace (0, "IP in : %16lx", *ip_in);
+    trace (0, "IP out: %16lx", *ip_out);
+    trace (0, "IDLE: %16llu", *idle);
+    trace (0, "VGPF: %16u", *gpf);
+    trace (0, "VHPF: %16u", *hpf);
+    trace (0, "VFIL: %16u", *fill);
+    trace (0, "VFLU: %16u", *flush);
+    trace (0, "SCHD: %16u", *schedule);
+    trace (0, "HELP: %16u", *helping);
+
+    *gpf = *hpf = *fill = *flush = *schedule = *helping = 0;
+
+    volatile unsigned * remote_ipi = reinterpret_cast<volatile unsigned *>(reinterpret_cast<mword>(ipi) - CPU_LOCAL_DATA + HV_GLOBAL_CPUS + c * PAGE_SIZE);
+    for (unsigned i = 0; i < sizeof (Counter::ipi) / sizeof (*Counter::ipi); i++)
+        if (remote_ipi[i]) {
+            trace (0, "IPI %#4x: %12u", i, remote_ipi[i]);
+        }
+
+    volatile unsigned * remote_lvt = reinterpret_cast<volatile unsigned *>(reinterpret_cast<mword>(lvt) - CPU_LOCAL_DATA + HV_GLOBAL_CPUS + c * PAGE_SIZE);
+    for (unsigned i = 0; i < sizeof (Counter::lvt) / sizeof (*Counter::lvt); i++)
+        if (remote_lvt[i]) {
+            trace (0, "LVT %#4x: %12u", i, remote_lvt[i]);
+        }
+
+    volatile unsigned * remote_gsi = reinterpret_cast<volatile unsigned *>(reinterpret_cast<mword>(gsi) - CPU_LOCAL_DATA + HV_GLOBAL_CPUS + c * PAGE_SIZE);
+    for (unsigned i = 0; i < sizeof (Counter::gsi) / sizeof (*Counter::gsi); i++)
+        if (remote_gsi[i]) {
+            trace (0, "GSI %#4x: %12u", i, remote_gsi[i]);
+        }
+
+    volatile unsigned * remote_exc = reinterpret_cast<volatile unsigned *>(reinterpret_cast<mword>(exc) - CPU_LOCAL_DATA + HV_GLOBAL_CPUS + c * PAGE_SIZE);
+    for (unsigned i = 0; i < sizeof (Counter::exc) / sizeof (*Counter::exc); i++)
+        if (remote_exc[i]) {
+            trace (0, "EXC %#4x: %12u", i, remote_exc[i]);
+        }
+
+    volatile unsigned * remote_vmi = reinterpret_cast<volatile unsigned *>(reinterpret_cast<mword>(vmi) - CPU_LOCAL_DATA + HV_GLOBAL_CPUS + c * PAGE_SIZE);
+    for (unsigned i = 0; i < sizeof (Counter::vmi) / sizeof (*Counter::vmi); i++)
+        if (remote_vmi[i]) {
+            trace (0, "VMI %#4x: %12u", i, remote_vmi[i]);
+        }
+}
 
 void Counter::dump()
 {

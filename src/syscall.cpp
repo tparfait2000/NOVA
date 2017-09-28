@@ -123,6 +123,8 @@ void Ec::send_msg()
 
 void Ec::sys_call()
 {
+    Counter::ip_in  = Counter::ip_out = reinterpret_cast<mword>(Ec::sys_call);
+
     Sys_call *s = static_cast<Sys_call *>(current->sys_regs());
 
     Kobject *obj = Space_obj::lookup (s->pt()).obj();
@@ -168,6 +170,8 @@ void Ec::sys_call()
 
 void Ec::recv_kern()
 {
+    Counter::ip_in = Counter::ip_out = reinterpret_cast<mword>(Ec::recv_kern);
+
     Ec *ec = current->rcap;
 
     bool fpu = false;
@@ -187,6 +191,8 @@ void Ec::recv_kern()
 
 void Ec::recv_user()
 {
+    Counter::ip_in = Counter::ip_out = reinterpret_cast<mword>(Ec::recv_user);
+
     Ec *ec = current->rcap;
 
     ec->utcb->save (current->utcb);
@@ -225,6 +231,8 @@ void Ec::reply (void (*c)(), Sm * sm)
 
 void Ec::sys_reply()
 {
+    Counter::ip_in = Counter::ip_out = reinterpret_cast<mword>(Ec::sys_reply);
+
     Ec *ec = current->rcap;
     Sm *sm = nullptr;
 
@@ -298,6 +306,8 @@ void Ec::check(mword r, bool call)
 
 void Ec::sys_create_pd()
 {
+    Counter::ip_in = Counter::ip_out = reinterpret_cast<mword>(Ec::sys_create_pd);
+
     check<sys_create_pd>(0, false);
 
     Sys_create_pd *r = static_cast<Sys_create_pd *>(current->sys_regs());
@@ -341,6 +351,8 @@ void Ec::sys_create_pd()
 
 void Ec::sys_create_ec()
 {
+    Counter::ip_in = Counter::ip_out = reinterpret_cast<mword>(Ec::sys_create_ec);
+
     check<sys_create_ec>(0, false);
 
     Sys_create_ec *r = static_cast<Sys_create_ec *>(current->sys_regs());
@@ -390,6 +402,8 @@ void Ec::sys_create_ec()
 
 void Ec::sys_create_sc()
 {
+    Counter::ip_in = Counter::ip_out = reinterpret_cast<mword>(Ec::sys_create_sc);
+
     check<sys_create_sc>(0, false);
 
     Sys_create_sc *r = static_cast<Sys_create_sc *>(current->sys_regs());
@@ -439,6 +453,8 @@ void Ec::sys_create_sc()
 
 void Ec::sys_create_pt()
 {
+    Counter::ip_in = Counter::ip_out = reinterpret_cast<mword>(Ec::sys_create_pt);
+
     check<sys_create_pt>(0, false);
 
     Sys_create_pt *r = static_cast<Sys_create_pt *>(current->sys_regs());
@@ -486,6 +502,8 @@ void Ec::sys_create_pt()
 
 void Ec::sys_create_sm()
 {
+    Counter::ip_in = Counter::ip_out = reinterpret_cast<mword>(Ec::sys_create_sm);
+
     check<sys_create_sm>(0, false);
 
     Sys_create_sm *r = static_cast<Sys_create_sm *>(current->sys_regs());
@@ -536,6 +554,8 @@ void Ec::sys_create_sm()
 
 void Ec::sys_revoke()
 {
+    Counter::ip_in = Counter::ip_out = reinterpret_cast<mword>(Ec::sys_revoke);
+
     Sys_revoke *r = static_cast<Sys_revoke *>(current->sys_regs());
 
     trace (TRACE_SYSCALL, "EC:%p SYS_REVOKE", current);
@@ -580,6 +600,8 @@ void Ec::sys_revoke()
 
 void Ec::sys_lookup()
 {
+    Counter::ip_in = Counter::ip_out = reinterpret_cast<mword>(Ec::sys_lookup);
+
     check<sys_lookup>(2);
 
     Sys_lookup *s = static_cast<Sys_lookup *>(current->sys_regs());
@@ -629,6 +651,8 @@ void Ec::sys_lookup()
 
 void Ec::sys_ec_ctrl()
 {
+    Counter::ip_in = Counter::ip_out = reinterpret_cast<mword>(Ec::sys_ec_ctrl);
+
     check<sys_ec_ctrl>(1);
 
     Sys_ec_ctrl *r = static_cast<Sys_ec_ctrl *>(current->sys_regs());
@@ -740,6 +764,8 @@ void Ec::sys_ec_ctrl()
 
 void Ec::sys_sc_ctrl()
 {
+    Counter::ip_in = Counter::ip_out = reinterpret_cast<mword>(Ec::sys_sc_ctrl);
+
     check<sys_sc_ctrl>(1);
 
     Sys_sc_ctrl *r = static_cast<Sys_sc_ctrl *>(current->sys_regs());
@@ -758,6 +784,8 @@ void Ec::sys_sc_ctrl()
 
 void Ec::sys_pt_ctrl()
 {
+    Counter::ip_in = Counter::ip_out = reinterpret_cast<mword>(Ec::sys_pt_ctrl);
+
     check<sys_pt_ctrl>(1);
 
     Sys_pt_ctrl *r = static_cast<Sys_pt_ctrl *>(current->sys_regs());
@@ -777,6 +805,8 @@ void Ec::sys_pt_ctrl()
 
 void Ec::sys_sm_ctrl()
 {
+    Counter::ip_in = Counter::ip_out = reinterpret_cast<mword>(Ec::sys_sm_ctrl);
+
     check<sys_sm_ctrl>(1);
 
     Sys_sm_ctrl *r = static_cast<Sys_sm_ctrl *>(current->sys_regs());
@@ -815,6 +845,8 @@ void Ec::sys_sm_ctrl()
 
 void Ec::sys_pd_ctrl()
 {
+    Counter::ip_in = Counter::ip_out = reinterpret_cast<mword>(Ec::sys_pd_ctrl);
+
     check<sys_pd_ctrl>(1);
 
     Sys_pd_ctrl *r = static_cast<Sys_pd_ctrl *>(current->sys_regs());
@@ -884,6 +916,8 @@ void Ec::sys_assign_pci()
 
 void Ec::sys_assign_gsi()
 {
+    Counter::ip_in = Counter::ip_out = reinterpret_cast<mword>(Ec::sys_assign_gsi);
+
     check<sys_assign_gsi>(2);
 
     Sys_assign_gsi *r = static_cast<Sys_assign_gsi *>(current->sys_regs());
@@ -941,6 +975,8 @@ void Ec::sys_assign_gsi()
 
 void Ec::sys_xcpu_call()
 {
+    Counter::ip_in = Counter::ip_out = reinterpret_cast<mword>(Ec::sys_xcpu_call);
+
     Sys_call *s = static_cast<Sys_call *>(current->sys_regs());
 
     Kobject *obj = Space_obj::lookup (s->pt()).obj();

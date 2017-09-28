@@ -31,6 +31,7 @@
 #include "vtlb.hpp"
 #include "sm.hpp"
 #include "pt.hpp"
+#include "lapic.hpp"
 
 INIT_PRIORITY (PRIO_SLAB)
 Slab_cache Ec::cache (sizeof (Ec), 32);
@@ -267,6 +268,8 @@ void Ec::ret_user_sysexit()
         send_msg<Ec::ret_user_sysexit>();
     }
 
+    Counter::ip_out = reinterpret_cast<mword>(Ec::ret_user_sysexit);
+
     asm volatile ("lea %0," EXPAND (PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : "memory");
 
     UNREACHED;
@@ -278,6 +281,8 @@ void Ec::ret_user_iret()
     mword hzd = (Cpu::hazard | current->regs.hazard()) & (HZD_RECALL | HZD_STEP | HZD_RCU | HZD_FPU | HZD_SCHED);
     if (EXPECT_FALSE (hzd))
         handle_hazard (hzd, ret_user_iret);
+
+    Counter::ip_out = reinterpret_cast<mword>(Ec::ret_user_iret);
 
     asm volatile ("lea %0," EXPAND (PREG(sp); LOAD_GPR LOAD_SEG RET_USER_EXC) : : "m" (current->regs) : "memory");
 
@@ -297,6 +302,8 @@ void Ec::chk_kern_preempt()
 
 void Ec::ret_user_vmresume()
 {
+    Counter::ip_out = reinterpret_cast<mword>(Ec::ret_user_vmresume);
+
     mword hzd = (Cpu::hazard | current->regs.hazard()) & (HZD_RECALL | HZD_TSC | HZD_RCU | HZD_SCHED);
     if (EXPECT_FALSE (hzd))
         handle_hazard (hzd, ret_user_vmresume);
@@ -314,6 +321,8 @@ void Ec::ret_user_vmresume()
     if (EXPECT_FALSE (get_cr2() != current->regs.cr2))
         set_cr2 (current->regs.cr2);
 
+    Counter::ip_out = reinterpret_cast<mword>(Ec::ret_user_vmresume) + 8;
+
     asm volatile ("lea %0," EXPAND (PREG(sp); LOAD_GPR)
                   "vmresume;"
                   "vmlaunch;"
@@ -327,6 +336,8 @@ void Ec::ret_user_vmresume()
 
 void Ec::ret_user_vmrun()
 {
+    Counter::ip_out = reinterpret_cast<mword>(Ec::ret_user_vmrun);
+
     mword hzd = (Cpu::hazard | current->regs.hazard()) & (HZD_RECALL | HZD_TSC | HZD_RCU | HZD_SCHED);
     if (EXPECT_FALSE (hzd))
         handle_hazard (hzd, ret_user_vmrun);
@@ -338,6 +349,8 @@ void Ec::ret_user_vmrun()
         else
             current->regs.vtlb->flush (true);
     }
+
+    Counter::ip_out = reinterpret_cast<mword>(Ec::ret_user_vmrun) + 8;
 
     asm volatile ("lea %0," EXPAND (PREG(sp); LOAD_GPR)
                   "clgi;"
@@ -359,6 +372,10 @@ void Ec::ret_user_vmrun()
 
 void Ec::idle()
 {
+    static uint64 last[NUM_CPU];
+
+    Counter::ip_out = reinterpret_cast<mword>(Ec::idle);
+
     for (;;) {
 
         mword hzd = Cpu::hazard & (HZD_RCU | HZD_SCHED);
@@ -366,10 +383,25 @@ void Ec::idle()
             handle_hazard (hzd, idle);
 
         uint64 t1 = rdtsc();
+
+        if ((t1 - last[Cpu::id]) > (10000ULL * Lapic::freq_tsc)) {
+            trace(0, "idle heartbeat");
+            last[Cpu::id] = t1;
+
+            for (unsigned i = 0; i < NUM_CPU; i++) {
+                if (last[i] && (t1 > last[i]) && ((t1 - last[i]) > (40000ULL * Lapic::freq_tsc))) {
+                    last[i] = t1; /* XXX evil, remove writing */
+                    trace(0, "no idle heartbeat from cpu %u, dump cpu counter:", i);
+                    Counter::remote_dump(i);
+                }
+            }
+        }
+
         asm volatile ("sti; hlt; cli" : : : "memory");
         uint64 t2 = rdtsc();
 
         Counter::cycles_idle += t2 - t1;
+        Counter::ip_in = reinterpret_cast<mword>(Ec::idle);
     }
 }
 

@@ -23,6 +23,7 @@
 #include "hpt.hpp"
 #include "x86.hpp"
 #include "pd.hpp"
+#include "counter.hpp"
 
 INIT_PRIORITY (PRIO_CONSOLE) Console_serial Console_serial::con;
 
@@ -52,8 +53,26 @@ void Console_serial::putc (int c)
     if (c == '\n')
         putc ('\r');
 
+    static unsigned x = 0;
+
+    mword last_in  = 0;
+    mword last_out = 0;
+
+    if (x < 110)
+        x++;
+    else {
+        last_in = Counter::ip_in;
+        last_out = Counter::ip_out;
+        Counter::ip_in = Counter::ip_out = 0xaffe;
+    }
+
     while (EXPECT_FALSE (!(in (LSR) & 0x20)))
         pause();
 
     out (THR, c);
+
+    if (x >= 110) {
+       Counter::ip_in = last_in;
+       Counter::ip_out = last_out;
+    }
 }

@@ -88,6 +88,7 @@ void Gsi::unmask (unsigned gsi)
 
 void Gsi::vector (unsigned vector)
 {
+    Counter::ip_in = Counter::ip_out = reinterpret_cast<mword>(Gsi::vector);
     unsigned gsi = vector - VEC_GSI;
 
     if (gsi == Keyb::gsi)
@@ -104,4 +105,6 @@ void Gsi::vector (unsigned vector)
     gsi_table[gsi].sm->submit();
 
     Counter::print<1,16> (++Counter::gsi[gsi], Console_vga::Color (Console_vga::COLOR_LIGHT_YELLOW - gsi / 64), SPN_GSI + gsi % 64);
+
+    Counter::ip_out = reinterpret_cast<mword>(Gsi::vector) + 8;
 }

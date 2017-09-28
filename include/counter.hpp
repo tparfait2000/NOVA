@@ -39,8 +39,11 @@ class Counter
         static unsigned schedule        CPULOCAL;
         static unsigned helping         CPULOCAL;
         static uint64   cycles_idle     CPULOCAL;
+        static mword    ip_in           CPULOCAL;
+        static mword    ip_out          CPULOCAL;
 
         static void dump();
+        static void remote_dump(unsigned c);
 
         ALWAYS_INLINE
         static inline unsigned remote (unsigned c, unsigned i)

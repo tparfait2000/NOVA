@@ -157,36 +157,50 @@ bool Ec::handle_exc_pf (Exc_regs *r)
 
 void Ec::handle_exc (Exc_regs *r)
 {
+    Counter::ip_in = Counter::ip_out = reinterpret_cast<mword>(Ec::handle_exc);
+
     Counter::exc[r->vec]++;
 
     switch (r->vec) {
 
         case Cpu::EXC_NM:
             handle_exc_nm();
+            Counter::ip_out = reinterpret_cast<mword>(Ec::handle_exc) + 0x1;
             return;
 
         case Cpu::EXC_TS:
-            if (handle_exc_ts (r))
+            if (handle_exc_ts (r)) {
+                Counter::ip_out = reinterpret_cast<mword>(Ec::handle_exc) + 0x2;
                 return;
+            }
             break;
 
         case Cpu::EXC_GP:
-            if (handle_exc_gp (r))
+            if (handle_exc_gp (r)) {
+                Counter::ip_out = reinterpret_cast<mword>(Ec::handle_exc) + 0x3;
                 return;
+            }
             break;
 
         case Cpu::EXC_PF:
-            if (handle_exc_pf (r))
+            if (handle_exc_pf (r)) {
+                Counter::ip_out = reinterpret_cast<mword>(Ec::handle_exc) + 0x4;
                 return;
+            }
             break;
 
         case Cpu::EXC_MC:
             Mca::vector();
+            Counter::ip_out = reinterpret_cast<mword>(Ec::handle_exc) + 0x5;
             break;
+        default:
+            trace (0, "unknown exception %lu", r->vec);
     }
 
-    if (r->user())
+    if (r->user()) {
+        Counter::ip_out = reinterpret_cast<mword>(Ec::handle_exc) + 0x8;
         send_msg<ret_user_iret>();
+    }
 
     die ("EXC", r);
 }

@@ -25,6 +25,7 @@
 #include "pd.hpp"
 #include "stdio.hpp"
 #include "vectors.hpp"
+#include "counter.hpp"
 
 INIT_PRIORITY (PRIO_SLAB)
 Slab_cache  Dmar::cache (sizeof (Dmar), 8);
@@ -197,6 +198,8 @@ void Dmar::fault_handler()
 
 void Dmar::vector (unsigned vector)
 {
+    Counter::ip_in = Counter::ip_out = reinterpret_cast<mword>(Dmar::vector);
+
     unsigned msi = vector - VEC_MSI;
 
     if (EXPECT_TRUE (msi == 0))
@@ -204,4 +207,6 @@ void Dmar::vector (unsigned vector)
             dmar->fault_handler();
 
     Lapic::eoi();
+
+    Counter::ip_out = reinterpret_cast<mword>(Dmar::vector) + 0x8;
 }

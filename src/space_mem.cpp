@@ -155,6 +155,9 @@ void Space_mem::shootdown(Pd * local)
             continue;
         }
 
+
+        uint64 loop_cnt = 0;
+
         unsigned ctr = Counter::remote (cpu, 1);
 
         Lapic::send_ipi (cpu, VEC_IPI_RKE);
@@ -162,8 +165,21 @@ void Space_mem::shootdown(Pd * local)
         if (!Cpu::preemption)
             asm volatile ("sti" : : : "memory");
 
-        while (Counter::remote (cpu, 1) == ctr)
+        while (Counter::remote (cpu, 1) == ctr) {
             pause();
+
+            loop_cnt ++;
+            if (loop_cnt % 100000 == 0) {
+                if (!Cpu::preemption)
+                    asm volatile ("cli" : : : "memory");
+
+                trace(0, "cpu %u not responding - loop count %llu\n", cpu, loop_cnt);
+                Counter::remote_dump(cpu);
+
+                if (!Cpu::preemption)
+                    asm volatile ("sti" : : : "memory");
+            }
+        }
 
         if (!Cpu::preemption)
             asm volatile ("cli" : : : "memory");

@@ -77,6 +77,11 @@ void Rcu::quiet()
 
 void Rcu::update()
 {
+    mword last_in  = Counter::ip_in;
+    mword last_out = Counter::ip_out;
+
+    Counter::ip_in = Counter::ip_out = reinterpret_cast<mword>(Rcu::update);
+
     if (l_batch != batch()) {
         l_batch = batch();
         Cpu::hazard |= HZD_RCU;
@@ -105,4 +110,7 @@ void Rcu::update()
 
     if (!done.empty())
         invoke_batch();
+
+    Counter::ip_in  = last_in;
+    Counter::ip_out = last_out;
 }
