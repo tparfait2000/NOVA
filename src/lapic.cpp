@@ -71,7 +71,7 @@ void Lapic::init(bool invariant_tsc)
         uint64 ratio = 0;
 
         /* read out tsc freq if supported */
-        if (Cpu::vendor == Cpu::Vendor::INTEL && Cpu::family >= 6) {
+        if (invariant_tsc && Cpu::vendor == Cpu::Vendor::INTEL && Cpu::family >= 6) {
             ratio = static_cast<unsigned>(Msr::read<uint64>(Msr::MSR_PLATFORM_INFO) >> 8) & 0xff;
             if (Cpu::model >= 0x3a) { /* Nehalem and later */
                 freq_tsc = static_cast<unsigned>(ratio * 100000);
@@ -100,12 +100,6 @@ void Lapic::init(bool invariant_tsc)
         }
 
         trace (0, "TSC:%u kHz BUS:%u kHz%s%s", freq_tsc, freq_bus, !ratio ? " (measured)" : "", dl ? " DL" : "");
-
-        if ((freq_bus && freq_tsc < freq_bus) || !invariant_tsc) {
-           freq_bus = 1000 * 1000;
-           freq_tsc = 2 * freq_bus;
-           trace (0, "TSC:%u kHz BUS:%u kHz (adjusted due to instable TSC)", freq_tsc, freq_bus);
-        }
 
         send_ipi (0, AP_BOOT_PADDR >> PAGE_BITS, DLV_SIPI, DSH_EXC_SELF);
         Acpi::delay (1);
