@@ -156,7 +156,7 @@ bool Hpt::is_cow_fault(Quota &quota, mword v, mword err) {
                 update(quota, v, 0, phys, a | Hpt::HPT_W, Type::TYPE_UP, false);
                 //              Console::print("Cow Error above USER_ADDR");
             } else {
-                if (Ec::step_reason) {//Cow error in single stepping : why this? we don't know; qemu oddities
+                if (Ec::step_reason && (Ec::step_reason != Ec::GP)) {//Cow error in single stepping : why this? we don't know; qemu oddities
                     if (Ec::step_reason != Ec::PIO)
                         Console::print("Cow error in single stepping v: %lx  phys: %lx  Pd: %s", v, phys, pd->get_name());
                     if (ec->is_io_exc()) {
@@ -165,7 +165,7 @@ bool Hpt::is_cow_fault(Quota &quota, mword v, mword err) {
                         return true;
                     } else {// IO instruction already executed but still in single stepping
                         ec->disable_step_debug();
-                        if(Ec::launch_state)
+                        if (Ec::launch_state)
                             Ec::launch_state = Ec::UNLAUNCHED;
                     }
                 }

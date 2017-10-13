@@ -138,7 +138,7 @@ void Cow::initialize() {
         if (b->start == 0x0UL) {
             b->start = 0x1000UL; // Core : [0 - 1000[ is needed as I/O memory by the VESA driver, remove it from Ram space */
         }
-        //                        Console::print("deb: %08lx  fin: %08lx", b->start, b->end);
+                                Console::print("deb: %08lx  fin: %08lx", b->start, b->end);
         b = b->next;
     }
 }

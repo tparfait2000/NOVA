@@ -39,27 +39,22 @@
 #endif
 
 #define HV_GLOBAL_CPUS  (CPU_LOCAL - 0x1000000)         //0xcec00000    0xFFFFFFFFBEE00000
-#define HV_GLOBAL_FBUF  (CPU_LOCAL - PAGE_SIZE * 1)     //0xcfbff000    0xffffffffbfdff000
+#define HV_GLOBAL_FBUF  (CPU_LOCAL - PAGE_SIZE * 1)     //0xcfbff000    0xFFFFFFFFBFDFF000
 
-#define CPU_LOCAL_STCK  (SPC_LOCAL - PAGE_SIZE * 3)     //0xcfffd000    0xffffffffbfffd000
-#define CPU_LOCAL_APIC  (SPC_LOCAL - PAGE_SIZE * 2)     //0xcfffe000    0xffffffffbfffe000
-#define CPU_LOCAL_DATA  (SPC_LOCAL - PAGE_SIZE * 1)     //0xcffff000    0xffffffffbffff000
+#define CPU_LOCAL_STCK  (SPC_LOCAL - PAGE_SIZE * 3)     //0xcfffd000    0xFFFFFFFFBFFFD000
+#define CPU_LOCAL_APIC  (SPC_LOCAL - PAGE_SIZE * 2)     //0xcfffe000    0xFFFFFFFFBFFFE000
+#define CPU_LOCAL_DATA  (SPC_LOCAL - PAGE_SIZE * 1)     //0xcffff000    0xFFFFFFFFBFFFF000
 
-#define SPC_LOCAL_IOP   (SPC_LOCAL)                     //0xd0000000    0xffffffffc0000000
-#define SPC_LOCAL_IOP_E (SPC_LOCAL_IOP + PAGE_SIZE * 2) //0xd0002000    0xffffffffc0002000    
+#define SPC_LOCAL_IOP   (SPC_LOCAL)                     //0xd0000000    0xFFFFFFFFC0000000
+#define SPC_LOCAL_IOP_E (SPC_LOCAL_IOP + PAGE_SIZE * 2) //0xd0002000    0xFFFFFFFFC0002000    
 #define SPC_LOCAL_REMAP (SPC_LOCAL_OBJ - 0x1000000)     //0xdf000000    0xFFFFFFFFDF000000
 #define SPC_LOCAL_OBJ   (END_SPACE_LIM - 0x20000000)    //0xe0000000    0xFFFFFFFFE0000000
 
-#define COW_ADDR        (SPC_LOCAL_REMAP - 0x1000000)   //0xde000000    0xFFFFFFFFDE000000
-#define LOCAL_IOP_REMAP (COW_ADDR - 0x1000000)          //0xdd000000    0xFFFFFFFFDD000000
+#define COW_ADDR        (LINK_ADDR - 0x40000000)   //0xde000000    0xFFFFFFFF80000000
+#define LOCAL_IOP_REMAP (COW_ADDR - 0x1000000)          //0xdd000000    0xFFFFFFFF7F000000
 #define NB_COW_FRAME_ORDER    12  // means 2¹⁴ = 16 * 1024 frames
-#define NB_COW_FRAME    (0x1eUL << NB_COW_FRAME_ORDER)  
+#define NB_COW_FRAME    (0x26UL << NB_COW_FRAME_ORDER)  // (384-32)*1024/4 car une page = 4Ko
 #define NB_COW_ELT      (NB_COW_FRAME)
 #define NB_TS_ELT       10000
-#define NB_BLOCK_ELT    10
+#define NB_BLOCK_ELT    20
 #define END_SPACE_LIM   (~0UL + 1)
-
-
-#define I386_PT_ENTRIES	(1 << PTE_BPL)
-#define I386_VM_PFA(e)	( (e) & PAGE_MASK)
-#define I386_BIG_PAGE_SIZE	(PAGE_SIZE* (1 << 10))

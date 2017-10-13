@@ -63,7 +63,7 @@ private:
 public:
     static Pd *current CPULOCAL_HOT;
     static Pd kern, root;
-
+    bool pd_debug = false;
     Quota quota;
     Paddr io_remap1, io_remap2;
 

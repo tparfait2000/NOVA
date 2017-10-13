@@ -175,7 +175,8 @@ class Lapic
         
         static void activate_pmi();
         
-        static void reset_counter();
+        static void reset_counter(uint64 number = 0);
 
         static uint64 readReset_instCounter(uint64 number = 0);
+        static uint64 read_instCounter();
 };

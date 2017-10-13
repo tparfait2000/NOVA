@@ -46,7 +46,7 @@ SECTIONS
     . = ALIGN(4K) + 4K; PROVIDE (STACK = .);
 
     PROVIDE (LOAD_E = .);
-    OFFSET = LINK_ADDR - ALIGN (4M);
+    OFFSET = LINK_ADDR - ALIGN (1028M);
     PROVIDE (LINK_P = LINK_ADDR - OFFSET);
 
     .text LINK_ADDR : AT (ADDR (.text) - OFFSET)
@@ -108,7 +108,7 @@ SECTIONS
 #endif
         _mempool_f = .;
 
-        . += 512M;
+        . += 768M;
         . = ALIGN(4M);
 
         PROVIDE (LINK_E = . - OFFSET);

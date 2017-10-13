@@ -32,16 +32,17 @@
 #include "sm.hpp"
 #include "pt.hpp"
 #include "msr.hpp"
+#include "lapic.hpp"
 
 INIT_PRIORITY(PRIO_SLAB)
 Slab_cache Ec::cache(sizeof (Ec), 32);
 unsigned Ec::affich_num = 0, Ec::affich_mod = 50000, step_reason = Ec::NIL, launch_state = Ec::UNLAUNCHED;
 mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx;
-bool Ec::ec_debug = false, Ec::debug = false, Ec::hardening_started = false, Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false;
-uint64 Ec::static_tour = 0, Ec::begin_time = 0, Ec::end_time = 0, Ec::exc_counter = 0, Ec::gsi_counter1 = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::lvt_counter1 = 0, Ec::msi_counter1 = 0, Ec::ipi_counter1 = 0, Ec::gsi_counter2 = 0, Ec::lvt_counter2 = 0, Ec::msi_counter2 = 0, Ec::ipi_counter2 = 0, Ec::counter1 = 0, Ec::counter2 = 0, Ec::runtime1 = 0, Ec::runtime2 = 0, Ec::total_runtime = 0, Ec::step_debug_time = 0, Ec::debug_compteur = 0;
+bool Ec::ec_debug = false, Ec::glb_debug = false, Ec::hardening_started = false, Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false, Ec::jump_ex = false;
+uint64 Ec::static_tour = 0, Ec::begin_time = 0, Ec::end_time = 0, Ec::exc_counter = 0, Ec::gsi_counter1 = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::lvt_counter1 = 0, Ec::msi_counter1 = 0, Ec::ipi_counter1 = 0, Ec::gsi_counter2 = 0, Ec::lvt_counter2 = 0, Ec::msi_counter2 = 0, Ec::ipi_counter2 = 0, Ec::counter1 = 0, Ec::counter2 = 0, Ec::runtime1 = 0, Ec::runtime2 = 0, Ec::total_runtime = 0, Ec::step_debug_time = 0, Ec::debug_compteur = 0, Ec::count_je = 0;
 uint8 Ec::run_number = 0, Ec::launch_state = 0, Ec::step_reason = 0;
 long Ec::step_nb = 100, Ec::nbInstr_to_execute = 0;
-        
+
 Ec *Ec::current, *Ec::fpowner;
 // Constructors
 
@@ -287,9 +288,42 @@ void Ec::ret_user_sysexit() {
         launch_state = Ec::SYSEXIT;
         begin_time = rdtsc(); //normalement, cette instruction devrait etre dans le if precedant
     }
-    if(step_reason == NIL){
+    //    if(!strcmp(current->get_name(), "fb_drv")){
+    //        count_je++;
+    //    }
+    //        mword *p = reinterpret_cast<mword*> (0x18028);
+    //        Paddr physical_addr;
+    //        mword attribut;
+    //        size_t is_mapped = current->getPd()->loc[Cpu::id].lookup(0x18028, physical_addr, attribut);
+    //        if(count_je > 0x1a6){
+    //            if(is_mapped)
+    //                Console::print("value phys %lx 18028: %lx", physical_addr, reinterpret_cast<mword>(*p));
+    //            else
+    //                Console::print("Not mapped phys %lx jump %llx", physical_addr, count_je);
+    //        }
+
+    //    if(debug && strcmp(current->get_name(), "fb_drv")){
+    //        Console::print("PD: %s EC %s eip %lx ", Pd::current->get_name(), current->get_name(), current->regs.REG(cx));
+    //    }
+    //    if(!strcmp(current->get_name(), "fb_drv") && current->regs.REG(cx) == 0x1024852 && (current->regs.r8 == 0x8824a70 || current->regs.r8 == 0x8824a74)){
+    //        mword *p = reinterpret_cast<mword*> (0x18028);
+    //        Console::print("EIP = SYSRETING PD: %s EC %s step_reason %d 0x18028: %lx", Pd::current->get_name(), current->get_name(), step_reason, *p);
+    ////        Cpu_regs reg_d = current->regs;
+    ////        Console::print("eip: %lx  rax %lx  rbx %lx  rcx %lx  rdx %lx esp %lx  rbp %lx  rdix %lx r8 %lx r9 %lx r10 %lx r11 %lx r12 %lx r13 %lx r14 %lx r15 %lx", 
+    ////                reg_d.REG(ip), reg_d.REG(ax), reg_d.REG(bx), reg_d.REG(cx), reg_d.REG(dx), reg_d.REG(sp), reg_d.REG(bp), reg_d.REG(di), reg_d.r8, reg_d.r9, reg_d.r10, reg_d.r11, reg_d.r12, reg_d.r13, reg_d.r14, reg_d.r15);
+    ////        Console::print("r8 %lx",  reg_d.r8);
+    //        debug = true;
+    //        step_reason = GP;
+    //        current->regs.REG(fl) |= Cpu::EFL_TF;
+    ////        Lapic::reset_counter(0xe3184);
+    //    }else if(debug){
+    //        Console::print("DEBUG SYSRETING PD: %s EC %s EIP %lx step_reason %d r8 %lx", Pd::current->get_name(), current->get_name(), current->regs.REG(cx), step_reason, current->regs.r8);
+    //    }
+    //    
+    debug_print("Sysreting");
+    if (step_reason == NIL) {
         asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : "memory");
-    }else{
+    } else {
         asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP_SS) : : "m" (current->regs) : "memory");
     }
     UNREACHED;
@@ -301,11 +335,16 @@ void Ec::ret_user_iret() {
         mword hzd = (Cpu::hazard | current->regs.hazard()) & (HZD_RECALL | HZD_STEP | HZD_RCU | HZD_FPU | HZD_SCHED);
         if (EXPECT_FALSE(hzd))
             handle_hazard(hzd, ret_user_iret);
-        
+
         current->save_state();
         launch_state = Ec::IRET;
         begin_time = rdtsc();
     }
+    debug_print("Ireting");
+    //    if(debug){
+    //        mword *p = reinterpret_cast<mword*> (0x18028);
+    //        Console::print("DEBUG IRETING PD: %s EC %s EIPP %lx rdi %lx r8 %lx instr %llx 0x18028: %lx", Pd::current->get_name(), current->get_name(), current->regs.REG(ip), current->regs.REG(di), current->regs.r8, Lapic::read_instCounter(), *p);
+    //    }
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR LOAD_SEG RET_USER_EXC) : : "m" (current->regs) : "memory");
 
     UNREACHED;
@@ -344,7 +383,7 @@ void Ec::ret_user_vmresume() {
     if (EXPECT_FALSE(get_cr2() != current->regs.cr2))
         set_cr2(current->regs.cr2);
     current->regs.disable_rdtsc<Vmcs>();
-//    Console::print("VMRun");
+    //    Console::print("VMRun");
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR)
                 "vmresume;"
                 "vmlaunch;"
@@ -607,15 +646,15 @@ void Ec::enable_step_debug(Step_reason reason, mword fault_addr, Paddr fault_phy
             launch_state = Launch_type::IRET; // to ensure that this will finished before any other thread is scheduled
             break;
         case PMI:
-//        {
-//            uint8 *ptr = reinterpret_cast<uint8 *> (end_rip);
-//            if (*ptr == 0xf3 || *ptr == 0xf2) {
-////                Console::print("Rep prefix detected");
-//                in_rep_instruction = true;
-//                Cpu::disable_fast_string();
-//            }
+            //        {
+            //            uint8 *ptr = reinterpret_cast<uint8 *> (end_rip);
+            //            if (*ptr == 0xf3 || *ptr == 0xf2) {
+            ////                Console::print("Rep prefix detected");
+            //                in_rep_instruction = true;
+            //                Cpu::disable_fast_string();
+            //            }
             break;
-//        }
+            //        }
         case NIL:
         default:
             Console::print("Unknown debug reason -- Enable");
@@ -683,7 +722,7 @@ void Ec::saveRegs(Exc_regs *r) {
         last_rcx = r->REG(cx);
         exc_counter++;
         //        if(ec_debug)
-//        Console::print("vector: %lu  cs: %lx  rip: %lx  rcx: %lx  instr %llu", r->vec, r->cs, r->REG(ip), r->REG(cx), Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
+        //        Console::print("vector: %lu  cs: %lx  rip: %lx  rcx: %lx  instr %llu", r->vec, r->cs, r->REG(ip), r->REG(cx), Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
     }
     return;
 }
@@ -748,4 +787,51 @@ int Ec::compare_regs(int reason) {
     if (regs.REG(sp) != regs_1.REG(sp))
         return 19;
     return 0;
+}
+
+void Ec::Setx86DebugReg(mword addr, int dr) {
+    mword dr7 = 0; // or 0x4aa or 0x7aa or 0x6aa 
+    switch (dr) {
+        default:
+        case 0:
+            asm volatile ("mov %0, %%dr0"::"r"(addr));
+            dr7 = 0x000D07aa;
+            break;
+        case 1:
+            asm volatile ("mov %0, %%dr1" : : "r"(addr));
+            dr7 = 0x00D00004;
+            break;
+        case 2:
+            asm volatile ("mov %0, %%dr2"::"r"(addr));
+            dr7 = 0x0D000010;
+            break;
+        case 3:
+            dr7 = 0xD0000040;
+            asm volatile ("mov %0, %%dr3"::"r"(addr));
+    }
+    asm volatile ("mov %0, %%dr7"::"r"(dr7));
+    return;
+}
+
+void Ec::debug_func(const char* source) {
+    mword *p = reinterpret_cast<mword*> (0x18028);
+    Paddr physical_addr;
+    mword attribut;
+    size_t is_mapped = current->getPd()->loc[Cpu::id].lookup(0x18028, physical_addr, attribut);
+    if (is_mapped) {
+        mword rip;
+        if (strcmp(source, "Ireting"))
+            rip = current->regs.REG(cx);
+        else
+            rip = current->regs.REG(ip);
+        Console::print("%s PD: %s EC %s EIP %lx rdi %lx r8 %lx 18028:%lx", source, Pd::current->get_name(), current->get_name(), rip, current->regs.REG(di), current->regs.r8, *p);
+    } else
+        Console::print("Not mapped phys");
+}
+
+void Ec::debug_print(const char* source) {
+    if (glb_debug || current->getPd()->pd_debug || current->debug)
+        debug_func(source);
+    return;
+
 }

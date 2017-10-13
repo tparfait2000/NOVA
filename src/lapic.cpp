@@ -162,7 +162,6 @@ void Lapic::ipi_vector (unsigned vector)
 }
 
 void Lapic::set_pmi(uint64 count){
-    return;
     unsigned nb_inst = static_cast<unsigned>(count);
     set_lvt(LAPIC_LVT_PERFM, DLV_FIXED, VEC_LVT_PERFM);
     Msr::write(Msr::MSR_PERF_FIXED_CTR0, -nb_inst | 0xFFFF00000000);
@@ -176,9 +175,8 @@ void Lapic::activate_pmi() {
     set_pmi(max_instruction);
 }
 
-void Lapic::reset_counter(){
-    set_pmi(max_instruction);
-    
+void Lapic::reset_counter(uint64 number){
+    set_pmi(number ? number : max_instruction);    
 //    Msr::write(Msr::IA32_PERFEVTSEL0, 0x000100c5);
 ////    Msr::write(Msr::IA32_PMC0, 0x0);
 //    Msr::write(Msr::IA32_PERFEVTSEL0, 0x004100c5);
@@ -189,4 +187,8 @@ uint64 Lapic::readReset_instCounter(uint64 number) {
     uint64 val = Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0); //no need to stop the counter because he is not supposed to count (according to config) when we are in kernl mode
     set_pmi(max_instruction - number);
     return val;
+}
+
+uint64 Lapic::read_instCounter() {
+    return Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0); 
 }

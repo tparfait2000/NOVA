@@ -121,10 +121,51 @@ void Ec::send_msg()
     die ("IPC Timeout");
 }
 
+void Ec::debug_call(mword r9){
+    if(current->debug){
+        if(current->debug != r9)
+            die("r9 not equal to current.debug");
+        switch(current->debug){
+            case global_debug:
+                Console::print("Deactivating debuging for all system threads requested by %s", current->get_name());
+                glb_debug = false;
+                break;
+            case pd_debug:
+                Console::print("Deactivating debuging for all PD %s 's threads requested by %s", current->getPd()->get_name(), current->get_name());
+                current->getPd()->pd_debug = false;
+                break;
+            case private_debug:
+                Console::print("Deactivating debuging for ec %s", current->get_name());
+                break;
+        }
+        current->debug = 0;
+    }else{
+        switch(r9){
+            case global_debug:
+                Console::print("Activating debuging for all system threads requested by %s", current->get_name());
+                glb_debug = true;
+                break;
+            case pd_debug:
+                Console::print("Activating debuging for all PD %s 's threads requested by %s", current->getPd()->get_name(), current->get_name());
+                current->getPd()->pd_debug  = true;
+                break;
+            case private_debug:
+                Console::print("Activating debuging for ec %s", current->get_name());
+                break;
+        }
+        current->debug = r9;
+    }
+}
+
 void Ec::sys_call()
 {
     Sys_call *s = static_cast<Sys_call *>(current->sys_regs());
 
+    if(s->r9){
+        debug_call(s->r9);
+        sys_finish<Sys_regs::COM_TIM>();
+    }
+    
     Kobject *obj = Space_obj::lookup (s->pt()).obj();
     if (EXPECT_FALSE (obj->type() != Kobject::PT)) {
 //        trace (TRACE_ERROR, "%s: Bad PT CAP (%#lx)", __func__, s->pt());
@@ -804,7 +845,7 @@ void Ec::sys_pd_ctrl()
     Pd *dst = static_cast<Pd *>(cap_pd.obj());
 
     if (!src->quota.transfer_to(dst->quota, r->tra())) {
-        trace (TRACE_ERROR, "%s: PD %p has insufficient kernel memory quota", __func__, src);
+        trace (TRACE_ERROR, "%s: PD %s has insufficient kernel memory quota for %s", __func__, src->get_name(), dst->get_name());
         sys_finish<Sys_regs::BAD_PAR>();
     }
 

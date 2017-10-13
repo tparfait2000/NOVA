@@ -99,6 +99,12 @@ bool Ec::handle_exc_ts(Exc_regs *r) {
 }
 
 bool Ec::handle_exc_gp(Exc_regs *r) {
+    mword eip = r->REG(ip);
+    if (eip == 0x1010278) {
+        Console::print("EIP = KOUCHE instr %llx", Lapic::read_instCounter());
+        //        step_reason = NIL;
+        //        current->regs.REG(fl) &= ~Cpu::EFL_TF;
+    }
     if (r->user())
         check_memory(1252);
     if (Cpu::hazard & HZD_TR) {
@@ -108,7 +114,6 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
         return true;
     }
 
-    mword eip = r->REG(ip);
     Ec* ec = current;
     if (ec->is_temporal_exc()) {
         ec->enable_step_debug(RDTSC);
@@ -121,6 +126,15 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
 
     Console::print("eip0: %lx  rcx0: %lx  r11_0: %lx  rdi_0: %lx", regs_0.REG(ip), regs_0.REG(cx), regs_0.r11, regs_0.REG(di));
     Console::print("eip1: %lx  rcx1: %lx  r11_1: %lx  rdi_1: %lx", regs_1.REG(ip), regs_1.REG(cx), regs_1.r11, regs_1.REG(di));
+    mword *p = reinterpret_cast<mword*> (0x18028);
+    Paddr physical_addr;
+    mword attribut;
+    size_t is_mapped = current->getPd()->loc[Cpu::id].lookup(0x18028, physical_addr, attribut);
+    if (is_mapped)
+        Console::print("failed phys %lx value 18028:%lx", physical_addr, *p);
+    step_reason = NIL;
+    ec->regs.REG(fl) &= ~Cpu::EFL_TF;
+
     //    Pd::current->Space_mem::loc[Cpu::id].print_table(Pd::current->quota, USER_ADDR);
     return false;
 }
@@ -128,8 +142,8 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
 bool Ec::handle_exc_pf(Exc_regs *r) {
     mword addr = r->cr2;
 
-//    if(((addr & ~PAGE_MASK) >= 0x9800000) && ((addr & ~PAGE_MASK) <= 0x9a00000))
-//        Console::print("addr 0x9800000");
+    //    if(((addr & ~PAGE_MASK) >= 0x9800000) && ((addr & ~PAGE_MASK) <= 0x9a00000))
+    //        Console::print("addr 0x9800000");
     if ((r->err & Hpt::ERR_U) && Pd::current->Space_mem::loc[Cpu::id].is_cow_fault(Pd::current->quota, addr, r->err))
         return true;
     if (r->cs & 3)
@@ -163,7 +177,7 @@ bool Ec::handle_exc_pf(Exc_regs *r) {
         Space_obj::page_fault(addr, r->err);
         return true;
     }
-
+    Console::print("count_je %llx", count_je);
     die("#PF (kernel)", r);
 }
 
@@ -173,13 +187,17 @@ void Ec::handle_exc(Exc_regs *r) {
     if (r->vec == 0xf)
         Console::print("Vec Heater: %lx", r->vec);
     switch (r->vec) {
-        case Cpu::EXC_NMI:
-            //            if (Msr::read<uint64>(Msr::IA32_PERF_GLOBAL_STATUS) & 1ull << 32) {
-            //                check_memory(3002);
-            return;
-            //            }
-            break;
         case Cpu::EXC_DB:
+            if (get_dr6() & 0x1) { // debug register 0
+                Console::print("Debug register 0 Ec %s Pd %s eip %lx", current->get_name(), current->getPd()->get_name(), current->regs.REG(ip));
+                mword *p = reinterpret_cast<mword*> (0x18028);
+                Paddr physical_addr;
+                mword attribut;
+                size_t is_mapped = current->getPd()->loc[Cpu::id].lookup(0x18028, physical_addr, attribut);
+                if (is_mapped)
+                    Console::print("Debug breakpoint at value phys %lx 18028:%lx", physical_addr, *p);
+                return;
+            }
             if (r->user()) {
                 switch (step_reason) {
                     case MMIO:
@@ -236,6 +254,9 @@ void Ec::handle_exc(Exc_regs *r) {
                             return;
                         }
                         break;
+                    case GP:
+                        return;
+                        break;
                     default:
                         Console::print("No step Reason");
                         die("No step Reason");
@@ -244,6 +265,12 @@ void Ec::handle_exc(Exc_regs *r) {
                 Console::print("Debug in kernel Step Reason %d  nbInstr_to_execute %ld  debug_compteur %llu  end_rip %lx  end_rcx %lx", step_reason, nbInstr_to_execute, debug_compteur, end_rip, end_rcx);
                 break;
             }
+        case Cpu::EXC_NMI:
+            //            if (Msr::read<uint64>(Msr::IA32_PERF_GLOBAL_STATUS) & 1ull << 32) {
+            //                check_memory(3002);
+            return;
+            //            }
+            break;
 
         case Cpu::EXC_NM:
             if (r->user())
@@ -284,6 +311,15 @@ void Ec::handle_exc(Exc_regs *r) {
 }
 
 void Ec::check_memory(int pmi) {
+    if ((current->debug || glb_debug || current->getPd()->pd_debug) && (pmi == 3002)) {
+        Console::print("debug and pmi = 3002");
+        step_reason = GP;
+        current->regs.REG(fl) |= Cpu::EFL_TF;
+        return;
+    }
+    if ((current->debug || glb_debug || current->getPd()->pd_debug)) {
+        Console::print("EIP = check_memory 0 run %d", run_number);
+    }
     Ec *ec = current;
     Pd *pd = ec->getPd();
     if (is_idle())
@@ -294,6 +330,9 @@ void Ec::check_memory(int pmi) {
         return;
     }
 
+    if (current->debug || glb_debug || current->getPd()->pd_debug) {
+        Console::print("EIP = check_memory 2 run %d", run_number);
+    }
     //    if (!current->user_utcb) {
     //        Console::print(".....  Checking memory from %d ", pmi);
     //        //        current->ec_debug= true;
@@ -307,7 +346,7 @@ void Ec::check_memory(int pmi) {
         exc_counter2 = Ec::exc_counter;
         counter2 = Lapic::readReset_instCounter();
         if (pmi == 3002) {
-            long diff = static_cast<long>(counter1 - (counter2 - exc_counter2));
+            long diff = static_cast<long> (counter1 - (counter2 - exc_counter2));
             nbInstr_to_execute = step_nb + diff;
             if (nbInstr_to_execute > 0) {
                 //                if (step_reason != PIO)
