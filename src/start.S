@@ -85,7 +85,7 @@ __boot_gdt__:
                         mov     %eax, %edi /* backup - used by multiboot */
                         mov     $0xc0000080, %ecx
                         rdmsr
-                        or      $0x101, %eax
+                        or      $0x901, %eax
                         wrmsr
                         mov     $0x6b8, %edx
                         mov     %edi, %eax /* restore - used by multiboot */
