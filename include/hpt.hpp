@@ -55,18 +55,45 @@ class Hpt : public Pte<Hpt, mword, PTE_LEV, PTE_BPL, false>
             HPT_D   = 1UL << 6,
             HPT_S   = 1UL << 7,
             HPT_G   = 1UL << 8,
-            HPT_NX  = 0,
 
+#ifdef __x86_64__
+            HPT_NX  = 1UL << 63,
+#else
+            HPT_NX  = 0,
+#endif
+        };
+
+        enum {
             PTE_P   = HPT_P,
             PTE_S   = HPT_S,
             PTE_N   = HPT_A | HPT_U | HPT_W | HPT_P,
         };
 
-        ALWAYS_INLINE
-        inline Paddr addr() const { return static_cast<Paddr>(val) & ~PAGE_MASK; }
 
         ALWAYS_INLINE
-        static inline mword hw_attr (mword a) { return a ? a | HPT_D | HPT_A | HPT_U | HPT_P : 0; }
+        inline Paddr addr() const
+        {
+            Paddr paddr = static_cast<Paddr>(val) & ~PAGE_MASK;
+#ifdef __x86_64__
+            if (!!(paddr & HPT_NX) != !!(paddr & (HPT_NX >> 1))) {
+                if (paddr & HPT_NX)
+                    paddr = (~0UL ^ HPT_NX) & paddr;
+                else
+                    paddr = HPT_NX | paddr;
+            }
+#endif
+            return paddr;
+        }
+
+        ALWAYS_INLINE
+        static inline mword hw_attr (mword a)
+        {
+#ifdef __x86_64__
+            if (a && !(a & 0x4))
+                a |= HPT_NX;
+#endif
+            return a ? a | HPT_D | HPT_A | HPT_U | HPT_P : 0;
+        }
 
         ALWAYS_INLINE
         static inline mword current()
