@@ -226,8 +226,13 @@ void Cpu::init()
 
     setup_pcid();
 
+    mword cr4 = get_cr4();
     if (EXPECT_TRUE (feature (FEAT_SMEP)))
-        set_cr4 (get_cr4() | Cpu::CR4_SMEP);
+        cr4 |= Cpu::CR4_SMEP;
+    if (EXPECT_TRUE (feature (FEAT_SMAP)))
+        cr4 |= Cpu::CR4_SMAP;
+    if (cr4 != get_cr4())
+        set_cr4 (cr4);
 
     Vmcs::init();
     Vmcb::init();
