@@ -63,6 +63,7 @@ class Cpu
             FEAT_PCID           = 49,
             FEAT_TSC_DEADLINE   = 56,
             FEAT_SMEP           = 103,
+            FEAT_SMAP           = 116,
             FEAT_1GB_PAGES      = 154,
             FEAT_CMP_LEGACY     = 161,
             FEAT_SVM            = 162,
@@ -107,6 +108,7 @@ class Cpu
             CR4_SMXE        = 1UL << 14,        // 0x4000
             CR4_PCIDE       = 1UL << 17,        // 0x20000
             CR4_SMEP        = 1UL << 20,        // 0x100000
+            CR4_SMAP        = 1UL << 21,        // 0x200000
         };
 
         enum
