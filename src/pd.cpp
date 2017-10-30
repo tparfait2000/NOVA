@@ -300,7 +300,7 @@ void Pd::del_crd(Pd *pd, Crd del, Crd &crd, mword sub, mword hot) {
         case Crd::MEM:
             o = clamp(sb, rb, so, ro, hot);
             trace(TRACE_DEL, "DEL MEM PD:%p->%p SB:%#010lx RB:%#010lx O:%#04lx A:%#lx", pd, this, sb, rb, o, a);
-            s = chunk_delegate(pd, sb, rb, o, a, sub);
+            s = delegate<Space_mem>(pd, sb, rb, o, a, sub);
             break;
 
         case Crd::PIO:

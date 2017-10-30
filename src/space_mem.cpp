@@ -28,7 +28,7 @@
 #include "stdio.hpp"
 #include "svm.hpp"
 #include "vectors.hpp"
-
+#include "ec.hpp"
 mword Space_mem::did_c [4096 / 8 / sizeof(mword)];
 mword Space_mem::did_f = 0;
 
@@ -109,8 +109,13 @@ bool Space_mem::update (Quota_guard &quota, Mdb *mdb, mword r)
             Cpu::hazard |= HZD_OOM;
             return f;
         }
-
-        f |= hpt.update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), Hpt::hw_attr (a), r ? Hpt::TYPE_DN : Hpt::TYPE_UP, true);
+        if(ord < Hpt::bpl())
+            f |= hpt.update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), Hpt::hw_attr (a), r ? Hpt::TYPE_DN : Hpt::TYPE_UP, true);
+        else{
+            mword max_ord = ord - Hpt::bpl() + 1;
+            for(unsigned long j = 0; j < 1UL << max_ord; j++)
+                f |= hpt.update (quota, b + i * (1UL << (ord + PAGE_BITS)) + j * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), Hpt::bpl() - 1, p + i * (1UL << (ord + PAGE_BITS)) + j * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), Hpt::hw_attr (a), r ? Hpt::TYPE_DN : Hpt::TYPE_UP, true);
+        }
     }
 
     if (r || f) {
@@ -125,7 +130,13 @@ bool Space_mem::update (Quota_guard &quota, Mdb *mdb, mword r)
                     return (r || f);
                 }
 
-                loc[j].update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), Hpt::hw_attr (a), Hpt::TYPE_DF, true);
+                if(ord < Hpt::bpl())
+                    loc[j].update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), Hpt::hw_attr (a), Hpt::TYPE_DF, true);
+                else{
+                    mword max_ord = ord - Hpt::bpl() + 1;
+                    for(unsigned long j = 0; j < 1UL << max_ord; j++)
+                        loc[j].update (quota, b + i * (1UL << (ord + PAGE_BITS)) + j * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), Hpt::bpl() - 1, p + i * (1UL << (ord + PAGE_BITS)) + j * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), Hpt::hw_attr (a), Hpt::TYPE_DF, true);
+                }
             }
         }
 
