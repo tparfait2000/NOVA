@@ -115,10 +115,13 @@ void Hip::build_mbi2(Hip_mem *&mem, mword addr)
 template <typename T>
 void Hip::add_fb(Hip_mem *&mem, T const *fb)
 {
-    mem->addr = fb->addr;
-    mem->size = (static_cast<uint64>(fb->width)) << 32 | fb->height;
-    mem->type = Hip_mem::MB2_FB;
-    mem->aux = (static_cast<uint32>(fb->type)) << 8 | fb->bpp;
+    mem->addr  = fb->addr;
+    mem->size  = static_cast<uint64>(fb->width) << 40;
+    mem->size |= static_cast<uint64>(fb->height & ((1U << 24) - 1)) << 16;
+    mem->size |= (fb->type & 0xffu) << 8;
+    mem->size |= fb->bpp & 0xffu;
+    mem->aux   = fb->pitch;
+    mem->type  = Hip_mem::MB2_FB;
     mem++;
 }
 
