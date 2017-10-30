@@ -165,13 +165,12 @@ void Lapic::set_pmi(uint64 count){
     unsigned nb_inst = static_cast<unsigned>(count);
     set_lvt(LAPIC_LVT_PERFM, DLV_FIXED, VEC_LVT_PERFM);
     Msr::write(Msr::MSR_PERF_FIXED_CTR0, -nb_inst | 0xFFFF00000000);
-//    Console::print("MSR_PERF_FIXED_CTR0 %llx", Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
 }
 
 void Lapic::activate_pmi() {
     Msr::write(Msr::MSR_PERF_GLOBAL_CTRL, 0x700000003);
     Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);
-    Msr::write(Msr::IA32_PERF_GLOBAL_OVF_CTRL, 1ull << 32);
+    Msr::write(Msr::MSR_PERF_GLOBAL_OVF_CTRL, Msr::read<uint64>(Msr::MSR_PERF_GLOBAL_OVF_CTRL) | (1<<32));
     set_pmi(max_instruction);
 }
 
@@ -182,13 +181,25 @@ void Lapic::reset_counter(uint64 number){
 //    Msr::write(Msr::IA32_PERFEVTSEL0, 0x004100c5);
 }
 
-uint64 Lapic::readReset_instCounter(uint64 number) {
-    Ec::exc_counter = 0;
-    uint64 val = Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0); //no need to stop the counter because he is not supposed to count (according to config) when we are in kernl mode
-    set_pmi(max_instruction - number);
-    return val;
-}
+//uint64 Lapic::readReset_instCounter(uint64 number) {
+//    Ec::exc_counter = 0;
+//    uint64 val = Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0); //no need to stop the counter because he is not supposed to count (according to config) when we are in kernl mode
+//    set_pmi(max_instruction - number);
+//    return val;
+//}
 
 uint64 Lapic::read_instCounter() {
     return Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0); 
+}
+
+void Lapic::reset_instCounter(uint64 number) {
+    set_pmi(max_instruction - number);
+}
+
+/**
+ * cancel by writing 1 to pmc
+ */
+void Lapic::cancel_pmi(){
+    set_lvt(LAPIC_LVT_PERFM, DLV_FIXED, VEC_LVT_PERFM);
+    Msr::write(Msr::MSR_PERF_FIXED_CTR0, 0x1);
 }

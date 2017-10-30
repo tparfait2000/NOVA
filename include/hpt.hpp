@@ -40,7 +40,6 @@ public:
         asm volatile ("invlpg %0" : : "m" (*reinterpret_cast<mword *> (addr)));
     }
 
-public:
     static mword ord;
 
     enum {

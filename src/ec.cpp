@@ -41,7 +41,8 @@ mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end
 bool Ec::ec_debug = false, Ec::glb_debug = false, Ec::hardening_started = false, Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false, Ec::jump_ex = false;
 uint64 Ec::static_tour = 0, Ec::begin_time = 0, Ec::end_time = 0, Ec::exc_counter = 0, Ec::gsi_counter1 = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::lvt_counter1 = 0, Ec::msi_counter1 = 0, Ec::ipi_counter1 = 0, Ec::gsi_counter2 = 0, Ec::lvt_counter2 = 0, Ec::msi_counter2 = 0, Ec::ipi_counter2 = 0, Ec::counter1 = 0, Ec::counter2 = 0, Ec::runtime1 = 0, Ec::runtime2 = 0, Ec::total_runtime = 0, Ec::step_debug_time = 0, Ec::debug_compteur = 0, Ec::count_je = 0;
 uint8 Ec::run_number = 0, Ec::launch_state = 0, Ec::step_reason = 0;
-long Ec::step_nb = 100, Ec::nbInstr_to_execute = 0;
+uint64 Ec::step_nb = 200, Ec::nbInstr_to_execute = 0;
+int Ec::previous_pmi = 0, Ec::previous_ret = 0;
 
 Ec *Ec::current, *Ec::fpowner;
 // Constructors
@@ -302,9 +303,18 @@ void Ec::ret_user_sysexit() {
     //                Console::print("Not mapped phys %lx jump %llx", physical_addr, count_je);
     //        }
 
-    //    if(debug && strcmp(current->get_name(), "fb_drv")){
-    //        Console::print("PD: %s EC %s eip %lx ", Pd::current->get_name(), current->get_name(), current->regs.REG(cx));
-    //    }
+    if (!strcmp(current->get_name(), "fb_drv")){
+//        debug_func("Sysreting");
+        mword *v = reinterpret_cast<mword*> (0x18028);
+        Paddr physical_addr;
+        mword attribut;
+        size_t is_mapped = current->getPd()->loc[Cpu::id].lookup(0x18028, physical_addr, attribut);
+        if(is_mapped && (*v != 0x8020)){
+//            current->getPd()->loc[Cpu::id].update(current->getPd()->quota, reinterpret_cast<mword> (v), 0, physical_addr, attribut, Hpt::TYPE_UP, false);
+            current->getPd()->loc[Cpu::id].flush(reinterpret_cast<mword> (v));
+            Console::print("Rectifying in Sysret PD: %s EC %s EIP %lx phys %lx 18028:%lx", Pd::current->get_name(), current->get_name(), current->regs.REG(ip), physical_addr, *v);            
+        }
+    }
     //    if(!strcmp(current->get_name(), "fb_drv") && current->regs.REG(cx) == 0x1024852 && (current->regs.r8 == 0x8824a70 || current->regs.r8 == 0x8824a74)){
     //        mword *p = reinterpret_cast<mword*> (0x18028);
     //        Console::print("EIP = SYSRETING PD: %s EC %s step_reason %d 0x18028: %lx", Pd::current->get_name(), current->get_name(), step_reason, *p);
@@ -340,10 +350,30 @@ void Ec::ret_user_iret() {
         launch_state = Ec::IRET;
         begin_time = rdtsc();
     }
+    if (!strcmp(current->get_name(), "fb_drv")){
+//        debug_func("Ireting");
+        mword *v = reinterpret_cast<mword*> (0x18028);
+        Paddr physical_addr;
+        mword attribut;
+        size_t is_mapped = current->getPd()->loc[Cpu::id].lookup(0x18028, physical_addr, attribut);
+        if(is_mapped && (*v != 0x8020)){
+//            current->getPd()->loc[Cpu::id].update(current->getPd()->quota, reinterpret_cast<mword> (v), 0, physical_addr, attribut, Hpt::TYPE_UP, false);
+            current->getPd()->loc[Cpu::id].flush(reinterpret_cast<mword> (v));
+            Console::print("Rectifying in Iret PD: %s EC %s EIP %lx phys %lx 18028:%lx", Pd::current->get_name(), current->get_name(), current->regs.REG(ip), physical_addr, *v);            
+        }
+    }
+
+
     debug_print("Ireting");
-    //    if(debug){
+    //    if (!strcmp(current->get_name(), "fb_drv")) {
     //        mword *p = reinterpret_cast<mword*> (0x18028);
-    //        Console::print("DEBUG IRETING PD: %s EC %s EIPP %lx rdi %lx r8 %lx instr %llx 0x18028: %lx", Pd::current->get_name(), current->get_name(), current->regs.REG(ip), current->regs.REG(di), current->regs.r8, Lapic::read_instCounter(), *p);
+    //        Paddr physical_addr;
+    //        mword attribut;
+    //        size_t is_mapped = current->getPd()->loc[Cpu::id].lookup(0x18028, physical_addr, attribut);
+    //        if (is_mapped) {
+    //            Console::print("Ireting PD: %s EC %s EIP %lx phys %lx 18028:%lx", Pd::current->get_name(), current->get_name(), current->regs.REG(ip), physical_addr, *p);
+    //        } else
+    //            Console::print("Not mapped phys");
     //    }
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR LOAD_SEG RET_USER_EXC) : : "m" (current->regs) : "memory");
 
@@ -383,7 +413,7 @@ void Ec::ret_user_vmresume() {
     if (EXPECT_FALSE(get_cr2() != current->regs.cr2))
         set_cr2(current->regs.cr2);
     current->regs.disable_rdtsc<Vmcs>();
-    //    Console::print("VMRun");
+//        Console::print("VMRun");
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR)
                 "vmresume;"
                 "vmlaunch;"
@@ -814,19 +844,12 @@ void Ec::Setx86DebugReg(mword addr, int dr) {
 }
 
 void Ec::debug_func(const char* source) {
-    mword *p = reinterpret_cast<mword*> (0x18028);
-    Paddr physical_addr;
-    mword attribut;
-    size_t is_mapped = current->getPd()->loc[Cpu::id].lookup(0x18028, physical_addr, attribut);
-    if (is_mapped) {
-        mword rip;
-        if (strcmp(source, "Ireting"))
-            rip = current->regs.REG(cx);
-        else
-            rip = current->regs.REG(ip);
-        Console::print("%s PD: %s EC %s EIP %lx rdi %lx r8 %lx 18028:%lx", source, Pd::current->get_name(), current->get_name(), rip, current->regs.REG(di), current->regs.r8, *p);
-    } else
-        Console::print("Not mapped phys");
+    mword rip;
+    if (strcmp(source, "Ireting"))
+        rip = current->regs.REG(cx);
+    else
+        rip = current->regs.REG(ip);
+    Console::print("%s PD: %s EC %s EIP %lx rcx %lx counter %llx exc %lld", source, Pd::current->get_name(), current->get_name(), rip, current->regs.REG(cx), Lapic::read_instCounter(), exc_counter);
 }
 
 void Ec::debug_print(const char* source) {
@@ -834,4 +857,36 @@ void Ec::debug_print(const char* source) {
         debug_func(source);
     return;
 
+}
+
+ALWAYS_INLINE
+static inline mword read_ebp() {
+    mword ebp;
+    asm volatile("mov " EXPAND(PREG(bp)) ",%0" : "=r" (ebp));
+    return ebp;
+}
+
+/**
+ * Only valable on 32 bits
+ */
+void Ec::backtrace(int depth) {
+    mword ebp = read_ebp(), eip = 0;
+    mword* ebpp;
+    Console::print("Stack backtrace:");
+    int tour = 0;
+    while (ebp && (tour < depth)) {//if ebp is 0, we are back at the first caller
+        ebpp = reinterpret_cast<mword*> (ebp);
+        eip = *(ebpp + 1);
+        char args[60];
+        int argno = 0;
+        for (; argno < 5; argno++) {
+            Console::sprint(args, "%lx ", *(ebpp + 2 + argno));
+        }
+        
+        Console::print("ebp %lx eip %lx args %s (ebp) %lx", ebp, eip, args, *ebpp);
+        
+        ebp = *ebpp;
+        tour++;
+    }
+    return;
 }

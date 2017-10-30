@@ -350,7 +350,7 @@ void Console::sprint(char *buffer, const char *fmt, ...)
         c->vsprintf(fmt, args, reinterpret_cast<void*>(buffer));   
         va_end(args);
     }
-    buffer[count] = '\0';
+//    buffer[count] = '\0';
     count = 0;
 }
 

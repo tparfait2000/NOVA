@@ -269,7 +269,7 @@ void Pd::xlt_crd(Pd *pd, Crd xlt, Crd &crd) {
 
 bool Pd::chunk_delegate(Pd* pd, mword sb, mword rb, mword ord, mword a, mword sub) {
 //    if (ord < (sub & 2 ? 9 : 10)) {//if sub & 2 == 1: ept or npt mapping, else hpt mapping 
-    if (ord < 9) {//Seoul allocate 2M pages if ord = 9, we must construct 2M cow page before allowing this
+    if (ord < Hpt::bpl()) {//Seoul allocate 2M pages if ord = Hpt::bpl(), we must construct 2M cow page before allowing this
         bool s = delegate<Space_mem>(pd, sb, rb, ord, a, sub, "MEM");
         //        Console::print("s in chunk %d", s);
         return s;
@@ -278,7 +278,6 @@ bool Pd::chunk_delegate(Pd* pd, mword sb, mword rb, mword ord, mword a, mword su
         uint32 trans = 1U << ord;
         bool chunk1 = chunk_delegate(pd, sb, rb, ord, a, sub);
         bool chunk2 = chunk_delegate(pd, sb + trans, rb + trans, ord, a, sub);
-        //        Console::print("chunk1 %d chunk1 %d", chunk1, chunk2);
         /*TODO
          * We must later handle when some succeed and other fail */
         return ( chunk1 || chunk2); // because delegate return 0 if ok

@@ -240,10 +240,10 @@ public:
     static unsigned affich_num, affich_mod;
     static mword prev_rip, last_rip, last_rcx, end_rip, end_rcx;
     static uint64 begin_time, end_time, runtime1, runtime2, total_runtime, step_debug_time, static_tour, counter1, counter2, exc_counter, exc_counter1, exc_counter2, gsi_counter1, lvt_counter1, msi_counter1, ipi_counter1,
-            gsi_counter2, lvt_counter2, msi_counter2, ipi_counter2, debug_compteur, count_je;
+            gsi_counter2, lvt_counter2, msi_counter2, ipi_counter2, debug_compteur, step_nb, nbInstr_to_execute, count_je;
     static uint8 run_number, launch_state, step_reason;
     static bool ec_debug, glb_debug, hardening_started, in_rep_instruction, not_nul_cowlist, jump_ex;
-    static long step_nb, nbInstr_to_execute;
+    static int previous_pmi, previous_ret;
     
     Ec(Pd *, void (*)(), unsigned, char* const nm = const_cast<char* const> ("Unknown"));
     Ec(Pd *, mword, Pd *, void (*)(), unsigned, unsigned, mword, mword, Pt *, char* const nm = const_cast<char* const> ("Unknown"));
@@ -573,4 +573,5 @@ public:
     static void debug_func(const char*);
     static void debug_print(const char*);
     static void debug_call(mword);
+    static void backtrace(int depth = 2);
 };
