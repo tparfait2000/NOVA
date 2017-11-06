@@ -71,14 +71,35 @@ void Lapic::init(bool invariant_tsc)
         uint64 ratio = 0;
 
         /* read out tsc freq if supported */
-        if (invariant_tsc && Cpu::vendor == Cpu::Vendor::INTEL && Cpu::family >= 6) {
-            ratio = static_cast<unsigned>(Msr::read<uint64>(Msr::MSR_PLATFORM_INFO) >> 8) & 0xff;
-            if (Cpu::model >= 0x3a) { /* Nehalem and later */
+        if (Cpu::vendor == Cpu::Vendor::INTEL && Cpu::family == 6) {
+            if (Cpu::model == 0x2a || Cpu::model == 0x2d || /* Sandy Bridge */
+                Cpu::model >= 0x3a) { /* Ivy Bridge and later */
+                ratio = static_cast<unsigned>(Msr::read<uint64>(Msr::MSR_PLATFORM_INFO) >> 8) & 0xff;
                 freq_tsc = static_cast<unsigned>(ratio * 100000);
                 freq_bus = dl ? 0 : 100000;
-            } else {
+            }
+            if (Cpu::model == 0x1a || Cpu::model == 0x1e || Cpu::model == 0x1f || Cpu::model == 0x2e || /* Nehalem */
+                Cpu::model == 0x25 || Cpu::model == 0x2c || Cpu::model == 0x2f) { /* Xeon Westmere */
+                ratio = static_cast<unsigned>(Msr::read<uint64>(Msr::MSR_PLATFORM_INFO) >> 8) & 0xff;
                 freq_tsc = static_cast<unsigned>(ratio * 133330);
                 freq_bus = dl ? 0 : 133330;
+            }
+            if (Cpu::model == 0x17 || Cpu::model == 0xf) { /* Core 2 */
+                freq_bus = Msr::read<uint64>(Msr::MSR_FSB_FREQ) & 0x7;
+                switch (freq_bus) {
+                    case 0b101: freq_bus = 100000; break;
+                    case 0b001: freq_bus = 133330; break;
+                    case 0b011: freq_bus = 166670; break;
+                    case 0b010: freq_bus = 200000; break;
+                    case 0b000: freq_bus = 266670; break;
+                    case 0b100: freq_bus = 333330; break;
+                    case 0b110: freq_bus = 400000; break;
+                    default:    freq_bus = 0;      break;
+                }
+
+                ratio = (Msr::read<uint64>(Msr::IA32_PLATFORM_ID) >> 8) & 0x1f;
+
+                freq_tsc  = static_cast<unsigned>(freq_bus * ratio);
             }
         }
 
