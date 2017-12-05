@@ -65,9 +65,11 @@ Dmar::Dmar (Paddr p) : List<Dmar> (list), reg_base ((hwdev_addr -= PAGE_SIZE) | 
     }
 }
 
-void Dmar::assign (unsigned long rid, Pd *p)
+void Dmar::assign (uint16 rid, Pd *p)
 {
     mword lev = bit_scan_reverse (read<mword>(REG_CAP) >> 8 & 0x1f);
+
+    Lock_guard <Spinlock> guard (lock);
 
     Dmar_ctx *r = ctx + (rid >> 8);
     if (!r->present())
@@ -80,6 +82,33 @@ void Dmar::assign (unsigned long rid, Pd *p)
     flush_ctx();
 
     c->set (lev | p->did << 8, p->dpt.root (p->quota, lev + 1) | 1);
+
+    p->assign_rid(rid);
+}
+
+void Dmar::release (uint16 rid, Pd *p)
+{
+    for (Dmar *dmar = list; dmar; dmar = dmar->next) {
+
+        Lock_guard <Spinlock> guard (dmar->lock);
+
+        Dmar_ctx *r = ctx + (rid >> 8);
+        if (!r->present())
+            continue;
+
+        Dmar_ctx *c = static_cast<Dmar_ctx *>(Buddy::phys_to_ptr (r->addr())) + (rid & 0xff);
+        if (!c->present())
+            continue;
+
+        mword lev = bit_scan_reverse (dmar->read<mword>(REG_CAP) >> 8 & 0x1f);
+
+        if (!c->match(lev | p->did << 8, p->dpt.root (p->quota, lev + 1) | 1))
+            continue;
+
+        c->set (0, 0);
+        dmar->flush_ctx();
+
+    }
 }
 
 void Dmar::fault_handler()

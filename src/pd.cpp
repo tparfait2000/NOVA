@@ -390,6 +390,34 @@ void Pd::xfer_items (Pd *src, Crd xlt, Crd del, Xfer *s, Xfer *d, unsigned long 
     }
 }
 
+void Pd::assign_rid(uint16 const r)
+{
+    unsigned free = sizeof(rids) / sizeof(rids[0]);
+
+    Lock_guard <Spinlock> guard (Kobject::lock);
+
+    /* check whether this pd is believed to be already assigned */
+    for (unsigned i = 0; i < sizeof(rids) / sizeof(rids[0]); i++) {
+        if (!(rids_u & (1U << i)) && i < free)
+            free = i;
+
+        if (rids_u & (1U << i) && rids[i] == r)
+            /* already assigned - avoid extra add_ref */
+            return;
+    }
+
+    /* dmar has a physical pointer into our dpt pagetable */
+    add_ref();
+
+    if (free >= sizeof(rids) / sizeof(rids[0])) {
+        trace (0, "Error: too many devices assigned - pd will not be freed");
+        return;
+    }
+
+    rids[free]  = r;
+    rids_u     |= static_cast<uint16>(1U << free);
+}
+
 Pd::~Pd()
 {
     pre_free(this);
