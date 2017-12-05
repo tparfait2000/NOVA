@@ -69,6 +69,9 @@ class Dmar_ctx
         inline void set (uint64 h, uint64 l) { hi = h; lo = l; flush (this); }
 
         ALWAYS_INLINE
+        inline bool match (uint64 h, uint64 l) { return hi == h && lo == l; }
+
+        ALWAYS_INLINE
         static inline void *operator new (size_t) { return flush (Buddy::allocator.alloc (0, Buddy::FILL_0), PAGE_SIZE); }
 };
 
@@ -93,6 +96,7 @@ class Dmar : public List<Dmar>
         uint64              ecap;
         Dmar_qi *           invq;
         unsigned            invq_idx;
+        Spinlock            lock;
 
         static Dmar_ctx *   ctx;
         static Dmar_irt *   irt;
@@ -256,7 +260,8 @@ class Dmar : public List<Dmar>
         ALWAYS_INLINE
         static bool ire() { return gcmd & GCMD_IRE; }
 
-        void assign (unsigned long, Pd *);
+        void assign (uint16, Pd *);
+        static void release (uint16, Pd *);
 
         REGPARM (1)
         static void vector (unsigned) asm ("msi_vector");
