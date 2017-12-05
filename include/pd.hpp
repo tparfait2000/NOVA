@@ -21,6 +21,7 @@
 #pragma once
 
 #include "crd.hpp"
+#include "dmar.hpp"
 #include "space_mem.hpp"
 #include "space_obj.hpp"
 #include "space_pio.hpp"
@@ -48,6 +49,29 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
 
             crd = Crd(Crd::OBJ);
             pd->revoke<Space_obj>(crd.base(), crd.order(), crd.attr(), true, false);
+
+            for (unsigned i = 0; i < sizeof(rids)/sizeof(rids[0]); i++) {
+                bool free_up = false;
+                uint16 rid   = 0;
+
+                {
+                    /* avoid cross taking of spinlock in dmar and here */
+                    Lock_guard <Spinlock> guard (pd->Kobject::lock);
+
+                    if (pd->rids_u & (1U << i)) {
+                        free_up = true;
+                        rid     = pd->rids[i];
+
+                        pd->rids_u ^= static_cast<uint16>(1U << i);
+
+                        /* this is called by Rcu::call or ~Pd - no result evaluation */
+                        pd->del_rcu();
+                    }
+                }
+
+                if (free_up)
+                    Dmar::release(rid, pd);
+            }
         }
 
         static void free (Rcu_elem * a) {
@@ -58,6 +82,11 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
                 delete pd;
             }
         }
+
+        uint16 rids[7];
+        uint16 rids_u  { 0 };
+
+        static_assert (sizeof(rids_u) * 8 >= sizeof(rids) / sizeof(rids[0]), "rids_u too small");
 
     public:
         static Pd *current CPULOCAL_HOT;
@@ -126,6 +155,8 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
         void xlt_crd (Pd *, Crd, Crd &);
         void del_crd (Pd *, Crd, Crd &, mword = 0, mword = 0);
         void rev_crd (Crd, bool, bool, bool);
+
+        void assign_rid(uint16 r);
 
         ALWAYS_INLINE
         static inline void *operator new (size_t) { return cache.alloc(); }
