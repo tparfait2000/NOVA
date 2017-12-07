@@ -98,6 +98,12 @@ class Dmar : public List<Dmar>
         unsigned            invq_idx;
         Spinlock            lock;
 
+        struct {
+            uint16          rid;
+            uint8           count;
+            uint8           changed;
+        } fault_info[4];
+
         static Dmar_ctx *   ctx;
         static Dmar_irt *   irt;
         static uint32       gcmd;
