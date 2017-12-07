@@ -63,6 +63,9 @@ Dmar::Dmar (Paddr p) : List<Dmar> (list), reg_base ((hwdev_addr -= PAGE_SIZE) | 
         command (GCMD_QIE);
         gcmd |= GCMD_QIE;
     }
+
+    for (unsigned i = 0; i < sizeof(fault_info) / sizeof(fault_info[0]); i++)
+        fault_info[i].count = fault_info[i].changed = 0;
 }
 
 void Dmar::assign (uint16 rid, Pd *p)
@@ -84,6 +87,11 @@ void Dmar::assign (uint16 rid, Pd *p)
     c->set (lev | p->did << 8, p->dpt.root (lev + 1) | 1);
 
     p->assign_rid(rid);
+
+    if (p != &Pd::kern && read<uint32>(REG_FECTL) & (1UL << 31)) {
+        trace(TRACE_IOMMU, "DMAR:%p - re-enabling fault reporting", this);
+        write<uint32>(REG_FECTL, 0);
+    }
 }
 
 void Dmar::release (uint16 rid, Pd *p)
@@ -107,28 +115,83 @@ void Dmar::release (uint16 rid, Pd *p)
 
         c->set (0, 0);
         dmar->flush_ctx();
-
     }
 }
 
 void Dmar::fault_handler()
 {
+    unsigned const max = sizeof(fault_info) / sizeof(fault_info[0]);
+    unsigned fault_counter = 0;
+    bool disabled = false;
+
     for (uint32 fsts; fsts = read<uint32>(REG_FSTS), fsts & 0xff;) {
 
         if (fsts & 0x2) {
             uint64 hi, lo;
-            for (unsigned frr = fsts >> 8 & 0xff; read (frr, hi, lo), hi & 1ull << 63; frr = (frr + 1) % nfr())
-                trace (TRACE_IOMMU, "DMAR:%p FRR:%u FR:%#x BDF:%x:%x:%x FI:%#010llx",
+            for (unsigned frr = fsts >> 8 & 0xff; read (frr, hi, lo), hi & 1ull << 63; frr = (frr + 1) % nfr()) {
+
+                if (disabled)
+                    continue;
+
+                trace (TRACE_IOMMU, "DMAR:%p FRR:%u FR:%#x BDF:%x:%x:%x FI:%#010llx (%u)",
                        this,
                        frr,
                        static_cast<uint32>(hi >> 32) & 0xff,
                        static_cast<uint32>(hi >> 8) & 0xff,
                        static_cast<uint32>(hi >> 3) & 0x1f,
                        static_cast<uint32>(hi) & 0x7,
-                       lo);
+                       lo, fault_counter++);
+
+                uint16 const rid = hi & 0xffff;
+
+                unsigned free = max;
+                unsigned i = 0;
+
+                for (; i < max; i++) {
+                    if (free >= max && !fault_info[i].count)
+                        free = i;
+
+                    if (fault_info[i].count && fault_info[i].rid == rid) {
+                        fault_info[i].count ++;
+                        fault_info[i].changed = 1;
+                        break;
+                    }
+                }
+
+                if (i >= max && free < max) {
+                    i = free;
+                    fault_info[i].count = 1;
+                    fault_info[i].changed = 1;
+                    fault_info[i].rid = rid;
+                }
+
+                /* heuristics are bad ... */
+                if (i >= max || fault_info[i].count > 8) {
+                   trace(TRACE_IOMMU, "DMAR:%p - disabling fault reporting", this);
+                   write<uint32>(REG_FECTL, 1UL << 31);
+
+                   disabled = true;
+                }
+            }
         }
 
         write<uint32>(REG_FSTS, 0x7d);
+
+        if (!fault_counter)
+            fault_counter ++;
+    }
+
+    if (!fault_counter)
+        return;
+
+    for (unsigned i = 0; i < max; i++) {
+        if (disabled)
+           fault_info[i].changed = 0;
+
+        if (fault_info[i].changed)
+           fault_info[i].changed = 0;
+        else
+           fault_info[i].count = 0;
     }
 }
 
