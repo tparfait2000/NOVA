@@ -107,7 +107,7 @@ bool Ec::handle_exc_ts (Exc_regs *r)
     return true;
 }
 
-bool Ec::handle_exc_gp (Exc_regs *)
+bool Ec::handle_exc_gp (Exc_regs *r)
 {
     if (Cpu::hazard & HZD_TR) {
         Cpu::hazard &= ~HZD_TR;
@@ -116,6 +116,10 @@ bool Ec::handle_exc_gp (Exc_regs *)
         return true;
     }
 
+    if (fixup (r->REG(ip))) {
+            r->REG(ax) = r->cr2;
+            return true;
+    }
     return false;
 }
 

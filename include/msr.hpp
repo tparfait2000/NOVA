@@ -109,6 +109,17 @@ class Msr
             return static_cast<T>(static_cast<uint64>(h) << 32 | l);
         }
 
+        /* try to rdmsr */
+        ALWAYS_INLINE
+        static inline mword peek(Register msr)				
+        {
+            mword ret;
+            asm volatile("1: rdmsr ; or $-1, %0; 2:"
+                         ".section .fixup,\"a\"; .align 8;" EXPAND (WORD) " 1b,2b; .previous"
+                         : "=a" (ret) : "c" (msr));
+            return ret;
+        }
+
         template <typename T>
         ALWAYS_INLINE
         static inline void write (Register msr, T val)
