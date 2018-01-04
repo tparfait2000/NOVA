@@ -44,7 +44,8 @@ class Hip_mem
             MB_MODULE   = -2u,
             ACPI_RSDT   = -3u,
             ACPI_XSDT   = -4u,
-            MB2_FB      = -5u
+            MB2_FB      = -5u,
+            HYP_LOG     = -6u
         };
 
         uint64  addr;
