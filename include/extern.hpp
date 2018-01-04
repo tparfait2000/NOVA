@@ -27,6 +27,7 @@ extern char GIT_VER;
 extern char PAGE_0;
 extern char PAGE_1;
 extern char PAGE_H;
+extern mword PAGE_L;
 
 extern char FRAME_0;
 extern char FRAME_1;

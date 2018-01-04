@@ -46,6 +46,7 @@ class Cmdline
         static bool nopcid;
         static bool novga;
         static bool novpid;
+        static bool logmem;
 
         INIT
         static void init (char const *);

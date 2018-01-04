@@ -148,6 +148,15 @@ void Hip::add_mem (Hip_mem *&mem, T const *map)
     mem->size = map->len;
     mem->type = map->type;
     mem->aux  = 0;
+
+    if (Cmdline::logmem && !PAGE_L &&
+        mem->size >= 2 * PAGE_SIZE &&
+        mem->addr + mem->size < ~0U)
+    {
+        PAGE_L     = static_cast<mword>(((mem->addr + mem->size) & ~(0xFFFUL)) - PAGE_SIZE);
+        mem->size -= ((mem->addr + mem->size) & (0xFFFUL)) + PAGE_SIZE;
+    }
+
     mem++;
 }
 
@@ -186,6 +195,14 @@ void Hip::add_check()
         mem->addr = Acpi::p_xsdt();
         mem->size = 0;
         mem->type = Hip_mem::ACPI_XSDT;
+        mem++;
+    }
+
+    if (PAGE_L) {
+        mem->addr = PAGE_L;
+        mem->size = PAGE_SIZE;
+        mem->type = Hip_mem::HYP_LOG;
+        mem->aux  = 0;
         mem++;
     }
 
