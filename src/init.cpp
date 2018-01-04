@@ -20,6 +20,7 @@
 
 #include "acpi.hpp"
 #include "compiler.hpp"
+#include "console_mem.hpp"
 #include "console_serial.hpp"
 #include "console_vga.hpp"
 #include "gsi.hpp"
@@ -72,6 +73,7 @@ void init (mword magic, mword mbi)
     Gsi::setup();
     Acpi::setup();
 
+    Console_mem::con.setup();
     Console_vga::con.setup();
 
     Keyb::init();

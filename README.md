@@ -92,6 +92,7 @@ They must be separated by spaces.
 - *keyb*	- Enables the microhypervisor to drive the keyboard.
 - *serial*	- Enables the microhypervisor to drive the serial console.
 - *spinner*	- Enables event spinners.
+- *logmem*	- Enables the microhypervisor to export kernel messages.
 - *vtlb*	- Forces use of vTLB instead of nested paging (EPT/NPT).
 - *nopcid*	- Disables TLB tags for address spaces.
 - *novga*  	- Disables VGA console.

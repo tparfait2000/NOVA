@@ -40,7 +40,9 @@
 #endif
 
 #define HV_GLOBAL_CPUS  (CPU_LOCAL - 0x1000000)
-#define HV_GLOBAL_FBUF  (CPU_LOCAL - PAGE_SIZE * 1)
+#define HV_GLOBAL_LBUF  (CPU_LOCAL - PAGE_SIZE * 1)
+#define HV_GLOBAL_FBUF  (CPU_LOCAL - PAGE_SIZE * 2)
+/* (CPU_LOCAL - PAGE_SIZE * 3) used by ioapic/dmar/pci !!! hwdev_addr (hwdev_addr = HV_GLOBAL_FBUF) - PAGE_SIZE !!! */
 
 #define CPU_LOCAL_STCK  (SPC_LOCAL - PAGE_SIZE * 6)
 #define CPU_LOCAL_APIC  (SPC_LOCAL - PAGE_SIZE * 4)
