@@ -40,7 +40,7 @@ class Console_serial : public Console
 
         static unsigned const freq = 115200;
 
-        unsigned base;
+        unsigned base { 0 };
 
         ALWAYS_INLINE
         inline unsigned in (Register r) { return Io::in<uint8>(base + r); }

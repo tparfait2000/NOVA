@@ -27,7 +27,7 @@ class Quota
     friend class Buddy;
 
     private:
-        Spinlock lock;
+        Spinlock lock { };
 
         mword used;
         mword over;

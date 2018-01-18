@@ -42,13 +42,13 @@ class Buddy
                 };
         };
 
-        Spinlock        lock;
-        signed long     max_idx;
-        signed long     min_idx;
-        mword           base;
-        mword           order;
-        Block *         index;
-        Block *         head;
+        Spinlock        lock    { };
+        signed long     max_idx { 0 };
+        signed long     min_idx { 0 };
+        mword           base    { 0 };
+        mword           order   { 0 };
+        Block *         index   { nullptr };
+        Block *         head    { nullptr };
 
         ALWAYS_INLINE
         inline signed long block_to_index (Block *b)

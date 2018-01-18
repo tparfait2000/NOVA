@@ -36,9 +36,9 @@ class Rcu_elem
 class Rcu_list
 {
     public:
-        Rcu_elem *  head;
-        Rcu_elem ** tail;
-        mword       count;
+        Rcu_elem *  head { nullptr };
+        Rcu_elem ** tail { nullptr };
+        mword       count { 0 };
 
         ALWAYS_INLINE
         explicit Rcu_list() { clear(); }

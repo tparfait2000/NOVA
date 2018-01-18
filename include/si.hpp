@@ -31,6 +31,9 @@ class Si
         Si *        prev;
         Si *        next;
 
+        Si(const Si&);
+        Si &operator = (Si const &);
+
     public:
         mword const value;
 
