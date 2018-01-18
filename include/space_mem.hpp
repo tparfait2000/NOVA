@@ -34,14 +34,15 @@ class Space_mem : public Space
 {
     public:
         Hpt loc[NUM_CPU];
-        Hpt hpt;
-        Dpt dpt;
+        Hpt hpt { };
+        Dpt dpt { };
         union {
             Ept ept;
             Hpt npt;
         };
 
-        mword did;
+        enum { NO_PCID = 2 };
+        mword did { NO_PCID };
 
         Cpuset cpus;
         Cpuset htlb;
@@ -51,7 +52,6 @@ class Space_mem : public Space
         static mword did_f;
 
         enum { LAST_PCID = sizeof(Space_mem::did_c) / sizeof(Space_mem::did_c [0]) - 1 };
-        enum { NO_PCID = 2 };
 
         ALWAYS_INLINE
         static inline void boot_init()
@@ -86,8 +86,6 @@ class Space_mem : public Space
 
                 return;
             }
-
-            did = NO_PCID;
         }
 
         ALWAYS_INLINE

@@ -46,16 +46,18 @@ class Utcb_segment
 class Utcb_head
 {
     protected:
-        mword items;
+        mword items {0};
 
     public:
-        Crd     xlt, del;
-        mword   tls;
+        Crd     xlt {}, del {};
+        mword   tls {0};
 };
 
 class Utcb_data
 {
     protected:
+        union {
+            struct {
                 mword           mtd, inst_len, rip, rflags;
                 uint32          intr_state, actv_state;
                 union {
@@ -86,6 +88,10 @@ class Utcb_data
                 mword           dr7, sysenter_cs, sysenter_rsp, sysenter_rip;
                 Utcb_segment    es, cs, ss, ds, fs, gs, ld, tr, gd, id;
                 uint64          tsc_val, tsc_off;
+            };
+
+            mword mr[(PAGE_SIZE - sizeof (Utcb_head)) / sizeof(mword)];
+        };
 };
 
 class Utcb : public Utcb_head, private Utcb_data
@@ -114,7 +120,7 @@ class Utcb : public Utcb_head, private Utcb_data
 
             dst->items = items;
             for (mword i = 0; i < n; i++)
-                reinterpret_cast<mword *>(&dst->mtd)[i] = reinterpret_cast<mword *>(&mtd)[i];
+                dst->mr[i] = mr[i];
         }
 
         ALWAYS_INLINE
@@ -126,3 +132,5 @@ class Utcb : public Utcb_head, private Utcb_data
         ALWAYS_INLINE
         static inline void destroy(Utcb *obj, Quota &quota) { obj->~Utcb(); Buddy::allocator.free (reinterpret_cast<mword>(obj), quota); }
 };
+
+static_assert (sizeof(Utcb) == 4096, "Unsupported size of Utcb");

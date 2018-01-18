@@ -31,7 +31,7 @@ class Kobject : public Mdb
         static void free (Rcu_elem *) {}
 
     protected:
-        Spinlock lock;
+        Spinlock lock { };
 
         enum Type
         {

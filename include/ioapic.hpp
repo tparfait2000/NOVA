@@ -31,7 +31,7 @@ class Ioapic : public List<Ioapic>
         unsigned const      gsi_base;
         unsigned const      id;
         uint16              rid;
-        Spinlock            lock;
+        Spinlock            lock { };
 
         static Ioapic *     list;
         static Slab_cache   cache;

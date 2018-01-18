@@ -74,6 +74,9 @@ class Refptr
     private:
         T * const ptr;
 
+        Refptr<T>(const Refptr<T>&);
+        Refptr<T> &operator = (Refptr<T> const &);
+
     public:
         operator T*() const     { return ptr; }
         T * operator->() const  { return ptr; }

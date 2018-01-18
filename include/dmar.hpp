@@ -92,11 +92,11 @@ class Dmar : public List<Dmar>
 {
     private:
         mword const         reg_base;
-        uint64              cap;
-        uint64              ecap;
+        uint64              cap { 0 };
+        uint64              ecap { 0 };
         Dmar_qi *           invq;
         unsigned            invq_idx;
-        Spinlock            lock;
+        Spinlock            lock { };
 
         struct {
             uint16          rid;

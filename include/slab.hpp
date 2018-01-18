@@ -28,7 +28,7 @@ class Slab;
 class Slab_cache
 {
     private:
-        Spinlock    lock;
+        Spinlock    lock { };
         Slab *      curr;
         Slab *      head;
 

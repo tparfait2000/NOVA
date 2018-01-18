@@ -28,6 +28,9 @@ class Timeout
 
         virtual void trigger() = 0;
 
+        Timeout(const Timeout&);
+        Timeout &operator = (Timeout const &);
+
     public:
         static Timeout *list CPULOCAL;
 
