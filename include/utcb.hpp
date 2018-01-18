@@ -46,11 +46,11 @@ class Utcb_segment
 class Utcb_head
 {
     protected:
-        mword items;
+        mword items {0};
 
     public:
-        Crd     xlt, del;
-        mword   tls;
+        Crd     xlt {}, del {};
+        mword   tls {0};
 };
 
 class Utcb_data
@@ -137,3 +137,5 @@ class Utcb : public Utcb_head, private Utcb_data
         ALWAYS_INLINE
         static inline void destroy(Utcb *obj, Quota &quota) { obj->~Utcb(); Buddy::allocator.free (reinterpret_cast<mword>(obj), quota); }
 };
+
+static_assert (sizeof(Utcb) == 4096, "Unsupported size of Utcb");

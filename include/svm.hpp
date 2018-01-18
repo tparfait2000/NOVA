@@ -54,6 +54,9 @@ class Vmcb
             };
         };
 
+union {
+    char pad2[PAGE_SIZE - 1024];
+    struct {
         Utcb_segment        es, cs, ss, ds, fs, gs, gdtr, ldtr, idtr, tr;
         char                reserved3[48];
         uint64              efer;
@@ -66,6 +69,8 @@ class Vmcb
         uint64              sysenter_cs, sysenter_esp, sysenter_eip, cr2, nrip;
         char                reserved7[24];
         uint64              g_pat;
+     };
+};
 
         static Paddr        root        CPULOCAL;
         static unsigned     asid_ctr    CPULOCAL;

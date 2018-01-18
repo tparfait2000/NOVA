@@ -36,7 +36,7 @@ class Mdb : public Avl, public Rcu_elem
         bool alive() const { return prev->next == this && next->prev == this; }
 
     public:
-        Spinlock        node_lock;
+        Spinlock        node_lock { };
         uint16    const dpth;
         Mdb *           prev;
         Mdb *           next;

@@ -27,7 +27,7 @@ class Vmcs
 {
     public:
         uint32  rev;
-        uint32  abort;
+        uint32  abort { 0 };
 
         static Vmcs *current CPULOCAL_HOT;
 

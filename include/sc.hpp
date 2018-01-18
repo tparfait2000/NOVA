@@ -35,20 +35,20 @@ class Sc : public Kobject, public Refcount
         unsigned const cpu;
         unsigned const prio;
         uint64 const budget;
-        uint64 time;
+        uint64 time { 0 };
 
         static unsigned const priorities = 128;
 
     private:
         uint64 left;
-        Sc *prev, *next;
-        uint64 tsc;
+        Sc *prev { nullptr }, *next { nullptr };
+        uint64 tsc { 0 };
 
         static Slab_cache cache;
 
         static struct Rq {
-            Spinlock    lock;
-            Sc *        queue;
+            Spinlock    lock { };
+            Sc *        queue { nullptr };
         } rq CPULOCAL;
 
         static Sc *list[priorities] CPULOCAL;
@@ -80,6 +80,9 @@ class Sc : public Kobject, public Refcount
 
             delete s;
         }
+
+        Sc(const Sc&);
+        Sc &operator = (Sc const &);
 
     public:
         static Sc *     current     CPULOCAL_HOT;

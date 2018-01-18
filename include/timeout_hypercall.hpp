@@ -28,6 +28,9 @@ class Timeout_hypercall : public Timeout
         Ec * const ec;
         Sm *       sm { nullptr };
 
+        Timeout_hypercall(const Timeout_hypercall&);
+        Timeout_hypercall &operator = (Timeout_hypercall const &);
+
         void trigger();
 
     public:

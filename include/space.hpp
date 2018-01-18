@@ -27,7 +27,7 @@
 class Space
 {
     private:
-        Spinlock    lock;
+        Spinlock    lock { };
         Avl *       tree;
 
     public:

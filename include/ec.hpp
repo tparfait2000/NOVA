@@ -46,9 +46,9 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
     private:
         void        (*cont)() ALIGNED (16);
-        Cpu_regs    regs;
-        Ec *        rcap;
-        Utcb *      utcb;
+        Cpu_regs    regs { };
+        Ec *        rcap { nullptr };
+        Utcb *      utcb { nullptr };
         Refptr<Pd>  pd;
         Ec *        partner;
         Ec *        prev;
@@ -203,6 +203,9 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         void save_fpu();
 
         void transfer_fpu (Ec *);
+
+        Ec(const Ec&);
+        Ec &operator = (Ec const &);
 
     public:
         static Ec *current CPULOCAL_HOT;

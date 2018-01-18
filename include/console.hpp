@@ -37,7 +37,7 @@ class Console
             FLAG_ZERO_PAD   = 1UL << 2,
         };
 
-        Console *next;
+        Console *next { nullptr };
 
         static Console *list;
         static Spinlock lock;
