@@ -356,45 +356,6 @@ template <> void Exc_regs::nst_ctrl<Vmcs>(bool on) {
         set_g_cr3<Vmcs> (Buddy::ptr_to_phys(vtlb));
 }
 
-template <> void Exc_regs::disable_rdtsc<Vmcb>() {
-    vmcb->intercept_cpu[0] |= (1U << 14); // RDTSC
-    vmcb->intercept_cpu[1] |= (1U << 7); // RDTSCP
-}
-
-template <> void Exc_regs::disable_rdtsc<Vmcs>() {
-    // TODO
-    mword val = Vmcs::read(Vmcs::CPU_EXEC_CTRL0);
-    val |= Vmcs::CPU_RDTSC;
-    vmx_set_cpu_ctrl0(val);
-}
-
-template <> void Exc_regs::enable_rdtsc<Vmcb>() {
-    vmcb->intercept_cpu[0] &= ~(1U << 14); // RDTSC
-    vmcb->intercept_cpu[1] &= ~(1U << 7); // RDTSCP
-}
-
-template <> void Exc_regs::enable_rdtsc<Vmcs>() {
-    // TODO
-    mword val = Vmcs::read(Vmcs::CPU_EXEC_CTRL0);
-    val &= ~Vmcs::CPU_RDTSC;
-    vmx_set_cpu_ctrl0(val);
-}
-
-template <> void Exc_regs::resolve_rdtsc<Vmcb>(uint64 t) {
-    t += vmcb->tsc_offset;
-    vmcb->rax = t;
-    REG(dx) = static_cast<mword> (t >> 32);
-    vmcb->adjust_rip(2);
-}
-
-template <> void Exc_regs::resolve_rdtsc<Vmcs>(uint64 t) {
-    //TODO
-    t += Vmcs::read(Vmcs::TSC_OFFSET);
-    REG(ax) = static_cast<mword> (t);
-    REG(dx) = static_cast<mword> (t >> 32);
-    vmcs->adjust_rip();
-}
-
 void Exc_regs::fpu_ctrl(bool on) {
     if (Hip::feature() & Hip::FEAT_VMX) {
 
@@ -540,6 +501,57 @@ template <> void Exc_regs::write_efer<Vmcs> (mword val) {
         Vmcs::write(Vmcs::ENT_CONTROLS, Vmcs::read(Vmcs::ENT_CONTROLS) | Vmcs::ENT_GUEST_64);
     else
         Vmcs::write(Vmcs::ENT_CONTROLS, Vmcs::read(Vmcs::ENT_CONTROLS) & ~Vmcs::ENT_GUEST_64);
+}
+
+
+size_t Exc_regs::guest_lookup(mword gla, mword &gpa, mword &attr){
+    if (EXPECT_FALSE (!(cr0_shadow & Cpu::CR0_PG))) {
+        gpa = gla;
+        return ~0UL;
+    }
+
+    bool pse = cr4_shadow & (Cpu::CR4_PSE | Cpu::CR4_PAE);
+    unsigned lev = 2;
+
+    for (uint32 e, *pte= reinterpret_cast<uint32 *>(cr3_shadow & ~PAGE_MASK);; pte = reinterpret_cast<uint32 *>(e & ~PAGE_MASK)) {
+
+        unsigned shift = --lev * 10 + PAGE_BITS;
+        pte += gla >> shift & ((1UL << 10) - 1);
+
+        if (User::peek (pte, e) != ~0UL) {
+            gpa = reinterpret_cast<Paddr>(pte);
+            return ~0UL;
+        }
+
+        if (EXPECT_FALSE (!(e & Vtlb::TLB_P)))
+            return 0;
+
+        attr &= e & PAGE_MASK;
+
+        if (lev && (!pse || !(e & Vtlb::TLB_S))) {
+            continue;
+        }
+
+        size_t size = 1UL << shift;
+        gpa = (e & ~PAGE_MASK) | (gla & (size - 1));
+        return size;
+    }
+}
+
+size_t Exc_regs::vtlb_lookup(mword v, uint64 &entry) {
+    unsigned lev = Vtlb::max();
+    unsigned shift;
+    Vtlb *tlb, *tlb0;
+    for (tlb = vtlb; lev; tlb = static_cast<Vtlb *> (Buddy::phys_to_ptr(tlb->get_addr()))) {
+        if (!tlb->get_val())
+            return 0;
+        shift = --lev * Vtlb::bpl() + PAGE_BITS;
+        tlb += v >> shift & ((1UL << Vtlb::bpl()) - 1);
+        tlb0 = tlb;
+        if (tlb->pub_super()) break;
+    }
+    entry = tlb0->get_val();
+    return 1UL << shift;
 }
 
 template mword Exc_regs::linear_address<Vmcb> (mword) const;

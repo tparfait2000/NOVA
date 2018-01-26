@@ -28,10 +28,11 @@
 #include "stdio.hpp"
 #include "timeout.hpp"
 #include "vectors.hpp"
+#include "vmx.hpp"
 
 unsigned    Lapic::freq_tsc;
 unsigned    Lapic::freq_bus;
-uint64 Lapic::max_instruction = 0x100000;
+uint64 Lapic::max_instruction = 0x1000000, Lapic::counter = 0;
 uint64 Lapic::max_tsc = 0; 
 
 void Lapic::init()
@@ -161,39 +162,30 @@ void Lapic::ipi_vector (unsigned vector)
     Counter::print<1,16> (++Counter::ipi[ipi], Console_vga::COLOR_LIGHT_GREEN, ipi + SPN_IPI);
 }
 
-void Lapic::set_pmi(uint64 count){
-    unsigned nb_inst = static_cast<unsigned>(count);
-    set_lvt(LAPIC_LVT_PERFM, DLV_FIXED, VEC_LVT_PERFM);
-    Msr::write(Msr::MSR_PERF_FIXED_CTR0, -nb_inst | 0xFFFF00000000);
+void Lapic::save_counter(){
+    Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa); //unless we may face a pmi in the kernel
+    counter = Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0); 
+    Msr::write(Msr::MSR_PERF_FIXED_CTR0, counter-0x44); //0x44 is the number of hypervisor's instruction for now
+    Ec::last_rip = Vmcs::read(Vmcs::GUEST_RIP);
+    Ec::last_rcx = Ec::current->get_regsRCX();
+    Ec::exc_counter++;
 }
 
 void Lapic::activate_pmi() {
     Msr::write(Msr::MSR_PERF_GLOBAL_CTRL, 0x700000003);
     Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);
-    Msr::write(Msr::MSR_PERF_GLOBAL_OVF_CTRL, Msr::read<uint64>(Msr::MSR_PERF_GLOBAL_OVF_CTRL) | (1<<32));
-    set_pmi(max_instruction);
+    Msr::write(Msr::MSR_PERF_GLOBAL_OVF_CTRL, Msr::read<uint64>(Msr::MSR_PERF_GLOBAL_OVF_CTRL) | (1UL<<32));
+    program_pmi();
 }
-
-void Lapic::reset_counter(uint64 number){
-    set_pmi(number ? number : max_instruction);    
-//    Msr::write(Msr::IA32_PERFEVTSEL0, 0x000100c5);
-////    Msr::write(Msr::IA32_PMC0, 0x0);
-//    Msr::write(Msr::IA32_PERFEVTSEL0, 0x004100c5);
-}
-
-//uint64 Lapic::readReset_instCounter(uint64 number) {
-//    Ec::exc_counter = 0;
-//    uint64 val = Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0); //no need to stop the counter because he is not supposed to count (according to config) when we are in kernl mode
-//    set_pmi(max_instruction - number);
-//    return val;
-//}
 
 uint64 Lapic::read_instCounter() {
     return Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0); 
 }
 
-void Lapic::reset_instCounter(uint64 number) {
-    set_pmi(max_instruction - number);
+void Lapic::program_pmi(int number) {
+    uint64 nb_inst = max_instruction - number;
+    set_lvt(LAPIC_LVT_PERFM, DLV_FIXED, VEC_LVT_PERFM);
+    Msr::write(Msr::MSR_PERF_FIXED_CTR0, 0x1000000000000 - nb_inst);
 }
 
 /**

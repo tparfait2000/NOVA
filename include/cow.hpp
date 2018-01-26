@@ -32,7 +32,7 @@ public:
 
     struct cow_elt {
         mword page_addr_or_gpa; // if VM, this will hold the gpa, else hold page addr
-        mword gla;
+        uint64 *vtlb_entry;
         Paddr old_phys;
         mword attr;
         struct cow_frame* new_phys[2];

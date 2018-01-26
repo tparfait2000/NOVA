@@ -34,6 +34,7 @@
 #include "si.hpp"
 
 #include "stdio.hpp"
+#include "vmx.hpp"
 
 class Utcb;
 class Sm;
@@ -47,15 +48,16 @@ private:
     void (*cont)() ALIGNED(16);
     Cpu_regs regs;
     static Cpu_regs regs_0, regs_1;
-    Ec * rcap;
+    Ec * rcap; //Receiver Capability
     Utcb * utcb;
     Refptr<Pd> pd;
     Ec * partner;
     Ec * prev;
     Ec * next;
     Fpu * fpu;
-    Vmcb *vmcb_backup, *vmcb1, *vmcb2;
-    Vmcs *vmcs_backup, *vmcs1, *vmcs2;
+    static Msr_area *host_msr_area, *guest_msr_area;
+    static Virtual_apic_page *virtual_apic_page; 
+    
     char name[str_max_length];
     
     union {
@@ -237,13 +239,13 @@ public:
         GP,
     };
     
-    static unsigned affich_num, affich_mod;
-    static mword prev_rip, last_rip, last_rcx, end_rip, end_rcx;
+    static unsigned affich_num, affich_mod, step_nb;
+    static mword prev_rip, last_rip, last_rcx, last_rsp, end_rip, end_rcx, tscm1, tscm2;
     static uint64 begin_time, end_time, runtime1, runtime2, total_runtime, step_debug_time, static_tour, counter1, counter2, exc_counter, exc_counter1, exc_counter2, gsi_counter1, lvt_counter1, msi_counter1, ipi_counter1,
-            gsi_counter2, lvt_counter2, msi_counter2, ipi_counter2, debug_compteur, step_nb, nbInstr_to_execute, count_je;
-    static uint8 run_number, launch_state, step_reason;
-    static bool ec_debug, glb_debug, hardening_started, in_rep_instruction, not_nul_cowlist, jump_ex;
-    static int previous_pmi, previous_ret;
+            gsi_counter2, lvt_counter2, msi_counter2, ipi_counter2, debug_compteur, count_je, nbInstr_to_execute, tsc1, tsc2, timer_counter1, timer_counter2;
+    static uint8 run_number, launch_state, step_reason, debug_nb;
+    static bool ec_debug, glb_debug, hardening_started, in_rep_instruction, not_nul_cowlist, jump_ex, fpu_saved;
+    static int previous_pmi, previous_ret, nb_try;
     
     Ec(Pd *, void (*)(), unsigned, char* const nm = const_cast<char* const> ("Unknown"));
     Ec(Pd *, mword, Pd *, void (*)(), unsigned, unsigned, mword, mword, Pt *, char* const nm = const_cast<char* const> ("Unknown"));
@@ -501,8 +503,6 @@ public:
     REGPARM(1)
     static void check_memory(int pmi = 0) asm ("memory_checker");
     REGPARM(1)
-    static void check_memory_vmx(int pmi = 0) asm ("memory_checker_vmx");
-    REGPARM(1)
     static void saveRegs(Exc_regs *) asm ("saveRegs");
     
     bool is_temporal_exc();
@@ -513,22 +513,11 @@ public:
     void enable_step_debug(Step_reason raison = NIL, mword fault_addr = 0, Paddr fault_phys = 0, mword fault_attr = 0); 
     void disable_step_debug();
        
-    void save_state() {
-        regs_0 = regs;
-        if(fpu)
-            fpu->dwc_save();
-    }
-
-    void svm_save_state() {
-        save_state();
-        memcpy(vmcb_backup, regs.vmcb, PAGE_SIZE);
-    }
-
-    void vmx_save_state() {
-        save_state();
-        memcpy(vmcs_backup, regs.vmcs, PAGE_SIZE);
-    }
-
+    void save_state(); 
+    
+    void vmx_save_state();    
+    void vmx_restore_state();
+    
     bool two_run_ok() {
         return run_number == 2;
     }
@@ -538,7 +527,7 @@ public:
     }
 
     static bool is_idle() {
-        return (launch_state == UNLAUNCHED || launch_state == EXT_INT) && step_reason == NIL;
+        return launch_state == UNLAUNCHED && step_reason == NIL;
     }
 
     void set_env(uint64 t) {
@@ -563,6 +552,8 @@ public:
     mword get_regsRIP();
     mword get_regsRCX();
     int compare_regs(int);
+    void save_stack();
+    void save_vm_stack();
     
     static void reset_counter();
     static void check_exit();
@@ -573,5 +564,22 @@ public:
     static void debug_func(const char*);
     static void debug_print(const char*);
     static void debug_call(mword);
-    static void backtrace(int depth = 2);
+    static void backtrace(int depth = 6);
+    
+    static void enable_rdtsc();
+    static void disable_rdtsc();
+    static void enable_mtf();
+    static void disable_mtf();
+    static void enable_single_step();
+    static void emulate_rdtsc();
+    static void emulate_rdtsc2();
+    static void vmx_enable_single_step();
+    NORETURN
+    static void vmx_disable_single_step();
+    NORETURN
+    static void resolve_rdtsc();
+    NORETURN
+    static void resolve_rdtscp();
+    NORETURN
+    static void disable_single_step();
 };

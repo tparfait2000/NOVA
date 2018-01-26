@@ -125,8 +125,7 @@ public:
     }
 
     Vmcb(Quota &quota, mword, mword);
-    Vmcb* clone();
-
+    
     ALWAYS_INLINE
     inline Vmcb() {
         asm volatile ("vmsave" : : "a" (Buddy::ptr_to_phys(this)) : "memory");

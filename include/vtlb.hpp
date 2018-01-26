@@ -22,6 +22,7 @@
 
 #include "pte.hpp"
 #include "user.hpp"
+#include "cow.hpp"
 
 class Exc_regs;
 
@@ -67,13 +68,13 @@ public:
         TLB_F = 1UL << 9,
         TLB_M = 1UL << 10,
 
-        TLB_COW = 1UL << 11,
+        TLB_COW = 1UL << 63,
 
         PTE_P = TLB_P,
         PTE_S = TLB_S,
         PTE_N = TLB_A | TLB_U | TLB_W | TLB_P,
         PTE_COW = TLB_COW,
-        PTE_COW_IO = 1UL << 3,
+        PTE_COW_IO = PTE_COW >> 1,
         TLB_COW_IO = PTE_COW_IO,
         PTE_W = TLB_W,
         PTE_U = ~0ULL,
@@ -96,11 +97,13 @@ public:
     void flush(bool);
 
     static Reason miss(Exc_regs *, mword, mword &);
-    bool is_cow_fault(mword virt, mword gpa, Paddr hpa, mword err);
-    void update(mword, Paddr, mword);
-    bool is_cow_pf(uint64 &, mword);
+    bool is_cow_pf(uint64 &, mword , mword);
     static void set_cow_page_vmx(uint64, uint64 &);
-        
+    void restore_vtlb();
+    static void set_cow_fault(uint64 &, mword);
+    size_t vtlb_lookup(mword, uint64&);   
+    void update(Cow::cow_elt *);
+    
     ALWAYS_INLINE
     static inline void *operator new (size_t, Quota &quota) {
         return Buddy::allocator.alloc(0, quota, Buddy::NOFILL);

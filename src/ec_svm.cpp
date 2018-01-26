@@ -61,8 +61,6 @@ void Ec::svm_exception(mword reason) {
             mword err = static_cast<mword> (current->regs.vmcb->exitinfo1);
             mword cr2 = static_cast<mword> (current->regs.vmcb->exitinfo2);
 
-            mword phys;
-            Paddr host;
             switch (Vtlb::miss(&current->regs, cr2, err)) {
 
                 case Vtlb::GPA_HPA:
@@ -71,10 +69,6 @@ void Ec::svm_exception(mword reason) {
                     //                    if (current->debug) {
                     //                                            Console::print("GPA_HPA gla: %08lx  gpa: %08lx  host: %08lx  err: %08lx  rip: %llx", cr2, phys, host, err, current->regs.vmcb->rip);
                     //                    }
-                    if (cr2 == 0xc6400008 && phys == 0x06400008) {
-                        Console::print("Hardening begin");
-                        current->hardening_started = true;
-                    }
                     break;
 
                 case Vtlb::GLA_GPA:
@@ -234,7 +228,6 @@ void Ec::handle_svm() {
         case 0x6e: //RDTSC
             //            Console::print("RDTSC in VM");
             check_memory(pmi);
-            current->regs.resolve_rdtsc<Vmcb>(rdtsc());
             ret_user_vmrun();
 
         case 0x79: // INVLPG

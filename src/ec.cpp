@@ -37,17 +37,21 @@
 INIT_PRIORITY(PRIO_SLAB)
 Slab_cache Ec::cache(sizeof (Ec), 32);
 unsigned Ec::affich_num = 0, Ec::affich_mod = 50000, step_reason = Ec::NIL, launch_state = Ec::UNLAUNCHED;
-mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx;
+mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx, Ec::tscm1 = 0, Ec::tscm2 = 0;
 bool Ec::ec_debug = false, Ec::glb_debug = false, Ec::hardening_started = false, Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false, Ec::jump_ex = false;
-uint64 Ec::static_tour = 0, Ec::begin_time = 0, Ec::end_time = 0, Ec::exc_counter = 0, Ec::gsi_counter1 = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::lvt_counter1 = 0, Ec::msi_counter1 = 0, Ec::ipi_counter1 = 0, Ec::gsi_counter2 = 0, Ec::lvt_counter2 = 0, Ec::msi_counter2 = 0, Ec::ipi_counter2 = 0, Ec::counter1 = 0, Ec::counter2 = 0, Ec::runtime1 = 0, Ec::runtime2 = 0, Ec::total_runtime = 0, Ec::step_debug_time = 0, Ec::debug_compteur = 0, Ec::count_je = 0;
-uint8 Ec::run_number = 0, Ec::launch_state = 0, Ec::step_reason = 0;
-uint64 Ec::step_nb = 200, Ec::nbInstr_to_execute = 0;
-int Ec::previous_pmi = 0, Ec::previous_ret = 0;
+uint64 Ec::static_tour = 0, Ec::begin_time = 0, Ec::end_time = 0, Ec::exc_counter = 0, Ec::gsi_counter1 = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::lvt_counter1 = 0, Ec::msi_counter1 = 0, Ec::ipi_counter1 = 0, Ec::gsi_counter2 = 0, Ec::lvt_counter2 = 0, Ec::msi_counter2 = 0, Ec::ipi_counter2 = 0, Ec::counter1 = 0, Ec::counter2 = 0, Ec::runtime1 = 0, Ec::runtime2 = 0, Ec::total_runtime = 0, Ec::step_debug_time = 0, Ec::debug_compteur = 0, Ec::count_je = 0, Ec::nbInstr_to_execute = 0, Ec::timer_counter1 = 0, Ec::timer_counter2 = 0;
+uint8 Ec::run_number = 0, Ec::launch_state = 0, Ec::step_reason = 0, Ec::debug_nb = 0;
+unsigned Ec::step_nb = 200;
+uint64 Ec::tsc1 = 0, Ec::tsc2 = 0; 
+int Ec::previous_pmi = 0, Ec::previous_ret = 0, Ec::nb_try = 0;
 
 Ec *Ec::current, *Ec::fpowner;
 // Constructors
 
 Cpu_regs Ec::regs_0, Ec::regs_1;
+
+Msr_area *Ec::host_msr_area = new (Pd::kern.quota) Msr_area, *Ec::guest_msr_area = new (Pd::kern.quota) Msr_area;
+Virtual_apic_page *Ec::virtual_apic_page = new (Pd::kern.quota) Virtual_apic_page;
 
 Ec::Ec(Pd *own, void (*f)(), unsigned c, char* const nm) : Kobject(EC, static_cast<Space_obj *> (own)), cont(f), utcb(nullptr), pd(own), partner(nullptr), prev(nullptr), next(nullptr), fpu(nullptr), cpu(static_cast<uint16> (c)), glb(true), evt(0), timeout(this), user_utcb(0), xcpu_sm(nullptr), pt_oom(nullptr) {
     trace(TRACE_SYSCALL, "EC:%p created (PD:%p Kernel)", this, own);
@@ -136,10 +140,6 @@ Ec::Ec(Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u, 
             /* allocate and register the virtual APIC page */
             mword virtual_apic_page_phys = Buddy::ptr_to_phys(new (pd->quota) Virtual_apic_page);
             Vmcs::write(Vmcs::APIC_VIRT_ADDR, virtual_apic_page_phys);
-            vmcs_backup = regs.vmcs->clone();
-            vmcs1 = regs.vmcs->clone();
-            vmcs2 = regs.vmcs->clone();
-
             regs.vmcs->clear();
             cont = send_msg<ret_user_vmresume>;
             trace(TRACE_SYSCALL, "EC:%p created (PD:%p VMCS:%p VTLB:%p)", this, p, regs.vmcs, regs.vtlb);
@@ -149,9 +149,6 @@ Ec::Ec(Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u, 
             regs.REG(ax) = Buddy::ptr_to_phys(regs.vmcb = new (pd->quota) Vmcb(pd->quota, pd->Space_pio::walk(pd->quota), pd->npt.root(pd->quota)));
 
             regs.nst_ctrl<Vmcb>();
-            vmcb_backup = regs.vmcb->clone();
-            vmcb1 = regs.vmcb->clone();
-            vmcb2 = regs.vmcb->clone();
             cont = send_msg<ret_user_vmrun>;
             trace(TRACE_SYSCALL, "EC:%p created (PD:%p VMCB:%p VTLB:%p)", this, p, regs.vmcb, regs.vtlb);
         }
@@ -303,16 +300,16 @@ void Ec::ret_user_sysexit() {
     //                Console::print("Not mapped phys %lx jump %llx", physical_addr, count_je);
     //        }
 
-    if (!strcmp(current->get_name(), "fb_drv")){
-//        debug_func("Sysreting");
+    if (!strcmp(current->get_name(), "fb_drv")) {
+        //        debug_func("Sysreting");
         mword *v = reinterpret_cast<mword*> (0x18028);
         Paddr physical_addr;
         mword attribut;
         size_t is_mapped = current->getPd()->loc[Cpu::id].lookup(0x18028, physical_addr, attribut);
-        if(is_mapped && (*v != 0x8020)){
-//            current->getPd()->loc[Cpu::id].update(current->getPd()->quota, reinterpret_cast<mword> (v), 0, physical_addr, attribut, Hpt::TYPE_UP, false);
+        if (is_mapped && (*v != 0x8020)) {
+            //            current->getPd()->loc[Cpu::id].update(current->getPd()->quota, reinterpret_cast<mword> (v), 0, physical_addr, attribut, Hpt::TYPE_UP, false);
             current->getPd()->loc[Cpu::id].flush(reinterpret_cast<mword> (v));
-            Console::print("Rectifying in Sysret PD: %s EC %s EIP %lx phys %lx 18028:%lx", Pd::current->get_name(), current->get_name(), current->regs.REG(ip), physical_addr, *v);            
+            Console::print("Rectifying in Sysret PD: %s EC %s EIP %lx phys %lx 18028:%lx", Pd::current->get_name(), current->get_name(), current->regs.REG(ip), physical_addr, *v);
         }
     }
     //    if(!strcmp(current->get_name(), "fb_drv") && current->regs.REG(cx) == 0x1024852 && (current->regs.r8 == 0x8824a70 || current->regs.r8 == 0x8824a74)){
@@ -350,16 +347,16 @@ void Ec::ret_user_iret() {
         launch_state = Ec::IRET;
         begin_time = rdtsc();
     }
-    if (!strcmp(current->get_name(), "fb_drv")){
-//        debug_func("Ireting");
+    if (!strcmp(current->get_name(), "fb_drv")) {
+        //        debug_func("Ireting");
         mword *v = reinterpret_cast<mword*> (0x18028);
         Paddr physical_addr;
         mword attribut;
         size_t is_mapped = current->getPd()->loc[Cpu::id].lookup(0x18028, physical_addr, attribut);
-        if(is_mapped && (*v != 0x8020)){
-//            current->getPd()->loc[Cpu::id].update(current->getPd()->quota, reinterpret_cast<mword> (v), 0, physical_addr, attribut, Hpt::TYPE_UP, false);
+        if (is_mapped && (*v != 0x8020)) {
+            //            current->getPd()->loc[Cpu::id].update(current->getPd()->quota, reinterpret_cast<mword> (v), 0, physical_addr, attribut, Hpt::TYPE_UP, false);
             current->getPd()->loc[Cpu::id].flush(reinterpret_cast<mword> (v));
-            Console::print("Rectifying in Iret PD: %s EC %s EIP %lx phys %lx 18028:%lx", Pd::current->get_name(), current->get_name(), current->regs.REG(ip), physical_addr, *v);            
+            Console::print("Rectifying in Iret PD: %s EC %s EIP %lx phys %lx 18028:%lx", Pd::current->get_name(), current->get_name(), current->regs.REG(ip), physical_addr, *v);
         }
     }
 
@@ -391,6 +388,7 @@ void Ec::chk_kern_preempt() {
 }
 
 void Ec::ret_user_vmresume() {
+    //    Console::print("VMRun is_idle %d", is_idle());
     if (is_idle()) {
         mword hzd = (Cpu::hazard | current->regs.hazard()) & (HZD_RECALL | HZD_TSC | HZD_RCU | HZD_SCHED);
         if (EXPECT_FALSE(hzd))
@@ -400,6 +398,7 @@ void Ec::ret_user_vmresume() {
 
         current->vmx_save_state();
         launch_state = Ec::VMRESUME;
+        Lapic::program_pmi();
     }
 
     if (EXPECT_FALSE(Pd::current->gtlb.chk(Cpu::id))) {
@@ -412,8 +411,9 @@ void Ec::ret_user_vmresume() {
 
     if (EXPECT_FALSE(get_cr2() != current->regs.cr2))
         set_cr2(current->regs.cr2);
-    current->regs.disable_rdtsc<Vmcs>();
-//        Console::print("VMRun");
+    if (ec_debug)
+        Console::print("VMRun vRIP %lx", Vmcs::read(Vmcs::GUEST_RIP));
+    Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xb);
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR)
                 "vmresume;"
                 "vmlaunch;"
@@ -426,12 +426,12 @@ void Ec::ret_user_vmresume() {
 }
 
 void Ec::ret_user_vmrun() {
-    if (!Ec::current->hardening_started || is_idle()) {
+    if (is_idle()) {
         mword hzd = (Cpu::hazard | current->regs.hazard()) & (HZD_RECALL | HZD_TSC | HZD_RCU | HZD_SCHED);
         if (EXPECT_FALSE(hzd))
             handle_hazard(hzd, ret_user_vmrun);
 
-        current->svm_save_state();
+        //        current->svm_save_state();
         launch_state = Ec::VMRUN;
     }
     if (EXPECT_FALSE(Pd::current->gtlb.chk(Cpu::id))) {
@@ -441,11 +441,6 @@ void Ec::ret_user_vmrun() {
         else
             current->regs.vtlb->flush(true);
     }
-    current->regs.disable_rdtsc<Vmcb>();
-
-    //    if (current->debug) {
-    //        current->regs.enable_rdtsc<Vmcb>();
-    //    }
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR)
                 "clgi;"
                 "sti;"
@@ -559,6 +554,7 @@ bool Ec::fixup(mword &eip) {
 }
 
 void Ec::die(char const *reason, Exc_regs *r) {
+    backtrace();
     if (current->utcb || current->pd == &Pd::kern) {
         if (strcmp(reason, "PT not found"))
             trace(0, "Killed EC:%p SC:%p V:%#lx CS:%#lx EIP:%#lx CR2:%#lx ERR:%#lx (%s) Pd: %s Ec: %s",
@@ -605,7 +601,7 @@ bool Ec::is_temporal_exc() {
     uint16 *ptr = reinterpret_cast<uint16 *> (v);
     if (*ptr == 0x310f) {// rdtsc 0f 31
         return true;
-    } else if (*ptr == 0xf901) {// rdtsc 0F 01 F9
+    } else if (*ptr == 0xf901) {// rdtscp 0F 01 F9
         return true;
     } else
         return false;
@@ -731,18 +727,28 @@ void Ec::disable_step_debug() {
 }
 
 void Ec::restore_state() {
-    pd->restore_state();
     regs_1 = regs;
     regs = regs_0;
+    Fpu::dwc_restore();
     if (fpu)
-        fpu->dwc_restore();
+        fpu->restore_data();
+    if (utcb)
+        pd->restore_state();
+    else
+        regs.vtlb->restore_vtlb();
 }
 
 void Ec::rollback() {
     regs = regs_0;
+    Fpu::dwc_rollback();
     if (fpu)
-        fpu->dwc_rollback();
-    pd->rollback();
+        fpu->roll_back();
+    pd->rollback(!static_cast<bool>(utcb));
+    if (!utcb) {
+        regs.vmcs->clear();
+        memcpy(current->regs.vmcs, Vmcs::vmcs0, Vmcs::basic.size);
+        regs.vmcs->make_current();
+    }
 }
 
 void Ec::saveRegs(Exc_regs *r) {
@@ -755,6 +761,55 @@ void Ec::saveRegs(Exc_regs *r) {
         //        Console::print("vector: %lu  cs: %lx  rip: %lx  rcx: %lx  instr %llu", r->vec, r->cs, r->REG(ip), r->REG(cx), Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
     }
     return;
+}
+
+void Ec::save_state() {
+    regs_0 = regs;
+    Fpu::dwc_save();        
+    if (fpu)
+        fpu->save_data();
+}
+
+void Ec::vmx_save_state() {
+    save_state();
+    //    save_vm_stack();
+    mword host_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
+    Msr_area *cur_host_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(host_msr_area_phys));
+    memcpy(host_msr_area, cur_host_msr_area, PAGE_SIZE);
+
+    mword guest_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_ST_ADDR);
+    Msr_area *cur_guest_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(guest_msr_area_phys));
+    memcpy(guest_msr_area, cur_guest_msr_area, PAGE_SIZE);
+
+    mword virtual_apic_page_phys = Vmcs::read(Vmcs::APIC_VIRT_ADDR);
+    Virtual_apic_page *cur_virtual_apic_page =
+            reinterpret_cast<Virtual_apic_page*> (Buddy::phys_to_ptr(virtual_apic_page_phys));
+    memcpy(virtual_apic_page, cur_virtual_apic_page, PAGE_SIZE);
+    
+    regs.vmcs->clear();
+    memcpy(Vmcs::vmcs0, regs.vmcs, Vmcs::basic.size);
+    regs.vmcs->make_current();
+}
+
+void Ec::vmx_restore_state() {
+    restore_state();
+    
+    regs.vmcs->clear();
+    memcpy(regs.vmcs, Vmcs::vmcs0, Vmcs::basic.size);
+    regs.vmcs->make_current();
+    
+    mword host_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
+    Msr_area *cur_host_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(host_msr_area_phys));
+    memcpy(cur_host_msr_area, host_msr_area, PAGE_SIZE);
+
+    mword guest_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_ST_ADDR);
+    Msr_area *cur_guest_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(guest_msr_area_phys));
+    memcpy(cur_guest_msr_area, guest_msr_area, PAGE_SIZE);
+
+    mword virtual_apic_page_phys = Vmcs::read(Vmcs::APIC_VIRT_ADDR);
+    Virtual_apic_page *cur_virtual_apic_page =
+            reinterpret_cast<Virtual_apic_page*> (Buddy::phys_to_ptr(virtual_apic_page_phys));
+    memcpy(cur_virtual_apic_page, virtual_apic_page, PAGE_SIZE);
 }
 
 mword Ec::get_regsRIP() {
@@ -804,18 +859,20 @@ int Ec::compare_regs(int reason) {
         return 14;
     if (regs.REG(ax) != regs_1.REG(ax))
         return 15;
-    if (fpu && fpu->dwc_check())
+    if (fpu && fpu->data_check()) 
         return 16;
-    if (reason == 1258) // following checks are not valid if reason is Sysenter
+    if(Fpu::dwc_check())
+        return 17;
+    if (reason == 1258 || !utcb) // following checks are not valid if reason is Sysenter or current is vCPU
         return 0;
     if ((regs.REG(ip) != regs_1.REG(ip)))
-        return 17;
+        return 18;
     if ((regs.REG(fl) != regs_1.REG(fl)) && ((regs.REG(fl) | (1u << 16)) != regs_1.REG(fl)))
         // resume flag may be set if reason is step-mode but it is curious why this flag is set in regs_1 and not in regs.
         // the contrary would be understandable. Must be fixed later
-        return 18;
-    if (regs.REG(sp) != regs_1.REG(sp))
         return 19;
+    if (regs.REG(sp) != regs_1.REG(sp))
+        return 20;
     return 0;
 }
 
@@ -882,11 +939,72 @@ void Ec::backtrace(int depth) {
         for (; argno < 5; argno++) {
             Console::sprint(args, "%lx ", *(ebpp + 2 + argno));
         }
-        
+
         Console::print("ebp %lx eip %lx args %s (ebp) %lx", ebp, eip, args, *ebpp);
-        
+
         ebp = *ebpp;
         tour++;
     }
     return;
+}
+
+void Ec::save_stack() {
+    /**
+     * @TODO
+     * Because we know  it's about the stack, we can save time by doing this only the first time.
+     * This imply never set it Read-Only when we are writing the memory back at commitment time.
+     * What if guest_virt != guest_phys? 
+     * Include vtlb in this
+     */
+    Paddr phys;
+    mword a;
+    mword v;
+    v = regs.REG(sp) & ~PAGE_MASK;
+    if (!pd->Space_mem::loc[Cpu::id].lookup(v, phys, a)) return;
+    Cow::cow_elt *ce = nullptr;
+    if (!Cow::get_cow_list_elt(&ce)) //get new cow_elt
+        die("Cow elt exhausted");
+    if (pd->is_mapped_elsewhere(phys, ce) || Cow::subtitute(phys, ce, v)) {
+        ce->page_addr_or_gpa = v;
+        ce->attr = a;
+    } else // Cow::subtitute will fill cow's fields old_phys, new_phys and frame_index 
+        die("Cow frame exhausted");
+    pd->add_cow(ce);
+    pd->Space_mem::loc[Cpu::id].update(pd->quota, v, 0, ce->new_phys[0]->phys_addr, a | Hpt::HPT_W, Hpt::Type::TYPE_UP, false);
+    Hpt::cow_flush(v);
+}
+
+void Ec::save_vm_stack() {
+    /**
+     * @TODO
+     * Because we know  it's about the stack, we can save time by doing this only the first time.
+     * This imply never set it Read-Only when we are writing the memory back at commitment time.
+     * What if guest_virt != guest_phys? 
+     * Include vtlb in this
+     */
+    Paddr host_phys;
+    mword host_attr, guest_phys, guest_attr, guest_rsp = Vmcs::read(Vmcs::GUEST_RSP) & ~PAGE_MASK;
+    uint64 entry;
+    if (!regs.vtlb->vtlb_lookup(guest_rsp, entry)) return;
+    if (!regs.guest_lookup(guest_rsp, guest_phys, guest_attr)) {
+        Console::print("Pas normal guest_rsp %lx guest_phys %lx guest_attr %lx", guest_rsp, guest_phys, guest_attr);
+        return;
+    }
+    if (!pd->Space_mem::loc[Cpu::id].lookup(guest_phys, host_phys, host_attr)) return;
+    if (!(host_attr & Hpt::HPT_W) || !(entry & Vtlb::TLB_W)) {
+        Console::print("Pas writable");
+        return;
+    }
+    Cow::cow_elt *ce = nullptr;
+    if (!Cow::get_cow_list_elt(&ce)) //get new cow_elt
+        die("Cow elt exhausted");
+    if (pd->is_mapped_elsewhere(host_phys, ce) || Cow::subtitute(host_phys, ce, guest_phys)) {
+        ce->page_addr_or_gpa = guest_phys;
+        ce->attr = host_attr;
+        regs.vtlb->update(ce);
+    } else // Cow::subtitute will fill cow's fields old_phys, new_phys and frame_index 
+        die("Cow frame exhausted");
+    pd->add_cow(ce);
+    pd->Space_mem::loc[Cpu::id].update(pd->quota, guest_phys, 0, ce->new_phys[0]->phys_addr, host_attr | Hpt::HPT_W, Hpt::Type::TYPE_UP, false);
+    Hpt::cow_flush(guest_phys);
 }

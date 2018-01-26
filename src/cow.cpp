@@ -34,7 +34,7 @@ Cow::~Cow() {
  * @return 
  */
 bool Cow::get_cow_list_elt(uint16 & elt_index) {
-    for (uint16 i = 0; i < NB_COW_ELT; i++) {
+    for (uint32 i = 0; i < NB_COW_ELT; i++) {
         if (!cow_list[i].used) {
             elt_index = i;
             cow_list[i].used = true;
@@ -45,7 +45,7 @@ bool Cow::get_cow_list_elt(uint16 & elt_index) {
 }
 
 bool Cow::get_new_cow_frame(uint16 & frame_index) {
-    for (uint16 i = 0; i < NB_COW_FRAME; i++) {
+    for (uint32 i = 0; i < NB_COW_FRAME; i++) {
         if (!cow_frames[i].used) {
             frame_index = i;
             cow_frames[i].used = true;

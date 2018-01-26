@@ -90,6 +90,22 @@ INTRGATE                \DPL
                         LOAD_GPR
                         LOAD_FLAGS
 .endm
+   
+.macro                  SAVE_FLAGS
+#ifdef __i386__
+                        pushfl;
+#else                        
+                        pushfq;
+#endif
+.endm
+                        
+.macro                  LOAD_FLAGS
+#ifdef __i386__
+                        popfl;
+#else                        
+                        popfq;
+#endif
+.endm
         
 /*
  * Exception Entries
@@ -240,4 +256,9 @@ entry_vmx:              SAVE_GPR
                         mov     %cr2, %REG(ax)
                         mov     %REG(ax), OFS_CR2 (%REG(sp))
                         mov     $(CPU_LOCAL_STCK + PAGE_SIZE), %REG(sp)
+                        SAVE_FLAGS
+                        SAVE_GPR
+                        call save_counter
+                        LOAD_GPR
+                        LOAD_FLAGS
                         jmp     vmx_handler

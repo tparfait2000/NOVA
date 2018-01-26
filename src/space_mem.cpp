@@ -28,7 +28,7 @@
 #include "stdio.hpp"
 #include "svm.hpp"
 #include "vectors.hpp"
-#include "ec.hpp"
+
 mword Space_mem::did_c [4096 / 8 / sizeof(mword)];
 mword Space_mem::did_f = 0;
 
@@ -83,7 +83,13 @@ bool Space_mem::update (Quota_guard &quota, Mdb *mdb, mword r)
                     return false;
                 }
 
-                ept.update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), Ept::hw_attr (a, mdb->node_type), r ? Ept::TYPE_DN : Ept::TYPE_UP);
+                if(ord < Ept::bpl())
+                    ept.update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), Ept::hw_attr (a, mdb->node_type), r ? Ept::TYPE_DN : Ept::TYPE_UP);
+                else{
+                    mword max_ord = ord - Ept::bpl() + 1;
+                    for(unsigned long j = 0; j < 1UL << max_ord; j++)
+                        ept.update (quota, b + i * (1UL << (ord + PAGE_BITS)) + j * (1UL << (Ept::bpl() + PAGE_BITS - 1)), Ept::bpl() - 1, p + i * (1UL << (ord + PAGE_BITS)) + j * (1UL << (Ept::bpl() + PAGE_BITS - 1)), Ept::hw_attr (a, mdb->node_type), r ? Ept::TYPE_DN : Ept::TYPE_UP);
+                }
             }
         }
         if (r)
@@ -134,8 +140,8 @@ bool Space_mem::update (Quota_guard &quota, Mdb *mdb, mword r)
                     loc[j].update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), Hpt::hw_attr (a), Hpt::TYPE_DF, true);
                 else{
                     mword max_ord = ord - Hpt::bpl() + 1;
-                    for(unsigned long j = 0; j < 1UL << max_ord; j++)
-                        loc[j].update (quota, b + i * (1UL << (ord + PAGE_BITS)) + j * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), Hpt::bpl() - 1, p + i * (1UL << (ord + PAGE_BITS)) + j * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), Hpt::hw_attr (a), Hpt::TYPE_DF, true);
+                    for(unsigned long k = 0; k < 1UL << max_ord; k++)
+                        loc[j].update (quota, b + i * (1UL << (ord + PAGE_BITS)) + k * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), Hpt::bpl() - 1, p + i * (1UL << (ord + PAGE_BITS)) + k * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), Hpt::hw_attr (a), Hpt::TYPE_DF, true);
                 }
             }
         }

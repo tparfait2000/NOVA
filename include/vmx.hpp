@@ -30,7 +30,7 @@ class Vmcs
         uint32  abort;
 
         static Vmcs *current CPULOCAL_HOT;
-
+        static Vmcs *vmcs0;
         static unsigned vpid_ctr CPULOCAL;
 
         static union vmx_basic {
@@ -130,7 +130,10 @@ class Vmcs
             APIC_ACCS_ADDR          = 0x2014ul,
             EPTP                    = 0x201aul,
             EPTP_HI                 = 0x201bul,
-
+            
+            TSC_MUL                 = 0x2032ul,
+            TSC_MUL_HI              = 0x2033ul,
+            
             INFO_PHYS_ADDR          = 0x2400ul,
 
             // 64-Bit Guest State
@@ -283,6 +286,7 @@ class Vmcs
         enum Ctrl0
         {
             CPU_INTR_WINDOW         = 1ul << 2,
+            CPU_TSC_OFFSET          = 1ul << 3,
             CPU_HLT                 = 1ul << 7,
             CPU_INVLPG              = 1ul << 9,
             CPU_RDTSC               = 1ul << 12,
@@ -291,6 +295,7 @@ class Vmcs
             CPU_NMI_WINDOW          = 1ul << 22,
             CPU_IO                  = 1ul << 24,
             CPU_IO_BITMAP           = 1ul << 25,
+            CPU_MONITOR_TRAP_FLAG   = 1ul << 27,
             CPU_SECONDARY           = 1ul << 31,
         };
 
@@ -299,6 +304,7 @@ class Vmcs
             CPU_EPT                 = 1ul << 1,
             CPU_VPID                = 1ul << 5,
             CPU_URG                 = 1ul << 7,
+            CPU_TSC_MUL             = 1ul << 25,
         };
 
         enum Reason
@@ -395,8 +401,6 @@ class Vmcs
             assert (ret);
         }
 
-        Vmcs* clone();
-
         ALWAYS_INLINE
         inline void make_current()
         {
@@ -445,6 +449,7 @@ class Vmcs
         static bool has_vpid()      { return ctrl_cpu[1].clr & CPU_VPID; }
         static bool has_urg()       { return ctrl_cpu[1].clr & CPU_URG; }
         static bool has_vnmi()      { return ctrl_pin.clr & PIN_VIRT_NMI; }
+        static bool has_mtf()      { return ctrl_cpu[0].clr & CPU_MONITOR_TRAP_FLAG; }
 
         static void init();
 };

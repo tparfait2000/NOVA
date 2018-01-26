@@ -106,7 +106,7 @@ class Lapic
         static unsigned freq_tsc;
         static unsigned freq_bus;
         static uint64 prev_tsc;
-        static uint64 end_time, begin_time, max_instruction;
+        static uint64 end_time, begin_time, max_instruction, counter;
         
         /**
          * Formules fondamentales 
@@ -171,14 +171,13 @@ class Lapic
         REGPARM (1)
         static void ipi_vector (unsigned) asm ("ipi_vector");
         
-        static void set_pmi(uint64);
-        
+        REGPARM (0)
+        static void save_counter (void) asm ("save_counter");
+                
         static void activate_pmi();
         
-        static void reset_counter(uint64 number = 0);
-
 //        static uint64 readReset_instCounter(uint64 number = 0);
         static uint64 read_instCounter();
-        static void reset_instCounter(uint64 number = 0);
+        static void program_pmi(int number = 0);
         static void cancel_pmi();
 };

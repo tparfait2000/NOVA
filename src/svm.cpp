@@ -37,12 +37,6 @@ Vmcb::Vmcb(Quota &quota, mword bmp, mword nptp) : base_io(bmp), asid(++asid_ctr)
     base_msr = Buddy::ptr_to_phys(Buddy::allocator.alloc(1, quota, Buddy::FILL_1));
 }
 
-Vmcb* Vmcb::clone() {
-    Vmcb *vmcb = new (Pd::kern.quota) Vmcb;
-    memcpy(vmcb, this, PAGE_SIZE);
-    return vmcb;
-}
-
 void Vmcb::init() {
     if (!Cpu::feature(Cpu::FEAT_SVM)) {
         Hip::clr_feature(Hip::FEAT_SVM);

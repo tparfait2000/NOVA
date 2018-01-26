@@ -465,17 +465,25 @@ void Pd::restore_state() {
     }
 }
 
-void Pd::rollback() {
+void Pd::rollback(bool is_vm) {
     Lock_guard <Spinlock> guard(cow_lock);
     Cow::cow_elt *cow = cow_list;
     Quota q = this->quota;
-    while (cow != nullptr) {
-        Paddr old_phys = cow->old_phys;
-        mword v = cow->page_addr_or_gpa;
-        loc[Cpu::id].update(q, v, 0, old_phys, cow->attr & ~Hpt::HPT_W, Hpt::TYPE_UP, true);
-        Hpt::cow_flush(v);
-        Cow::free_cow_elt(cow);
-        cow = cow->next;
+    if(is_vm){
+        while (cow != nullptr) {
+            *(cow->vtlb_entry) = cow->old_phys|(cow->attr & ~Hpt::HPT_W);
+            Cow::free_cow_elt(cow);
+            cow = cow->next;
+        }
+    }else{
+        while (cow != nullptr) {
+            Paddr old_phys = cow->old_phys;
+            mword v = cow->page_addr_or_gpa;
+            loc[Cpu::id].update(q, v, 0, old_phys, cow->attr & ~Hpt::HPT_W, Hpt::TYPE_UP, true);
+            Hpt::cow_flush(v);
+            Cow::free_cow_elt(cow);
+            cow = cow->next;
+        }
     }
 }
 
@@ -485,15 +493,16 @@ bool Pd::compare_and_commit() {
     Quota q = this->quota;
     while (cow != nullptr) {
         //        Console::print("Compare v: %p  phys: %p  ce: %p  phys1: %p  phys2: %p", cow->page_addr_or_gpa, cow->old_phys, cow, cow->new_phys[0]->phys_addr, cow->new_phys[1]->phys_addr);
-        void *ptr1 = reinterpret_cast<void*> (Hpt::remap_cow(q, cow->new_phys[0]->phys_addr)),
-                *ptr2 = reinterpret_cast<void*> (cow->page_addr_or_gpa);
+        mword *ptr1 = reinterpret_cast<mword*> (Hpt::remap_cow(q, cow->new_phys[0]->phys_addr)),
+                *ptr2 = reinterpret_cast<mword*> (cow->page_addr_or_gpa);
         int missmatch_addr = memcmp(ptr1, ptr2, PAGE_SIZE);
         if (missmatch_addr) {
-            mword val1 = *reinterpret_cast<mword*> (ptr1);
-            mword val2 = *reinterpret_cast<mword*> (ptr2);
-            Console::print("Pd: %p  ptr1: %p  ptr2: %p  val1: %lx  val2: %lx  missmatch_addr: %p",
-                    this, ptr1, ptr2, val1, val2, ptr2 + (PAGE_SIZE / 4 - missmatch_addr - 1)*4);
-            return false;
+            mword index = PAGE_SIZE / 4 - missmatch_addr - 1;
+            mword val1 = *(ptr1 + index);
+            mword val2 = *(ptr2 + index);
+            Console::print("Pd: %p  phys1 %lx phys2 %lx ptr1: %p  ptr2: %p  val1: %lx  val2: %lx  missmatch_addr: %p",
+                    this, cow->new_phys[0]->phys_addr, cow->new_phys[1]->phys_addr, ptr1, ptr2, val1, val2, ptr2 + index);
+            return true;
         }
         Paddr old_phys = cow->old_phys;
         mword v = cow->page_addr_or_gpa;
@@ -504,7 +513,33 @@ bool Pd::compare_and_commit() {
         Cow::free_cow_elt(cow);
         cow = cow->next;
     }
-    return true;
+    return false;
+}
+
+bool Pd::vtlb_compare_and_commit(){
+    Lock_guard <Spinlock> guard(cow_lock);
+    Cow::cow_elt *cow = cow_list;
+    Quota q = this->quota;
+    while (cow != nullptr) {
+        //        Console::print("Compare v: %p  phys: %p  ce: %p  phys1: %p  phys2: %p", cow->page_addr_or_gpa, cow->old_phys, cow, cow->new_phys[0]->phys_addr, cow->new_phys[1]->phys_addr);
+        mword *ptr1 = reinterpret_cast<mword*> (Hpt::remap_cow(q, cow->new_phys[0]->phys_addr)),
+                *ptr2 = reinterpret_cast<mword*> (Hpt::remap_cow(q, cow->new_phys[1]->phys_addr, PAGE_SIZE));
+        int missmatch_addr = memcmp(ptr1, ptr2, PAGE_SIZE);
+        if (missmatch_addr) {
+            mword index = PAGE_SIZE / 4 - missmatch_addr - 1;
+            mword val1 = *(ptr1 + index);
+            mword val2 = *(ptr2 + index);
+            Console::print("Pd: %p  phys1 %lx phys2 %lx ptr1: %p  ptr2: %p  val1: %lx  val2: %lx  missmatch_addr: %p",
+                    this, cow->new_phys[0]->phys_addr, cow->new_phys[1]->phys_addr, ptr1, ptr2, val1, val2, ptr2 + index);
+            return true;
+        }
+        void *ptr = Hpt::remap_cow(q, cow->old_phys);
+        memcpy(ptr, ptr2, PAGE_SIZE);
+        *(cow->vtlb_entry) = cow->old_phys|(cow->attr & ~Hpt::HPT_W);
+        Cow::free_cow_elt(cow);
+        cow = cow->next;
+    }
+    return false;
 }
 
 Pd::~Pd() {

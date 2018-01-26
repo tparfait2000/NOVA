@@ -158,7 +158,8 @@ public:
     void add_cow(Cow::cow_elt *ce);
     Cow::cow_elt* cowlist_contains(mword, Paddr);
     bool compare_and_commit();
+    bool vtlb_compare_and_commit();
     void restore_state();
-    void rollback();
+    void rollback(bool is_vm = false);
 
 };

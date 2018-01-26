@@ -32,8 +32,8 @@ public:
         EPT_W = 1UL << 1,
         EPT_X = 1UL << 2,
         EPT_I = 1UL << 6,
-        EPT_COW = 1ULL << 60,
         EPT_S = 1UL << 7,
+        EPT_COW = 1ULL << 63,
 
         PTE_P = EPT_R | EPT_W | EPT_X,
         PTE_S = EPT_S,

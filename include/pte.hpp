@@ -146,4 +146,16 @@ public:
     static void set_cow_page(E virt, E &entry);
     
     void print_walk(Quota &quota, E, mword);
+    
+    E get_val(){
+        return val;
+    }
+    
+    bool pub_super() const {
+        return val & P::PTE_S;
+    }
+    
+    Paddr get_addr() const {
+        return static_cast<Paddr> (val) & ~((1UL << order()) - 1);
+    }
 };
