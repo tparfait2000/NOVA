@@ -645,7 +645,7 @@ void Ec::resolve_PIO_execption() {
     Hpt hpt = Pd::current->Space_mem::loc[Cpu::id];
     Quota quota = Pd::current->quota;
     hpt.lookup(LOCAL_IOP_REMAP, phys, attr);
-    hpt.update(quota, SPC_LOCAL_IOP, 1, phys, attr, Hpt::TYPE_DF, false);
+    hpt.update(quota, SPC_LOCAL_IOP, 1, phys, attr, Hpt::TYPE_UP, false);
     hpt.cow_flush(SPC_LOCAL_IOP);
     Ec::current->enable_step_debug(PIO, SPC_LOCAL_IOP, phys, attr);
 }
@@ -703,8 +703,8 @@ void Ec::disable_step_debug() {
             mword attr;
             Pd::current->Space_mem::loc[Cpu::id].lookup(LOCAL_IOP_REMAP, phys, attr);
             //            Console::print("current: %p  io_frame: %p", Pd::current, current->io_frame);
-            Pd::current->loc[Cpu::id].update(Pd::current->quota, SPC_LOCAL_IOP, 0, Pd::current->io_remap1, io_attr, Hpt::TYPE_DF, false);
-            Pd::current->loc[Cpu::id].update(Pd::current->quota, SPC_LOCAL_IOP + PAGE_SIZE, 0, Pd::current->io_remap2, io_attr, Hpt::TYPE_DF, false);
+            Pd::current->loc[Cpu::id].update(Pd::current->quota, SPC_LOCAL_IOP, 0, Pd::current->io_remap1, io_attr, Hpt::TYPE_UP, false);
+            Pd::current->loc[Cpu::id].update(Pd::current->quota, SPC_LOCAL_IOP + PAGE_SIZE, 0, Pd::current->io_remap2, io_attr, Hpt::TYPE_UP, false);
             Hpt::cow_flush(SPC_LOCAL_IOP);
             Hpt::cow_flush(SPC_LOCAL_IOP + PAGE_SIZE);
             break;

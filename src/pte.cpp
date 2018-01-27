@@ -195,7 +195,7 @@ template <typename P, typename E, unsigned L, unsigned B, bool F>
  *  */
 void Pte<P, E, L, B, F>::set_cow_page(E virt, E &entry) {
 //    if(P::table_type() == Ept) return;
-    return;
+//    return;
     if ((virt < USER_ADDR) && (entry & P::PTE_P) && (entry & P::PTE_U)) {
         if (is_mmio(entry & ~PAGE_MASK)) {
             entry |= P::PTE_COW | P::PTE_COW_IO;
