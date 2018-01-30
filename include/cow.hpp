@@ -19,13 +19,13 @@ private:
     static Spinlock cow_lock;
 
 public:
-    static uint16 frame_index_max;
-    static uint16 elt_index_max;
+    static uint32 frame_index_max;
+    static uint32 elt_index_max;
     static bool max_displayed;
 
     struct cow_frame {
         Paddr phys_addr;
-        uint16 index;
+        uint32 index;
         bool used = false;
     };
     static struct cow_frame cow_frames[NB_COW_FRAME];
@@ -64,7 +64,7 @@ public:
     virtual ~Cow();
 
     static struct block* get_new_block_elt() {
-        for (uint16 i = 0; i < NB_BLOCK_ELT; i++) {
+        for (uint32 i = 0; i < NB_BLOCK_ELT; i++) {
             if (!block_elts[i].used) {
                 block_elts[i].used = true;
                 return &block_elts[i];
@@ -77,8 +77,8 @@ public:
      * @param elt_index
      * @return 
      */
-    static bool get_cow_list_elt(uint16 & elt_index);
-    static bool get_new_cow_frame(uint16 & frame_index);
+    static bool get_cow_list_elt(uint32 & elt_index);
+    static bool get_new_cow_frame(uint32 & frame_index);
     static void free_cow_frame(struct cow_frame * frame_ptr);
 
     static void free_cow_elt(cow_elt * cow);

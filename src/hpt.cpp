@@ -87,6 +87,17 @@ Paddr Hpt::replace(Quota &quota, mword v, mword p) {
     return e->addr();
 }
 
+Paddr Hpt::replace_cow(Quota &quota, mword v, mword p) {
+    Hpt o, *e = walk(quota, v, 0);
+    assert(e);
+
+    do o = *e; while (o.val != p && !e->set(o.val, p));
+
+    flush(v);
+    return e->addr();
+}
+
+
 /**
  * ---Parfait---
  * retourne un pointeur sur l'adresse virtuelle correspondant à l'addresse 
@@ -120,8 +131,8 @@ void *Hpt::remap(Quota &quota, Paddr phys) {
 void *Hpt::remap_cow(Quota &quota, Paddr phys, mword addr) {
     Hptp hpt(current());
     addr += COW_ADDR;
-    hpt.update(quota, addr, 0, phys, Hpt::HPT_W | Hpt::HPT_P, Hpt::TYPE_UP);
-    Hpt::cow_flush(addr);
+    hpt.replace_cow(quota, addr, phys | Hpt::HPT_W | Hpt::HPT_P);
+//    Hpt::cow_flush(addr);
     return reinterpret_cast<void *> (addr);
 }
 
@@ -139,8 +150,8 @@ bool Hpt::is_cow_fault(Quota &quota, mword v, mword err) {
             ////                Ec::current->ec_debug = false;
             //            }
             ec->check_memory(1257);
-            update(quota, v, 0, phys, a | Hpt::HPT_P, Hpt::TYPE_UP, false); // the old frame may have been released; so we have to retain it
-            cow_flush(v);
+            replace_cow(quota, v, phys | a | Hpt::HPT_P); // the old frame may have been released; so we have to retain it
+//            cow_flush(v);
             //            Console::print("Read MMIO");
             ec->enable_step_debug(Ec::MMIO, v, phys, a);
             return true;
@@ -152,15 +163,15 @@ bool Hpt::is_cow_fault(Quota &quota, mword v, mword err) {
             //            }
             if (v >= USER_ADDR) {
                 //Normally, this must not happen since this is not a user space here but...                
-                update(quota, v, 0, phys, a | Hpt::HPT_W, Type::TYPE_UP, false);
+                replace_cow(quota, v, phys | a | Hpt::HPT_W);
                 //              Console::print("Cow Error above USER_ADDR");
             } else {
                 if (Ec::step_reason && (Ec::step_reason != Ec::GP)) {//Cow error in single stepping : why this? we don't know; qemu oddities
                     if (Ec::step_reason != Ec::PIO)
                         Console::print("Cow error in single stepping v: %lx  phys: %lx  Pd: %s", v, phys, pd->get_name());
                     if (ec->is_io_exc()) {
-                        update(quota, v, 0, phys, a | Hpt::HPT_W, Type::TYPE_UP, false);
-                        cow_flush(v);
+                        replace_cow(quota, v, phys | a | Hpt::HPT_W);
+//                        cow_flush(v);
                         return true;
                     } else {// IO instruction already executed but still in single stepping
                         ec->disable_step_debug();
@@ -178,9 +189,9 @@ bool Hpt::is_cow_fault(Quota &quota, mword v, mword err) {
                 } else // Cow::subtitute will fill cow's fields old_phys, new_phys and frame_index 
                     ec->die("Cow frame exhausted");
                 pd->add_cow(ce);
-                update(quota, v, 0, ce->new_phys[0]->phys_addr, a | Hpt::HPT_W, Type::TYPE_UP, false);
-                cow_flush(v);
-                //                Console::print("Cow error Ec: %p  v: %p  phys: %p  ce: %p  phys1: %p  phys2: %p", ec, v, phys, ce, ce->new_phys[0]->phys_addr, ce->new_phys[1]->phys_addr);
+                replace_cow(quota, v, ce->new_phys[0]->phys_addr | a | Hpt::HPT_W);
+//                cow_flush(v);
+//                                Console::print("Cow error Ec: %p  v: %lx  phys: %lx  ce: %p  phys1: %lx  phys2: %lx", ec, v, phys, ce, ce->new_phys[0]->phys_addr, ce->new_phys[1]->phys_addr);
                 //                update(quota, v, 0, phys, a | Hpt::HPT_W, Type::TYPE_UP, false);
                 //                cow_flush(v);
                 //                Console::print("Cow error Ec: %p  v: %p  phys: %p", ec, v, phys);

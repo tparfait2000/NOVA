@@ -110,10 +110,10 @@ bool Pd::delegate(Pd *snd, mword const snd_base, mword const rcv_base, mword con
             continue;
         }
 
-        s |= S::update(qg, node);
+        s |= S::update(qg, node, this->get_name());
 
         if (Cpu::hazard & HZD_OOM) {
-            S::update(qg, node, attr);
+            S::update(qg, node, this->get_name(), attr);
             node->demote_node(attr);
             if (node->remove_node() && S::tree_remove(node))
                 Rcu::call(node);
@@ -140,7 +140,7 @@ void Pd::revoke(mword const base, mword const ord, mword const attr, bool self, 
         if (kim && (ACCESS_ONCE(mdb->next)->dpth > mdb->dpth)) {
             Quota_guard qg(this->quota);
             if (mdb->node_attr & 0x1f) {
-                static_cast<S *> (mdb->space)->update(qg, mdb, 0x1f);
+                static_cast<S *> (mdb->space)->update(qg, mdb, this->get_name(), 0x1f);
                 mdb->demote_node(0x1f);
             }
             static_cast<S *> (mdb->space)->tree_remove(mdb, Avl::State::KIM);
@@ -159,7 +159,7 @@ void Pd::revoke(mword const base, mword const ord, mword const attr, bool self, 
 
             if (demote && node->node_attr & attr) {
                 Quota_guard qg(this->quota);
-                static_cast<S *> (node->space)->update(qg, node, attr);
+                static_cast<S *> (node->space)->update(qg, node, this->get_name(), attr);
                 node->demote_node(attr);
             }
 
@@ -459,8 +459,8 @@ void Pd::restore_state() {
     Quota q = this->quota;
     while (cow != nullptr) {
         mword v = cow->page_addr_or_gpa;
-        loc[Cpu::id].update(q, v, 0, cow->new_phys[1]->phys_addr, cow->attr | Hpt::HPT_W, Hpt::TYPE_UP, false);
-        Hpt::cow_flush(v);
+        loc[Cpu::id].replace_cow(q, v, cow->new_phys[1]->phys_addr | (cow->attr & ~Hpt::HPT_W));
+//        Hpt::cow_flush(v);
         cow = cow->next;
     }
 }
@@ -479,7 +479,7 @@ void Pd::rollback(bool is_vm) {
         while (cow != nullptr) {
             Paddr old_phys = cow->old_phys;
             mword v = cow->page_addr_or_gpa;
-            loc[Cpu::id].update(q, v, 0, old_phys, cow->attr & ~Hpt::HPT_W, Hpt::TYPE_UP, true);
+            loc[Cpu::id].replace_cow(q, v, old_phys|(cow->attr & ~Hpt::HPT_W));
             Hpt::cow_flush(v);
             Cow::free_cow_elt(cow);
             cow = cow->next;
@@ -508,7 +508,7 @@ bool Pd::compare_and_commit() {
         mword v = cow->page_addr_or_gpa;
         void *ptr = Hpt::remap_cow(q, old_phys);
         memcpy(ptr, reinterpret_cast<const void*> (v), PAGE_SIZE);
-        loc[Cpu::id].update(q, v, 0, old_phys, cow->attr & ~Hpt::HPT_W, Hpt::TYPE_UP, true); // the old frame may have been released; so we have to retain it
+        loc[Cpu::id].replace_cow(q, v, old_phys | (cow->attr & ~Hpt::HPT_W)); // the old frame may have been released; so we have to retain it
         Hpt::cow_flush(v);
         Cow::free_cow_elt(cow);
         cow = cow->next;

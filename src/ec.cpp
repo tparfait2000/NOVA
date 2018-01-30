@@ -99,7 +99,7 @@ Ec::Ec(Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u, 
 
         utcb = new (pd->quota) Utcb;
 
-        pd->Space_mem::insert(pd->quota, u, 0, Hpt::HPT_U | Hpt::HPT_W | Hpt::HPT_P, Buddy::ptr_to_phys(utcb));
+        pd->Space_mem::insert(pd->quota, u, 0, Hpt::HPT_U | Hpt::HPT_W | Hpt::HPT_P, Buddy::ptr_to_phys(utcb), true);
 
         regs.dst_portal = NUM_EXC - 2;
 
@@ -554,7 +554,7 @@ bool Ec::fixup(mword &eip) {
 }
 
 void Ec::die(char const *reason, Exc_regs *r) {
-    backtrace();
+//    backtrace();
     if (current->utcb || current->pd == &Pd::kern) {
         if (strcmp(reason, "PT not found"))
             trace(0, "Killed EC:%p SC:%p V:%#lx CS:%#lx EIP:%#lx CR2:%#lx ERR:%#lx (%s) Pd: %s Ec: %s",
@@ -640,14 +640,8 @@ bool Ec::is_io_exc(mword eip) {
 
 void Ec::resolve_PIO_execption() {
     //    Console::print("Read PIO");
-    Paddr phys;
-    mword attr;
-    Hpt hpt = Pd::current->Space_mem::loc[Cpu::id];
-    Quota quota = Pd::current->quota;
-    hpt.lookup(LOCAL_IOP_REMAP, phys, attr);
-    hpt.update(quota, SPC_LOCAL_IOP, 1, phys, attr, Hpt::TYPE_UP, false);
-    hpt.cow_flush(SPC_LOCAL_IOP);
-    Ec::current->enable_step_debug(PIO, SPC_LOCAL_IOP, phys, attr);
+    reinterpret_cast<Space_pio*>(Pd::current->subspace(Crd::PIO))->enable_pio(Pd::current->quota);
+    Ec::current->enable_step_debug(PIO, SPC_LOCAL_IOP, 0, 0);
 }
 
 //void Ec::resolve_temp_exception() {
@@ -694,19 +688,12 @@ void Ec::disable_step_debug() {
     switch (step_reason) {
         case MMIO:
             //            Console::print("MMIO read");
-            Pd::current->loc[Cpu::id].update(Pd::current->quota, io_addr, 0, io_phys, io_attr & ~Hpt::HPT_P, Hpt::TYPE_UP, true);
+            Pd::current->loc[Cpu::id].replace_cow(Pd::current->quota, io_addr, io_phys | (io_attr & ~Hpt::HPT_P));
             Hpt::cow_flush(io_addr);
             break;
         case PIO:
-            //            Console::print("PIO read");
-            Paddr phys;
-            mword attr;
-            Pd::current->Space_mem::loc[Cpu::id].lookup(LOCAL_IOP_REMAP, phys, attr);
-            //            Console::print("current: %p  io_frame: %p", Pd::current, current->io_frame);
-            Pd::current->loc[Cpu::id].update(Pd::current->quota, SPC_LOCAL_IOP, 0, Pd::current->io_remap1, io_attr, Hpt::TYPE_UP, false);
-            Pd::current->loc[Cpu::id].update(Pd::current->quota, SPC_LOCAL_IOP + PAGE_SIZE, 0, Pd::current->io_remap2, io_attr, Hpt::TYPE_UP, false);
-            Hpt::cow_flush(SPC_LOCAL_IOP);
-            Hpt::cow_flush(SPC_LOCAL_IOP + PAGE_SIZE);
+//                        Console::print("PIO read");
+            reinterpret_cast<Space_pio*>(Pd::current->subspace(Crd::PIO))->disable_pio(Pd::current->quota);
             break;
         case RDTSC:
             //            Console::print("TSC read Ec: %p, is_idle(): %d  IP: %p", current, is_idle(), current->regs.REG(ip));
@@ -736,6 +723,7 @@ void Ec::restore_state() {
         pd->restore_state();
     else
         regs.vtlb->restore_vtlb();
+    reinterpret_cast<Space_pio*>(Pd::current->subspace(Crd::PIO))->enable_pio(Pd::current->quota);    
 }
 
 void Ec::rollback() {
@@ -749,6 +737,7 @@ void Ec::rollback() {
         memcpy(current->regs.vmcs, Vmcs::vmcs0, Vmcs::basic.size);
         regs.vmcs->make_current();
     }
+    reinterpret_cast<Space_pio*>(Pd::current->subspace(Crd::PIO))->disable_pio(Pd::current->quota);    
 }
 
 void Ec::saveRegs(Exc_regs *r) {
@@ -768,6 +757,7 @@ void Ec::save_state() {
     Fpu::dwc_save();        
     if (fpu)
         fpu->save_data();
+    reinterpret_cast<Space_pio*>(Pd::current->subspace(Crd::PIO))->disable_pio(Pd::current->quota);
 }
 
 void Ec::vmx_save_state() {

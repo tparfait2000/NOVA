@@ -40,7 +40,7 @@ void Space_mem::init (Quota &quota, unsigned cpu)
     }
 }
 
-bool Space_mem::update (Quota_guard &quota, Mdb *mdb, mword r)
+bool Space_mem::update (Quota_guard &quota, Mdb *mdb, char* const name, mword r)
 {
     assert (this == mdb->space && this != &Pd::kern);
 
@@ -108,8 +108,8 @@ bool Space_mem::update (Quota_guard &quota, Mdb *mdb, mword r)
         return false;
 
     mword ord = min (o, Hpt::ord);
-    bool f = false;
-
+    bool f = false, set_cow = strcmp(name, "init -> fb_drv") ? true : false;
+    
     for (unsigned long i = 0; i < 1UL << (o - ord); i++) {
         if (!r && !hpt.check(quota, ord)) {
             Cpu::hazard |= HZD_OOM;

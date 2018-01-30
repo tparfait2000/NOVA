@@ -10,8 +10,8 @@
 #include "string.hpp"
 #include "pd.hpp"
 
-uint16 Cow::frame_index_max = 0;
-uint16 Cow::elt_index_max = 0;
+uint32 Cow::frame_index_max = 0;
+uint32 Cow::elt_index_max = 0;
 struct Cow::cow_elt Cow::cow_list[NB_COW_ELT];
 struct Cow::cow_frame Cow::cow_frames[NB_COW_FRAME];
 bool Cow::max_displayed = false;
@@ -33,7 +33,7 @@ Cow::~Cow() {
  * @param elt_index
  * @return 
  */
-bool Cow::get_cow_list_elt(uint16 & elt_index) {
+bool Cow::get_cow_list_elt(uint32 & elt_index) {
     for (uint32 i = 0; i < NB_COW_ELT; i++) {
         if (!cow_list[i].used) {
             elt_index = i;
@@ -44,7 +44,7 @@ bool Cow::get_cow_list_elt(uint16 & elt_index) {
     return false; //cow_list elt may be exhausted
 }
 
-bool Cow::get_new_cow_frame(uint16 & frame_index) {
+bool Cow::get_new_cow_frame(uint32 & frame_index) {
     for (uint32 i = 0; i < NB_COW_FRAME; i++) {
         if (!cow_frames[i].used) {
             frame_index = i;
@@ -68,7 +68,7 @@ void Cow::free_cow_elt(cow_elt * cow) {
 }
 
 bool Cow::get_new_cow_frame(cow_frame** frame_ptr) {
-    uint16 frame_index = 0;
+    uint32 frame_index = 0;
     if (!get_new_cow_frame(frame_index))
         return false;
     cow_frames[frame_index].used = true;
@@ -84,7 +84,7 @@ bool Cow::get_new_cow_frame(cow_frame** frame_ptr) {
 
 bool Cow::get_cow_list_elt(cow_elt** cow_ptr) {
     Lock_guard <Spinlock> guard(Cow::cow_lock);
-    uint16 elt_index = 0;
+    uint32 elt_index = 0;
     if (!get_cow_list_elt(elt_index)) return false;
     if (elt_index > elt_index_max) {
         elt_index_max = elt_index;

@@ -96,7 +96,8 @@ public:
     void sync_master_range(Quota &quota, mword, mword);
 
     Paddr replace(Quota &quota, mword, mword);
-
+    Paddr replace_cow(Quota &quota, mword, mword);
+    
     static void *remap(Quota &quota, Paddr);
 
     static bool dest_hpt(Paddr p, mword, unsigned) {
