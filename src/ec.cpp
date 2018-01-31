@@ -99,7 +99,7 @@ Ec::Ec(Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u, 
 
         utcb = new (pd->quota) Utcb;
 
-        pd->Space_mem::insert(pd->quota, u, 0, Hpt::HPT_U | Hpt::HPT_W | Hpt::HPT_P, Buddy::ptr_to_phys(utcb), true);
+        pd->Space_mem::insert(pd->quota, u, 0, Hpt::HPT_U | Hpt::HPT_W | Hpt::HPT_P, Buddy::ptr_to_phys(utcb), pd->get_to_be_cowed() ? true:false);
 
         regs.dst_portal = NUM_EXC - 2;
 
@@ -723,7 +723,6 @@ void Ec::restore_state() {
         pd->restore_state();
     else
         regs.vtlb->restore_vtlb();
-    reinterpret_cast<Space_pio*>(Pd::current->subspace(Crd::PIO))->enable_pio(Pd::current->quota);    
 }
 
 void Ec::rollback() {
@@ -737,7 +736,6 @@ void Ec::rollback() {
         memcpy(current->regs.vmcs, Vmcs::vmcs0, Vmcs::basic.size);
         regs.vmcs->make_current();
     }
-    reinterpret_cast<Space_pio*>(Pd::current->subspace(Crd::PIO))->disable_pio(Pd::current->quota);    
 }
 
 void Ec::saveRegs(Exc_regs *r) {

@@ -20,7 +20,7 @@
 
 #include <stddef.h>
 
-#define str_max_length      20
+#define str_max_length      80
 
 typedef unsigned char       uint8;
 typedef unsigned short      uint16;

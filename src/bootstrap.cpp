@@ -52,7 +52,7 @@ void bootstrap()
         root_sc->remote_enqueue();
         Console::print("Lapic::freq_tsc: %u  freq_bus: %u  max_tsc: %llu", Lapic::freq_tsc, Lapic::freq_bus, Lapic::max_tsc);
     }
-    Lapic::activate_pmi();
+//    Lapic::activate_pmi();
 //    Ec::Setx86DebugReg(0x18028, 0);
     Sc::schedule();
 }

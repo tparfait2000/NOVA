@@ -508,6 +508,7 @@ void Ec::reset_all() {
     reset_counter();
     reset_time();
     previous_pmi = 0;
+    reinterpret_cast<Space_pio*>(Pd::current->subspace(Crd::PIO))->enable_pio(Pd::current->quota);                
 }
 
 void Ec::reset_time() {

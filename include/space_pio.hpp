@@ -55,7 +55,7 @@ class Space_pio : public Space
         void disable_pio(Quota &quota);
         void enable_pio(Quota &quota);
 
-        bool update (Quota &quota, Mdb *, char* name = const_cast<char* const>("Unknown"), mword = 0);
+        bool update (Quota &quota, Mdb *, bool = false, mword = 0);
 
         static void page_fault (mword, mword);
 

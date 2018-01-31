@@ -89,14 +89,18 @@ Paddr Hpt::replace(Quota &quota, mword v, mword p) {
 
 Paddr Hpt::replace_cow(Quota &quota, mword v, mword p) {
     Hpt o, *e = walk(quota, v, 0);
-    assert(e);
-
+    if(!e) return 0;
+    
     do o = *e; while (o.val != p && !e->set(o.val, p));
 
     flush(v);
     return e->addr();
 }
 
+void Hpt::replace_cow_n(Quota &quota, mword v, int n, mword p) {
+    for (int i = 0; i< n; i++)
+        replace_cow(quota, v+i*PAGE_SIZE, p+i*PAGE_SIZE);
+}
 
 /**
  * ---Parfait---

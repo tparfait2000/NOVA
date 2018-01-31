@@ -30,7 +30,9 @@
 class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, public Space_obj {
 private:
     char name[str_max_length];
+    bool to_be_cowed = false;
     static Slab_cache cache;
+    static const char *names[];
 
     WARN_UNUSED_RESULT
     mword clamp(mword, mword &, mword, mword);
@@ -161,5 +163,10 @@ public:
     bool vtlb_compare_and_commit();
     void restore_state();
     void rollback(bool is_vm = false);
+    void set_to_be_cowed();
+    bool get_to_be_cowed(){
+        return to_be_cowed;
+    }
+
 
 };

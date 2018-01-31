@@ -40,7 +40,7 @@ void Space_mem::init (Quota &quota, unsigned cpu)
     }
 }
 
-bool Space_mem::update (Quota_guard &quota, Mdb *mdb, char* const name, mword r)
+bool Space_mem::update (Quota_guard &quota, Mdb *mdb, bool set_cow, mword r)
 {
     assert (this == mdb->space && this != &Pd::kern);
 
@@ -108,7 +108,7 @@ bool Space_mem::update (Quota_guard &quota, Mdb *mdb, char* const name, mword r)
         return false;
 
     mword ord = min (o, Hpt::ord);
-    bool f = false, set_cow = strcmp(name, "init -> fb_drv") ? true : false;
+    bool f = false;
     
     for (unsigned long i = 0; i < 1UL << (o - ord); i++) {
         if (!r && !hpt.check(quota, ord)) {
@@ -116,11 +116,11 @@ bool Space_mem::update (Quota_guard &quota, Mdb *mdb, char* const name, mword r)
             return f;
         }
         if(ord < Hpt::bpl())
-            f |= hpt.update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), Hpt::hw_attr (a), r ? Hpt::TYPE_DN : Hpt::TYPE_UP, true);
+            f |= hpt.update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), Hpt::hw_attr (a), r ? Hpt::TYPE_DN : Hpt::TYPE_UP, set_cow);
         else{
             mword max_ord = ord - Hpt::bpl() + 1;
             for(unsigned long j = 0; j < 1UL << max_ord; j++)
-                f |= hpt.update (quota, b + i * (1UL << (ord + PAGE_BITS)) + j * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), Hpt::bpl() - 1, p + i * (1UL << (ord + PAGE_BITS)) + j * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), Hpt::hw_attr (a), r ? Hpt::TYPE_DN : Hpt::TYPE_UP, true);
+                f |= hpt.update (quota, b + i * (1UL << (ord + PAGE_BITS)) + j * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), Hpt::bpl() - 1, p + i * (1UL << (ord + PAGE_BITS)) + j * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), Hpt::hw_attr (a), r ? Hpt::TYPE_DN : Hpt::TYPE_UP, set_cow);
         }
     }
 
@@ -137,11 +137,11 @@ bool Space_mem::update (Quota_guard &quota, Mdb *mdb, char* const name, mword r)
                 }
 
                 if(ord < Hpt::bpl())
-                    loc[j].update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), Hpt::hw_attr (a), Hpt::TYPE_DF, true);
+                    loc[j].update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), Hpt::hw_attr (a), Hpt::TYPE_DF, set_cow);
                 else{
                     mword max_ord = ord - Hpt::bpl() + 1;
                     for(unsigned long k = 0; k < 1UL << max_ord; k++)
-                        loc[j].update (quota, b + i * (1UL << (ord + PAGE_BITS)) + k * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), Hpt::bpl() - 1, p + i * (1UL << (ord + PAGE_BITS)) + k * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), Hpt::hw_attr (a), Hpt::TYPE_DF, true);
+                        loc[j].update (quota, b + i * (1UL << (ord + PAGE_BITS)) + k * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), Hpt::bpl() - 1, p + i * (1UL << (ord + PAGE_BITS)) + k * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), Hpt::hw_attr (a), Hpt::TYPE_DF, set_cow);
                 }
             }
         }

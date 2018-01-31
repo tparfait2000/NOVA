@@ -58,7 +58,7 @@ size_t Space_obj::lookup (mword idx, Capability &cap)
     return 1;
 }
 
-bool Space_obj::update (Quota &quota, Mdb *mdb, char* const name, mword r)
+bool Space_obj::update (Quota &quota, Mdb *mdb, bool set_cow, mword r)
 {
     assert (this == mdb->space && this != &Pd::kern);
     Lock_guard <Spinlock> guard (mdb->node_lock);

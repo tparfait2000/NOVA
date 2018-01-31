@@ -141,16 +141,6 @@ Vtlb::Reason Vtlb::miss(Exc_regs *regs, mword virt, mword &error) {
         unsigned shift = --lev * bpl() + PAGE_BITS;
         tlb += virt >> shift & ((1UL << bpl()) - 1);
 
-        //        Console::print("entry start: %llx", tlb->val);
-        //        if(!lev){
-        //            if(tlb->is_cow_pf(tlb->val, phys, error)){
-        //                Console::print("COW_FAULT entry: %llx virt %lx phys %lx host %lx err %lx", tlb->val, virt, phys, host, error);
-        //                return SUCCESS;
-        //            }else{
-        //                Console::print("level 0 entry : %llx virt %lx phys %lx host %lx err %lx", tlb->val, virt, phys, host, error);
-        //                Ec::check_memory_vmx(5963);
-        //            }
-        //        }
         if (lev) {
 
             if (lev == 2 || size < 1UL << shift) {
@@ -177,7 +167,7 @@ Vtlb::Reason Vtlb::miss(Exc_regs *regs, mword virt, mword &error) {
 
         tlb->val = static_cast<typeof tlb->val> ((host & ~((1UL << shift) - 1)) | attr | TLB_D | TLB_A);
         //        Console::print("entry end: %llx virt %lx phys %lx host: %lx error %lx", tlb->val, virt, phys, host, error);
-        Vtlb::set_cow_fault(tlb->val, phys);
+//        Vtlb::set_cow_fault(tlb->val, phys);
         return SUCCESS;
     }
 }

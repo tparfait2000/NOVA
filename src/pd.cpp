@@ -34,6 +34,10 @@ INIT_PRIORITY(PRIO_BUDDY)
 ALIGNED(32) Pd Pd::kern(&Pd::kern);
 ALIGNED(32) Pd Pd::root(&Pd::root, NUM_EXC, 0x1f);
 
+const char *Pd::names[] = {"root", "init", "init -> timer", "init -> rtc_drv", "init -> ps2_drv", "init -> acpi_drv",
+    "init -> acpi_report_rom", "init -> platform_drv", "init -> nic_drv", "init -> fb_drv",
+    "init -> seoul", "init -> platform_drv -> nic_drv", nullptr};
+
 Pd::Pd(Pd *own) : Kobject(PD, static_cast<Space_obj *> (own)) {
     copy_string(name, const_cast<char* const> ("kern_pd"));
     hpt = Hptp(reinterpret_cast<mword> (&PDBR));
@@ -58,6 +62,7 @@ Pd::Pd(Pd *own, mword sel, mword a, char* const s) : Kobject(PD, static_cast<Spa
     } else {
         copy_string(name, s);
     }
+    set_to_be_cowed();
 }
 
 template <typename S>
@@ -109,11 +114,10 @@ bool Pd::delegate(Pd *snd, mword const snd_base, mword const rcv_base, mword con
             trace(0, "overmap attempt %s - node - PD:%p->%p SB:%#010lx RB:%#010lx O:%#04lx A:%#lx SUB:%lx", deltype, snd, this, snd_base, rcv_base, ord, attr, sub);
             continue;
         }
-
-        s |= S::update(qg, node, this->get_name());
+        s |= S::update(qg, node, to_be_cowed);
 
         if (Cpu::hazard & HZD_OOM) {
-            S::update(qg, node, this->get_name(), attr);
+            S::update(qg, node, to_be_cowed, attr);
             node->demote_node(attr);
             if (node->remove_node() && S::tree_remove(node))
                 Rcu::call(node);
@@ -485,6 +489,18 @@ void Pd::rollback(bool is_vm) {
             cow = cow->next;
         }
     }
+}
+
+void Pd::set_to_be_cowed(){    
+    int i = 0; 
+    while(names[i] != nullptr){
+        if(!strcmp(name, names[i])){
+            to_be_cowed = true;
+            return;
+        }
+        i++;
+    }
+    to_be_cowed = false; 
 }
 
 bool Pd::compare_and_commit() {

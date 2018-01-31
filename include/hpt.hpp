@@ -97,6 +97,7 @@ public:
 
     Paddr replace(Quota &quota, mword, mword);
     Paddr replace_cow(Quota &quota, mword, mword);
+    void replace_cow_n(Quota &quota, mword, int, mword);
     
     static void *remap(Quota &quota, Paddr);
 
