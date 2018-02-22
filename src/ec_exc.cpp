@@ -314,17 +314,15 @@ void Ec::handle_exc(Exc_regs *r) {
 void Ec::check_memory(int pmi) {
     Ec *ec = current;
     Pd *pd = ec->getPd();
-    if (is_idle())
-        Console::print("TCHA HOHO Must not be idle here, sth wrong. pmi: %d cowlist: %p Pd: %s", pmi, current->getPd()->cow_list, current->getPd()->get_name());
+//    if (is_idle())
+//        Console::print("TCHA HOHO Must not be idle here, sth wrong. pmi: %d cowlist: %p Pd: %s", pmi, current->getPd()->cow_list, current->getPd()->get_name());
     if (!pd->cow_list) {
         launch_state = UNLAUNCHED;
         reset_all();
         return;
     }
 
-//    if (!ec->utcb) {
 //        Console::print("EIP = check_memory utcb %p run %d pmi %d counter %llx exc %lld rcx %lx eip %lx", ec->utcb, run_number, pmi, Lapic::read_instCounter(), exc_counter, current->regs.REG(cx), current->regs.REG(ip));
-//    }
     if (one_run_ok()) {
         if (pmi == 3001) {
             step_debug_time = rdtsc();
@@ -339,60 +337,21 @@ void Ec::check_memory(int pmi) {
                     check_exit();
             }
             exc_counter2 = Ec::exc_counter;
-            if(ec->utcb){
-                counter2 = Lapic::read_instCounter();
-                if (static_cast<long> (step_nb) > static_cast<long> (counter2 - exc_counter2)) {
-                    nbInstr_to_execute = step_nb - counter2 + exc_counter2;
-                    prev_rip = current->regs.REG(ip);
-                    Console::print("PMI inf utcb %p counter1 %llu exc1 %llu counter2 %llu exc2 %llu endrip %lx endrcx %lx", ec->utcb, counter1, exc_counter1, counter2, exc_counter2, end_rip, end_rcx);
-                    ec->enable_step_debug(PMI);
-                    ret_user_iret();
-                } else if (static_cast<long> (step_nb) < static_cast<long> (counter2 - exc_counter2)) {
-                    //                if (step_reason != PIO)
-                    Console::print("PMI sup counter1 %llu exc1 %llu counter2 %llu exc2 %llu", counter1, exc_counter1, counter2, exc_counter2);
-                    ec->rollback();
-                    ec->reset_all();
-                    check_exit();
-                } else {
-                    Console::print("PMI equal counter1 %llu exc1 %llu counter2 %llu exc2 %llu", counter1, exc_counter1, counter2, exc_counter2);
-                }
-            }else{
-                counter2 = Lapic::counter;
-                if(Vmcs::has_mtf()){
-                    if(2*counter1 > counter2){
-                        nbInstr_to_execute = 2*counter1 - counter2;  
-                        Console::print("PMI inf utcb %p counter1 %llu exc1 %llu counter2 %llu exc2 %llu last_rip %lx last_rcx %lx endrip %lx endrcx %lx", ec->utcb, counter1, exc_counter1, counter2, exc_counter2, last_rip, last_rcx, end_rip, end_rcx);
-                        prev_rip = Vmcs::read(Vmcs::GUEST_RIP);                    
-                        ec->vmx_enable_single_step();
-                        ret_user_vmresume();
-                    } else if(2*counter1 < counter2){
-                        Console::print("PMI sup utcb %p counter1 %llu exc1 %llu counter2 %llu exc2 %llu last_rip %lx last_rcx %lx endrip %lx endrcx %lx", ec->utcb, counter1, exc_counter1, counter2, exc_counter2, last_rip, last_rcx, end_rip, end_rcx);
-                        ec->rollback();
-                        ec->reset_all();
-                        check_exit();
-                    } else {
-                        Console::print("PMI equal utcb %p counter1 %llu exc1 %llu counter2 %llu exc2 %llu last_rip %lx last_rcx %lx endrip %lx endrcx %lx", ec->utcb, counter1, exc_counter1, counter2, exc_counter2, last_rip, last_rcx, end_rip, end_rcx);
-                        if ((last_rip != end_rip) || (last_rcx != end_rcx)) {
-                            Console::print("No match last_rip %lx last rcx %lx", last_rip, last_rcx);
-                            ec->rollback();
-                            ec->reset_all();
-                            check_exit();
-                        }
-                    }
-                }else{
-                    if ((last_rip != end_rip) || (last_rcx != end_rcx)) {
-                        Console::print("PMI Diff with no MTF for Single stepping utcb %p counter1 %llu exc1 %llu counter2 %llu exc2 %llu timer_counter1 %llu, timecounter2 %llu"
-                        "last_rip %lx end_rip %lx last_rcx %lx end_rcx %lx", 
-                                ec->utcb, counter1, exc_counter1, counter2, exc_counter2, timer_counter1, timer_counter2, last_rip, end_rip, last_rcx, end_rcx);
-                        ec->rollback();
-                        ec->reset_all();
-                        nb_try++;
-                        check_exit();
-                    }else{
-                        Console::print("PMI OK");
-                        nb_try = 0;
-                    }
-                }
+            counter2 = Lapic::read_instCounter();
+            if (static_cast<long> (step_nb) > static_cast<long> (counter2 - exc_counter2)) {
+                nbInstr_to_execute = step_nb - counter2 + exc_counter2;
+                prev_rip = current->regs.REG(ip);
+                Console::print("PMI inf utcb %p counter1 %llu exc1 %llu counter2 %llu exc2 %llu endrip %lx endrcx %lx", ec->utcb, counter1, exc_counter1, counter2, exc_counter2, end_rip, end_rcx);
+                ec->enable_step_debug(PMI);
+                ret_user_iret();
+            } else if (static_cast<long> (step_nb) < static_cast<long> (counter2 - exc_counter2)) {
+                //                if (step_reason != PIO)
+                Console::print("PMI sup counter1 %llu exc1 %llu counter2 %llu exc2 %llu", counter1, exc_counter1, counter2, exc_counter2);
+                ec->rollback();
+                ec->reset_all();
+                check_exit();
+            } else {
+                Console::print("PMI equal counter1 %llu exc1 %llu counter2 %llu exc2 %llu", counter1, exc_counter1, counter2, exc_counter2);
             }
         }
         ec->tour++;
@@ -403,10 +362,7 @@ void Ec::check_memory(int pmi) {
             Console::print("REGS does not match utcb %p pmi %d  reason: %d Pd %s Ec %s", ec->utcb, pmi, reason, ec->getPd()->get_name(), ec->get_name());
             cc = true;
         }
-        if(current->utcb)
-            cc |= pd->compare_and_commit();
-        else
-            cc |= pd->vtlb_compare_and_commit();
+        cc |= pd->compare_and_commit();
         if (cc) {
             Console::print("Checking failed Ec: %p  PMI: %d Pd: %s tour: %lld  s_tour: %lld  launch_state: %d", ec, pmi, pd->get_name(), ec->tour, static_tour, launch_state);
             Console::print("eip0: %lx  rcx0: %lx  r11_0: %lx  rdi_0: %lx", regs_0.REG(ip), regs_0.REG(cx), regs_0.r11, regs_0.REG(di));
@@ -426,26 +382,15 @@ void Ec::check_memory(int pmi) {
         runtime1 = end_time ? end_time : rdtsc();
         ec->tour++;
         static_tour++;
-        if(current->utcb)
-            ec->restore_state();
-        else
-            ec->vmx_restore_state();
+        ec->restore_state();
         run_number++;
         if (pmi == 3002) {
             previous_pmi = pmi;
             end_rip = last_rip;
             end_rcx = last_rcx;
             exc_counter1 = exc_counter;
-            if(ec->utcb){
-                counter1 = Lapic::read_instCounter();
-                Lapic::program_pmi(static_cast<int>(step_nb - counter1 + exc_counter1));
-            }else{
-                counter1 = Lapic::counter;
-                if(Vmcs::has_mtf())
-                    Lapic::program_pmi(static_cast<int>(counter1));   
-                else
-                    Lapic::program_pmi(static_cast<int>(timer_counter1- 1+ nb_try));
-            }
+            counter1 = Lapic::read_instCounter();
+            Lapic::program_pmi(static_cast<int>(step_nb - counter1 + exc_counter1));
             if (static_cast<long> (step_nb) < static_cast<long> (counter1 - exc_counter1))
                 Console::print("step_nb too small utcb %p counter1 %llu exc1 %llu diff %ld", ec->utcb, counter1, exc_counter1, static_cast<long> (counter1 - exc_counter1));
             exc_counter = 0;

@@ -502,6 +502,7 @@ public:
 
     REGPARM(1)
     static void check_memory(int pmi = 0) asm ("memory_checker");
+    static void vm_check_memory(int pmi = 0);
     REGPARM(1)
     static void saveRegs(Exc_regs *) asm ("saveRegs");
     
@@ -527,7 +528,8 @@ public:
     }
 
     static bool is_idle() {
-        return launch_state == UNLAUNCHED && step_reason == NIL;
+//        return launch_state == UNLAUNCHED && step_reason == NIL;
+        return true;
     }
 
     void set_env(uint64 t) {
@@ -545,6 +547,10 @@ public:
     
     char *get_name() {
         return name;
+    }
+
+    static void global_memory_check(int pmi){
+        current->utcb ? check_memory(pmi): vm_check_memory(pmi);
     }
 
     void restore_state();

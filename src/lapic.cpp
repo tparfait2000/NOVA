@@ -111,9 +111,7 @@ void Lapic::therm_handler() {
 }
 
 void Lapic::perfm_handler() {
-//    Console::print("MSR_PERF_FIXED_CTR0: %llx    ", Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
-    eoi();
-    Ec::check_memory(3002);
+    Ec::global_memory_check(3002);
 }
 
 void Lapic::error_handler()
@@ -138,7 +136,7 @@ void Lapic::lvt_vector (unsigned vector){
     switch (vector) {
         case VEC_LVT_TIMER: timer_handler(); eoi(); break;
         case VEC_LVT_ERROR: error_handler(); eoi(); break;
-        case VEC_LVT_PERFM: perfm_handler(); break;
+        case VEC_LVT_PERFM: perfm_handler(); eoi(); break;
         case VEC_LVT_THERM: therm_handler(); eoi(); break;
     }
 

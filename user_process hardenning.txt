@@ -60,3 +60,13 @@ User process hardenning consist of:
         - pte.cpp is_mmio()
 
     -define PTE_COW and PTE_COW_IO in hpt.hpp
+
+
+How to de-activate the hardenning module?
+-----------------------------------------
+- make the is_idle() function always return true (ec.hpp);
+- make disable_pio() and enable_pio() empty (space_pio.cpp)
+- de-activate rdtsc trapping (vmx.cpp, cpp.cpp)
+- de-activate memory setting to read-only by making the function set_cow_page() (pte.cpp) automatically return
+  and disable the call to Vtlb::set_cow_fault() (vtlb.cpp)
+- disable performance monitoring interrupt by commenting Lapic::activate_pmi() in bootstrap.cpp 
