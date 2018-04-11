@@ -80,7 +80,7 @@ class Ioapic : public List<Ioapic>
         Ioapic (Paddr, unsigned, unsigned);
 
         ALWAYS_INLINE
-        static inline void *operator new (size_t) { return cache.alloc(); }
+        static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
 
         ALWAYS_INLINE
         static inline bool claim_dev (unsigned r, unsigned i)

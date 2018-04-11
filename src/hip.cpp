@@ -27,6 +27,7 @@
 #include "multiboot.hpp"
 #include "multiboot2.hpp"
 #include "space_obj.hpp"
+#include "pd.hpp"
 #include "acpi_rsdp.hpp"
 #include "acpi.hpp"
 
@@ -66,7 +67,7 @@ void Hip::build (mword magic, mword addr)
 
 void Hip::build_mbi1(Hip_mem *&mem, mword addr)
 {
-    Multiboot const *mbi = static_cast<Multiboot const *>(Hpt::remap (addr));
+    Multiboot const *mbi = static_cast<Multiboot const *>(Hpt::remap (Pd::kern.quota, addr));
 
     uint32 flags       = mbi->flags;
     uint32 cmdline     = mbi->cmdline;
@@ -76,15 +77,15 @@ void Hip::build_mbi1(Hip_mem *&mem, mword addr)
     uint32 mods_count  = mbi->mods_count;
 
     if (flags & Multiboot::CMDLINE)
-        Cmdline::init (static_cast<char const *>(Hpt::remap (cmdline)));
+        Cmdline::init (static_cast<char const *>(Hpt::remap (Pd::kern.quota, cmdline)));
 
     if (flags & Multiboot::MEMORY_MAP) {
-        char const *remap = static_cast<char const *>(Hpt::remap (mmap_addr));
+        char const *remap = static_cast<char const *>(Hpt::remap (Pd::kern.quota, mmap_addr));
         mbi->for_each_mem(remap, mmap_len, [&] (Multiboot_mmap const * mmap) { Hip::add_mem(mem, mmap); });
     }
 
     if (flags & Multiboot::MODULES) {
-        Multiboot_module *mod = static_cast<Multiboot_module *>(Hpt::remap (mods_addr));
+        Multiboot_module *mod = static_cast<Multiboot_module *>(Hpt::remap (Pd::kern.quota, mods_addr));
         for (unsigned i = 0; i < mods_count; i++, mod++)
             add_mod (mem, mod, mod->cmdline);
     }
@@ -92,7 +93,7 @@ void Hip::build_mbi1(Hip_mem *&mem, mword addr)
 
 void Hip::build_mbi2(Hip_mem *&mem, mword addr)
 {
-    Multiboot2::Header const *mbi = static_cast<Multiboot2::Header const *>(Hpt::remap (addr));
+    Multiboot2::Header const *mbi = static_cast<Multiboot2::Header const *>(Hpt::remap (Pd::kern.quota, addr));
 
     mbi->for_each_tag([&](Multiboot2::Tag const * tag) {
         if (tag->type == Multiboot2::TAG_CMDLINE)

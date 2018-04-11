@@ -21,6 +21,7 @@
 
 #include "cmdline.hpp"
 #include "string.hpp"
+#include "pd.hpp"
 
 bool Cmdline::iommu;
 bool Cmdline::keyb;

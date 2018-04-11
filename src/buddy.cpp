@@ -78,7 +78,7 @@ Buddy::Buddy (mword phys, mword virt, mword f_addr, size_t size)
  * @param zero      Zero out block content if true
  * @return          Pointer to linear memory region
  */
-void *Buddy::alloc (unsigned short ord, Fill fill)
+void *Buddy::alloc (unsigned short ord, Quota &quota, Fill fill)
 {
     Lock_guard <Spinlock> guard (lock);
 

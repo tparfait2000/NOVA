@@ -35,7 +35,7 @@ class Slab_cache
         /*
          * Back end allocator
          */
-        void grow();
+        void grow(Quota &quota);
 
     public:
         unsigned long size; // Size of an element
@@ -47,7 +47,7 @@ class Slab_cache
         /*
          * Front end allocator
          */
-        void *alloc();
+        void *alloc(Quota &quota);
 
         /*
          * Front end deallocator
@@ -65,9 +65,9 @@ class Slab
         char *          head;
 
         ALWAYS_INLINE
-        static inline void *operator new (size_t)
+        static inline void *operator new (size_t, Quota &quota)
         {
-            return Buddy::allocator.alloc (0, Buddy::FILL_0);
+            return Buddy::allocator.alloc (0, quota, Buddy::FILL_0);
         }
 
         ALWAYS_INLINE

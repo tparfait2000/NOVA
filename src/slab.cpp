@@ -70,9 +70,9 @@ Slab_cache::Slab_cache (unsigned long elem_size, unsigned elem_align)
            elem_align);
 }
 
-void Slab_cache::grow()
+void Slab_cache::grow(Quota &quota)
 {
-    Slab *slab = new Slab (this);
+    Slab *slab = new (quota) Slab (this);
 
     if (head)
         head->prev = slab;
@@ -81,12 +81,12 @@ void Slab_cache::grow()
     head = curr = slab;
 }
 
-void *Slab_cache::alloc()
+void *Slab_cache::alloc(Quota &quota)
 {
     Lock_guard <Spinlock> guard (lock);
 
     if (EXPECT_FALSE (!curr))
-        grow();
+        grow(quota);
 
     assert (!curr->full());
     assert (!curr->next || curr->next->full());

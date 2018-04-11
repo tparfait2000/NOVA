@@ -68,46 +68,46 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
         else
             regs.set_sp (s);
 
-        utcb = new Utcb;
+        utcb = new (pd->quota) Utcb;
 
-        pd->Space_mem::insert (u, 0, Hpt::HPT_U | Hpt::HPT_W | Hpt::HPT_P, Buddy::ptr_to_phys (utcb));
+        pd->Space_mem::insert (pd->quota, u, 0, Hpt::HPT_U | Hpt::HPT_W | Hpt::HPT_P, Buddy::ptr_to_phys (utcb));
 
         regs.dst_portal = NUM_EXC - 2;
 
         trace (TRACE_SYSCALL, "EC:%p created (PD:%p CPU:%#x UTCB:%#lx ESP:%lx EVT:%#x)", this, p, c, u, s, e);
 
-        pd->insert_utcb (u, Buddy::ptr_to_phys(utcb) >> 12);
+        pd->insert_utcb (pd->quota, u, Buddy::ptr_to_phys(utcb) >> 12);
 
     } else {
 
         utcb = nullptr;
 
         regs.dst_portal = NUM_VMI - 2;
-        regs.vtlb = new Vtlb;
+        regs.vtlb = new (pd->quota) Vtlb;
 
         if (Hip::feature() & Hip::FEAT_VMX) {
 
-            regs.vmcs = new Vmcs (reinterpret_cast<mword>(sys_regs() + 1),
-                                  pd->Space_pio::walk(),
-                                  pd->loc[c].root(),
-                                  pd->ept.root());
+            regs.vmcs = new (pd->quota) Vmcs (reinterpret_cast<mword>(sys_regs() + 1),
+                                              pd->Space_pio::walk(pd->quota),
+                                              pd->loc[c].root(pd->quota),
+                                              pd->ept.root(pd->quota));
 
             regs.nst_ctrl<Vmcs>();
 
             /* allocate and register the host MSR area */
-            mword host_msr_area_phys = Buddy::ptr_to_phys(new Msr_area);
+            mword host_msr_area_phys = Buddy::ptr_to_phys(new (pd->quota) Msr_area);
             Vmcs::write(Vmcs::EXI_MSR_LD_ADDR, host_msr_area_phys);
             Vmcs::write(Vmcs::EXI_MSR_LD_CNT, Msr_area::MSR_COUNT);
 
             /* allocate and register the guest MSR area */
-            mword guest_msr_area_phys = Buddy::ptr_to_phys(new Msr_area);
+            mword guest_msr_area_phys = Buddy::ptr_to_phys(new (pd->quota) Msr_area);
             Vmcs::write(Vmcs::ENT_MSR_LD_ADDR, guest_msr_area_phys);
             Vmcs::write(Vmcs::ENT_MSR_LD_CNT, Msr_area::MSR_COUNT);
             Vmcs::write(Vmcs::EXI_MSR_ST_ADDR, guest_msr_area_phys);
             Vmcs::write(Vmcs::EXI_MSR_ST_CNT, Msr_area::MSR_COUNT);
 
             /* allocate and register the virtual APIC page */
-            mword virtual_apic_page_phys = Buddy::ptr_to_phys(new Virtual_apic_page);
+            mword virtual_apic_page_phys = Buddy::ptr_to_phys(new (pd->quota) Virtual_apic_page);
             Vmcs::write(Vmcs::APIC_VIRT_ADDR, virtual_apic_page_phys);
 
             regs.vmcs->clear();
@@ -116,7 +116,7 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
 
         } else if (Hip::feature() & Hip::FEAT_SVM) {
 
-            regs.REG(ax) = Buddy::ptr_to_phys (regs.vmcb = new Vmcb (pd->Space_pio::walk(), pd->npt.root()));
+            regs.REG(ax) = Buddy::ptr_to_phys (regs.vmcb = new (pd->quota) Vmcb (pd->quota, pd->Space_pio::walk(pd->quota), pd->npt.root(pd->quota)));
 
             regs.nst_ctrl<Vmcb>();
             cont = send_msg<ret_user_vmrun>;
@@ -364,7 +364,7 @@ void Ec::idle()
 
 void Ec::root_invoke()
 {
-    Eh *e = static_cast<Eh *>(Hpt::remap (Hip::root_addr));
+    Eh *e = static_cast<Eh *>(Hpt::remap (Pd::kern.quota, Hip::root_addr));
     if (!Hip::root_addr || e->ei_magic != 0x464c457f || e->ei_class != ELF_CLASS || e->ei_data != 1 || e->type != 2 || e->machine != ELF_MACHINE)
         die ("No ELF");
 
@@ -373,7 +373,7 @@ void Ec::root_invoke()
     current->regs.set_ip (e->entry);
     current->regs.set_sp (USER_ADDR - PAGE_SIZE);
 
-    ELF_PHDR *p = static_cast<ELF_PHDR *>(Hpt::remap (Hip::root_addr + e->ph_offset));
+    ELF_PHDR *p = static_cast<ELF_PHDR *>(Hpt::remap (Pd::kern.quota, Hip::root_addr + e->ph_offset));
 
     for (unsigned i = 0; i < count; i++, p++) {
 
@@ -398,9 +398,9 @@ void Ec::root_invoke()
     // Map hypervisor information page
     Pd::current->delegate<Space_mem>(&Pd::kern, reinterpret_cast<Paddr>(&FRAME_H) >> PAGE_BITS, (USER_ADDR - PAGE_SIZE) >> PAGE_BITS, 0, 1);
 
-    Space_obj::insert_root (Pd::current);
-    Space_obj::insert_root (Ec::current);
-    Space_obj::insert_root (Sc::current);
+    Space_obj::insert_root (Pd::kern.quota, Pd::current);
+    Space_obj::insert_root (Pd::kern.quota, Ec::current);
+    Space_obj::insert_root (Pd::kern.quota, Sc::current);
 
     /* setup PCID handling */
     Space_mem::boot_init();
