@@ -1,7 +1,7 @@
 /*
- * Advanced Configuration and Power Interface (ACPI)
+ * Quota tracking of buddy allocator
  *
- * Copyright (C) 2012 Udo Steinberg, Intel Corporation.
+ * Copyright (C) 2015 Alexander Boettcher, Genode Labs GmbH
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -15,12 +15,11 @@
  * GNU General Public License version 2 for more details.
  */
 
-#include "acpi_hpet.hpp"
-#include "hpet.hpp"
-#include "pd.hpp"
+#pragma once
 
-void Acpi_table_hpet::parse() const
+class Quota
 {
-    if (hpet.asid == Acpi_gas::MEMORY)
-        new (Pd::kern.quota) Hpet (static_cast<Paddr>(hpet.addr), id);
-}
+    private:
+
+        mword amount;
+};

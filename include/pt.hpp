@@ -49,7 +49,7 @@ class Pt : public Kobject
         inline void set_id (mword i) { id = i; }
 
         ALWAYS_INLINE
-        static inline void *operator new (size_t) { return cache.alloc(); }
+        static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
 
         ALWAYS_INLINE
         static inline void operator delete (void *ptr) { cache.free (ptr); }

@@ -356,9 +356,9 @@ class Vmcs
         };
 
         ALWAYS_INLINE
-        static inline void *operator new (size_t)
+        static inline void *operator new (size_t, Quota &quota)
         {
-            return Buddy::allocator.alloc (0, Buddy::FILL_0);
+            return Buddy::allocator.alloc (0, quota, Buddy::FILL_0);
         }
 
         ALWAYS_INLINE
@@ -464,10 +464,10 @@ struct Msr_area
     Msr_entry ia32_kernel_gs_base { Msr::IA32_KERNEL_GS_BASE };
 
     ALWAYS_INLINE
-    static inline void *operator new (size_t)
+    static inline void *operator new (size_t, Quota &quota)
     {
         /* allocate one page */
-        return Buddy::allocator.alloc (0, Buddy::FILL_0);
+        return Buddy::allocator.alloc (0, quota, Buddy::FILL_0);
     }
 
     ALWAYS_INLINE
@@ -484,10 +484,10 @@ struct Virtual_apic_page
     enum { VTPR = 0x80 / 4 };
 
     ALWAYS_INLINE
-    static inline void *operator new (size_t)
+    static inline void *operator new (size_t, Quota &quota)
     {
         /* allocate one page */
-        return Buddy::allocator.alloc (0, Buddy::FILL_0);
+        return Buddy::allocator.alloc (0, quota, Buddy::FILL_0);
     }
 
     ALWAYS_INLINE

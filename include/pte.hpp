@@ -31,7 +31,7 @@ class Pte
     protected:
         E val;
 
-        P *walk (E, unsigned long, bool = true);
+        P *walk (Quota &quota, E, unsigned long, bool = true);
 
         ALWAYS_INLINE
         inline bool present() const { return val & P::PTE_P; }
@@ -63,9 +63,9 @@ class Pte
         }
 
         ALWAYS_INLINE
-        static inline void *operator new (size_t)
+        static inline void *operator new (size_t, Quota &quota)
         {
-            void *p = Buddy::allocator.alloc (0, Buddy::FILL_0);
+            void *p = Buddy::allocator.alloc (0, quota, Buddy::FILL_0);
 
             if (F)
                 flush (p, PAGE_SIZE);
@@ -103,11 +103,11 @@ class Pte
         static inline unsigned max() { return L; }
 
         ALWAYS_INLINE
-        inline E root (mword l = L - 1) { return Buddy::ptr_to_phys (walk (0, l)); }
+        inline E root (Quota &quota, mword l = L - 1) { return Buddy::ptr_to_phys (walk (quota, 0, l)); }
 
         size_t lookup (E, Paddr &, mword &);
 
-        bool update (E, mword, E, mword, Type = TYPE_UP);
+        bool update (Quota &quota, E, mword, E, mword, Type = TYPE_UP);
 
         void clear (bool (*) (Paddr, mword, unsigned) = nullptr, bool (*) (unsigned, mword) = nullptr);
 };
