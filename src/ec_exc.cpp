@@ -22,6 +22,8 @@
 #include "gdt.hpp"
 #include "mca.hpp"
 #include "stdio.hpp"
+#include "msr.hpp"
+#include "lapic.hpp"
 
 void Ec::load_fpu()
 {
@@ -162,9 +164,17 @@ bool Ec::handle_exc_pf (Exc_regs *r)
 void Ec::handle_exc (Exc_regs *r)
 {
     Counter::exc[r->vec]++;
+    Console::print("Exc %lx", r->vec); 
 
     switch (r->vec) {
 
+        case Cpu::EXC_NMI:
+//            Console::print("PMI occured on NMI counter %llx reg %x", Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), 
+//                   Lapic::read_perf_reg());
+//            Lapic::program_pmi();
+//            Console::print("reg %x", Lapic::read_perf_reg());
+            return;
+            
         case Cpu::EXC_NM:
             handle_exc_nm();
             return;

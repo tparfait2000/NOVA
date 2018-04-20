@@ -95,7 +95,7 @@ entry_exc_error:        SAVE_STATE
 
 EXCEPTION               0x0,    0
 EXCEPTION               0x1,    0
-TASKGATE
+EXCEPTION               0x2,    0
 EXCEPTION               0x3,    3
 EXCEPTION               0x4,    3
 EXCEPTION               0x5,    0

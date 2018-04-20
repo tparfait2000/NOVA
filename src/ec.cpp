@@ -31,6 +31,7 @@
 #include "vtlb.hpp"
 #include "sm.hpp"
 #include "pt.hpp"
+#include "lapic.hpp"
 
 INIT_PRIORITY (PRIO_SLAB)
 Slab_cache Ec::cache (sizeof (Ec), 32);
@@ -266,6 +267,9 @@ void Ec::ret_user_sysexit()
         current->regs.dst_portal = 13;
         send_msg<Ec::ret_user_sysexit>();
     }
+    
+    Lapic::update_counter();
+    Console::print("SysExit Counter %llx", Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
 
     asm volatile ("lea %0," EXPAND (PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : "memory");
 
@@ -279,6 +283,9 @@ void Ec::ret_user_iret()
     if (EXPECT_FALSE (hzd))
         handle_hazard (hzd, ret_user_iret);
 
+    Console::print("Iret Counter %llx", Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
+    Lapic::program_pmi();
+    
     asm volatile ("lea %0," EXPAND (PREG(sp); LOAD_GPR LOAD_SEG RET_USER_EXC) : : "m" (current->regs) : "memory");
 
     UNREACHED;

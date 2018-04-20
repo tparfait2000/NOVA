@@ -31,6 +31,8 @@
 
 unsigned    Lapic::freq_tsc;
 unsigned    Lapic::freq_bus;
+uint64 Lapic::max_instruction = 0x10000, Lapic::perf_max_count;
+uint64 Lapic::counter = 0;
 
 void Lapic::init(bool invariant_tsc)
 {
@@ -103,7 +105,7 @@ void Lapic::init(bool invariant_tsc)
             }
         }
 
-        send_ipi (0, 0, DLV_INIT, DSH_EXC_SELF);
+//        send_ipi (0, 0, DLV_INIT, DSH_EXC_SELF);
 
         if (!freq_tsc) {
             uint32 const delay = (dl || !invariant_tsc) ? 10 : 500;
@@ -122,12 +124,14 @@ void Lapic::init(bool invariant_tsc)
 
         trace (0, "TSC:%u kHz BUS:%u kHz%s%s", freq_tsc, freq_bus, !ratio ? " (measured)" : "", dl ? " DL" : "");
 
-        send_ipi (0, AP_BOOT_PADDR >> PAGE_BITS, DLV_SIPI, DSH_EXC_SELF);
-        Acpi::delay (1);
-        send_ipi (0, AP_BOOT_PADDR >> PAGE_BITS, DLV_SIPI, DSH_EXC_SELF);
+//        send_ipi (0, AP_BOOT_PADDR >> PAGE_BITS, DLV_SIPI, DSH_EXC_SELF);
+//        Acpi::delay (1);
+//        send_ipi (0, AP_BOOT_PADDR >> PAGE_BITS, DLV_SIPI, DSH_EXC_SELF);
     }
 
     write (LAPIC_TMR_ICR, 0);
+    
+    perf_max_count = (1ull<<Cpu::perf_bit_size);
 
     trace (TRACE_APIC, "APIC:%#lx ID:%#x VER:%#x LVT:%#x (%s Mode)", apic_base & ~PAGE_MASK, id(), version(), lvt_max(), freq_bus ? "OS" : "DL");
 }
@@ -143,7 +147,12 @@ void Lapic::send_ipi (unsigned cpu, unsigned vector, Delivery_mode dlv, Shorthan
 
 void Lapic::therm_handler() {}
 
-void Lapic::perfm_handler() {}
+void Lapic::perfm_handler() {
+    Console::print("PMI occured counter %llx reg %x", Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), 
+           read(LAPIC_LVT_PERFM));
+    program_pmi();
+    Console::print("reg %x", read(LAPIC_LVT_PERFM));
+}
 
 void Lapic::error_handler()
 {
@@ -189,4 +198,34 @@ void Lapic::ipi_vector (unsigned vector)
     eoi();
 
     Counter::print<1,16> (++Counter::ipi[ipi], Console_vga::COLOR_LIGHT_GREEN, ipi + SPN_IPI);
+}
+
+void Lapic::activate_pmi() {
+    uint64 msr_glb = Msr::read<uint64>(Msr::MSR_PERF_GLOBAL_CTRL);
+    Msr::write(Msr::MSR_PERF_GLOBAL_CTRL, msr_glb | (1ull<<32));
+    Msr::write(Msr::MSR_PERF_GLOBAL_OVF_CTRL, Msr::read<uint64>(Msr::MSR_PERF_GLOBAL_OVF_CTRL) & ~(1UL<<32));
+    program_pmi();    
+}
+
+void Lapic::program_pmi(int number) {
+//    Console::print("counter before %llx", Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
+//    Msr::write(Msr::MSR_PERF_GLOBAL_OVF_CTRL, Msr::read<uint64>(Msr::MSR_PERF_GLOBAL_OVF_CTRL) & ~(1UL<<32));
+    uint64 nb_inst = perf_max_count - max_instruction + number;
+    set_lvt(LAPIC_LVT_PERFM, DLV_FIXED, VEC_LVT_PERFM);
+    Msr::write(Msr::MSR_PERF_FIXED_CTR0, nb_inst);
+    Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);
+//    Console::print("counter after %llx", Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
+}
+
+/**
+ * cancel by writing 1 to pmc
+ */
+void Lapic::cancel_pmi(){
+    set_lvt(LAPIC_LVT_PERFM, DLV_FIXED, VEC_LVT_PERFM);
+    Msr::write(Msr::MSR_PERF_FIXED_CTR0, 0x1);
+}
+
+void Lapic::update_counter(){
+    if(Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0) < perf_max_count -max_instruction)
+        program_pmi();    
 }
