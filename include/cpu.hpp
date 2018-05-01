@@ -159,6 +159,7 @@ public:
     static uint32 features[6] CPULOCAL;
     static bool bsp CPULOCAL;
     static bool preemption CPULOCAL;
+    static uint32 perf_bit_size;
 
     static void init();
 

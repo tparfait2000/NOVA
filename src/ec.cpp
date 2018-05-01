@@ -38,7 +38,7 @@ INIT_PRIORITY(PRIO_SLAB)
 Slab_cache Ec::cache(sizeof (Ec), 32);
 unsigned Ec::affich_num = 0, Ec::affich_mod = 50000;
 mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx, Ec::tscm1 = 0, Ec::tscm2 = 0;
-bool Ec::ec_debug = false, Ec::glb_debug = false, Ec::hardening_started = false, Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false, Ec::jump_ex = false;
+bool Ec::ec_debug = false, Ec::glb_debug = false, Ec::hardening_started = false, Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false, Ec::jump_ex = false, Ec::no_further_check = false;
 uint64 Ec::static_tour = 0, Ec::begin_time = 0, Ec::end_time = 0, Ec::exc_counter = 0, Ec::gsi_counter1 = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::lvt_counter1 = 0, Ec::msi_counter1 = 0, Ec::ipi_counter1 = 0, Ec::gsi_counter2 = 0, Ec::lvt_counter2 = 0, Ec::msi_counter2 = 0, Ec::ipi_counter2 = 0, Ec::counter1 = 0, Ec::counter2 = 0, Ec::runtime1 = 0, Ec::runtime2 = 0, Ec::total_runtime = 0, Ec::step_debug_time = 0, Ec::debug_compteur = 0, Ec::count_je = 0, Ec::nbInstr_to_execute = 0, Ec::timer_counter1 = 0, Ec::timer_counter2 = 0;
 uint8 Ec::run_number = 0, Ec::launch_state = 0, Ec::step_reason = 0, Ec::debug_nb = 0;
 unsigned Ec::step_nb = 200;
@@ -48,10 +48,14 @@ int Ec::previous_pmi = 0, Ec::previous_ret = 0, Ec::nb_try = 0;
 Ec *Ec::current, *Ec::fpowner;
 // Constructors
 
-Cpu_regs Ec::regs_0, Ec::regs_1;
+Cpu_regs Ec::regs_0, Ec::regs_1, Ec::regs_2;
 
-Msr_area *Ec::host_msr_area = new (Pd::kern.quota) Msr_area, *Ec::guest_msr_area = new (Pd::kern.quota) Msr_area;
-Virtual_apic_page *Ec::virtual_apic_page = new (Pd::kern.quota) Virtual_apic_page;
+Msr_area *Ec::host_msr_area0 = new (Pd::kern.quota) Msr_area, *Ec::guest_msr_area0 = new (Pd::kern.quota) Msr_area,
+         *Ec::host_msr_area1 = new (Pd::kern.quota) Msr_area, *Ec::guest_msr_area1 = new (Pd::kern.quota) Msr_area,
+         *Ec::host_msr_area2 = new (Pd::kern.quota) Msr_area, *Ec::guest_msr_area2 = new (Pd::kern.quota) Msr_area;
+Virtual_apic_page *Ec::virtual_apic_page0 = new (Pd::kern.quota) Virtual_apic_page, 
+                  *Ec::virtual_apic_page1 = new (Pd::kern.quota) Virtual_apic_page,
+                  *Ec::virtual_apic_page2 = new (Pd::kern.quota) Virtual_apic_page; 
 
 Ec::Ec(Pd *own, void (*f)(), unsigned c, char* const nm) : Kobject(EC, static_cast<Space_obj *> (own)), cont(f), utcb(nullptr), pd(own), partner(nullptr), prev(nullptr), next(nullptr), fpu(nullptr), cpu(static_cast<uint16> (c)), glb(true), evt(0), timeout(this), user_utcb(0), xcpu_sm(nullptr), pt_oom(nullptr) {
     trace(TRACE_SYSCALL, "EC:%p created (PD:%p Kernel)", this, own);
@@ -399,6 +403,8 @@ void Ec::ret_user_vmresume() {
         current->vmx_save_state();
         launch_state = Ec::VMRESUME;
         Lapic::program_pmi();
+    } else {
+        Lapic::check_dwc();
     }
 
     if (EXPECT_FALSE(Pd::current->gtlb.chk(Cpu::id))) {
@@ -411,8 +417,9 @@ void Ec::ret_user_vmresume() {
 
     if (EXPECT_FALSE(get_cr2() != current->regs.cr2))
         set_cr2(current->regs.cr2);
-    if (ec_debug)
-        Console::print("VMRun vRIP %lx", Vmcs::read(Vmcs::GUEST_RIP));
+    if(Lapic::tour >= 66600)
+        Console::print("VmRun tour %u RIM %lx", Lapic::tour, Vmcs::read(Vmcs::GUEST_RIP));
+//    Console::print("Counter before VMENTRY %llx", Lapic::read_instCounter());
     Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xb);
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR)
                 "vmresume;"
@@ -554,7 +561,8 @@ bool Ec::fixup(mword &eip) {
 }
 
 void Ec::die(char const *reason, Exc_regs *r) {
-//    backtrace();
+    Lapic::print_compteur();
+    backtrace(5);
     if (current->utcb || current->pd == &Pd::kern) {
         if (strcmp(reason, "PT not found"))
             trace(0, "Killed EC:%p SC:%p V:%#lx CS:%#lx EIP:%#lx CR2:%#lx ERR:%#lx (%s) Pd: %s Ec: %s",
@@ -567,7 +575,8 @@ void Ec::die(char const *reason, Exc_regs *r) {
 
     if (ec)
         ec->cont = ec->cont == ret_user_sysexit ? static_cast<void (*)()> (sys_finish<Sys_regs::COM_ABT>) : dead;
-
+    
+    while(1);
     reply(dead);
 }
 
@@ -666,15 +675,15 @@ void Ec::enable_step_debug(Step_reason reason, mword fault_addr, Paddr fault_phy
             launch_state = Launch_type::IRET; // to ensure that this will finished before any other thread is scheduled
             break;
         case PMI:
-            //        {
-            //            uint8 *ptr = reinterpret_cast<uint8 *> (end_rip);
-            //            if (*ptr == 0xf3 || *ptr == 0xf2) {
-            ////                Console::print("Rep prefix detected");
-            //                in_rep_instruction = true;
-            //                Cpu::disable_fast_string();
-            //            }
+            {
+                uint8 *ptr = reinterpret_cast<uint8 *> (end_rip);
+                if (*ptr == 0xf3 || *ptr == 0xf2) {
+                    Console::print("Rep prefix detected");
+                    in_rep_instruction = true;
+                    Cpu::disable_fast_string();
+                }
             break;
-            //        }
+            }
         case NIL:
         default:
             Console::print("Unknown debug reason -- Enable");
@@ -725,6 +734,19 @@ void Ec::restore_state() {
         regs.vtlb->restore_vtlb();
 }
 
+void Ec::restore_state1() {
+    regs_2 = regs;
+    regs = regs_1;
+    regs_1 = regs_2;
+    Fpu::dwc_restore1();
+    if (fpu)
+        fpu->restore_data1();
+    if (utcb)
+        pd->restore_state1();
+    else
+        regs.vtlb->restore_vtlb1();
+}
+
 void Ec::rollback() {
     regs = regs_0;
     Fpu::dwc_rollback();
@@ -763,16 +785,16 @@ void Ec::vmx_save_state() {
     //    save_vm_stack();
     mword host_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
     Msr_area *cur_host_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(host_msr_area_phys));
-    memcpy(host_msr_area, cur_host_msr_area, PAGE_SIZE);
+    memcpy(host_msr_area0, cur_host_msr_area, PAGE_SIZE);
 
     mword guest_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_ST_ADDR);
     Msr_area *cur_guest_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(guest_msr_area_phys));
-    memcpy(guest_msr_area, cur_guest_msr_area, PAGE_SIZE);
+    memcpy(guest_msr_area0, cur_guest_msr_area, PAGE_SIZE);
 
     mword virtual_apic_page_phys = Vmcs::read(Vmcs::APIC_VIRT_ADDR);
     Virtual_apic_page *cur_virtual_apic_page =
             reinterpret_cast<Virtual_apic_page*> (Buddy::phys_to_ptr(virtual_apic_page_phys));
-    memcpy(virtual_apic_page, cur_virtual_apic_page, PAGE_SIZE);
+    memcpy(virtual_apic_page0, cur_virtual_apic_page, PAGE_SIZE);
     
     regs.vmcs->clear();
     memcpy(Vmcs::vmcs0, regs.vmcs, Vmcs::basic.size);
@@ -783,21 +805,50 @@ void Ec::vmx_restore_state() {
     restore_state();
     
     regs.vmcs->clear();
+    memcpy(Vmcs::vmcs1, regs.vmcs, Vmcs::basic.size);
     memcpy(regs.vmcs, Vmcs::vmcs0, Vmcs::basic.size);
     regs.vmcs->make_current();
     
     mword host_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
     Msr_area *cur_host_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(host_msr_area_phys));
-    memcpy(cur_host_msr_area, host_msr_area, PAGE_SIZE);
+    memcpy(host_msr_area1, cur_host_msr_area, PAGE_SIZE);
+    memcpy(cur_host_msr_area, host_msr_area0, PAGE_SIZE);
 
     mword guest_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_ST_ADDR);
     Msr_area *cur_guest_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(guest_msr_area_phys));
-    memcpy(cur_guest_msr_area, guest_msr_area, PAGE_SIZE);
+    memcpy(guest_msr_area1, cur_guest_msr_area, PAGE_SIZE);
+    memcpy(cur_guest_msr_area, guest_msr_area0, PAGE_SIZE);
 
     mword virtual_apic_page_phys = Vmcs::read(Vmcs::APIC_VIRT_ADDR);
     Virtual_apic_page *cur_virtual_apic_page =
             reinterpret_cast<Virtual_apic_page*> (Buddy::phys_to_ptr(virtual_apic_page_phys));
-    memcpy(cur_virtual_apic_page, virtual_apic_page, PAGE_SIZE);
+    memcpy(virtual_apic_page1, cur_virtual_apic_page, PAGE_SIZE);
+    memcpy(cur_virtual_apic_page, virtual_apic_page0, PAGE_SIZE);
+}
+
+void Ec::vmx_restore_state1() {
+    restore_state1();
+    regs.vmcs->clear();
+    memcpy(Vmcs::vmcs2, regs.vmcs, Vmcs::basic.size);
+    memcpy(regs.vmcs, Vmcs::vmcs1, Vmcs::basic.size);
+    regs.vmcs->make_current();
+    Console::print("Restoring...");
+    
+    mword host_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
+    Msr_area *cur_host_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(host_msr_area_phys));
+    memcpy(host_msr_area2, cur_host_msr_area, PAGE_SIZE);
+    memcpy(cur_host_msr_area, host_msr_area1, PAGE_SIZE);
+
+    mword guest_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_ST_ADDR);
+    Msr_area *cur_guest_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(guest_msr_area_phys));
+    memcpy(guest_msr_area2, cur_guest_msr_area, PAGE_SIZE);
+    memcpy(cur_guest_msr_area, guest_msr_area1, PAGE_SIZE);
+
+    mword virtual_apic_page_phys = Vmcs::read(Vmcs::APIC_VIRT_ADDR);
+    Virtual_apic_page *cur_virtual_apic_page =
+            reinterpret_cast<Virtual_apic_page*> (Buddy::phys_to_ptr(virtual_apic_page_phys));
+    memcpy(virtual_apic_page2, cur_virtual_apic_page, PAGE_SIZE);
+    memcpy(cur_virtual_apic_page, virtual_apic_page1, PAGE_SIZE);
 }
 
 mword Ec::get_regsRIP() {
@@ -898,7 +949,7 @@ void Ec::debug_func(const char* source) {
 }
 
 void Ec::debug_print(const char* source) {
-    if (glb_debug || current->getPd()->pd_debug || current->debug)
+    if (current->getPd()->pd_debug || current->debug)
         debug_func(source);
     return;
 

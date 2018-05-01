@@ -100,6 +100,7 @@ public:
     bool is_cow_pf(uint64 &, mword , mword);
     static void set_cow_page_vmx(uint64, uint64 &);
     void restore_vtlb();
+    void restore_vtlb1();
     static void set_cow_fault(uint64 &, mword);
     size_t vtlb_lookup(mword, uint64&);   
     void update(Cow::cow_elt *);

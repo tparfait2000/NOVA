@@ -68,6 +68,7 @@ uint32      Cpu::name[12];
 uint32      Cpu::features[6];
 bool        Cpu::bsp;
 bool        Cpu::preemption;
+uint32      Cpu::perf_bit_size; 
 
 void Cpu::check_features()
 {
@@ -153,6 +154,9 @@ void Cpu::check_features()
         Msr::write<uint32>(Msr::IA32_CR_PAT, cr_pat);
     } else
         trace (0, "warning: no PAT support");
+    cpuid (0xa, eax, ebx, ecx, edx);
+    perf_bit_size = (edx>>5) & 0xff;
+
 }
 
 void Cpu::setup_thermal()
@@ -225,7 +229,7 @@ void Cpu::init()
     Vmcs::init();
     Vmcb::init();
 
-    set_cr4 (get_cr4() | Cpu::CR4_DE);
+    set_cr4 (get_cr4() | Cpu::CR4_DE | Cpu::CR4_TSD);
     Mca::init();
 
     trace (TRACE_CPU, "CORE:%x:%x:%x %x:%x:%x:%x [%x] %.48s", package, core, thread, family, model, stepping, platform, patch, reinterpret_cast<char *>(name));

@@ -106,8 +106,12 @@ class Lapic
         static unsigned freq_tsc;
         static unsigned freq_bus;
         static uint64 prev_tsc;
-        static uint64 end_time, begin_time, max_instruction, counter;
-        
+        static uint64 end_time, begin_time, max_instruction, counter, prev_counter, counter_start, perf_max_count;
+        static bool timeout_to_check, timeout_expired;
+        static uint32 tour, tour1;
+        static const uint32 max_info;
+        static uint64 perf_compteur[][2]; 
+        static mword info[][4];
         /**
          * Formules fondamentales 
          * ----- Delta TSC -----
@@ -173,11 +177,22 @@ class Lapic
         
         REGPARM (0)
         static void save_counter (void) asm ("save_counter");
-                
+        REGPARM (0)
+        static void stop_kernel_counting (void) asm ("stop_kernel_counting");  
+        
         static void activate_pmi();
         
 //        static uint64 readReset_instCounter(uint64 number = 0);
         static uint64 read_instCounter();
         static void program_pmi(int number = 0);
+        static void program_pmi2(uint64);
         static void cancel_pmi();
+        static void timeout_check();
+        static void print_compteur();
+        static void write_perf(mword);
+        static void compute_expected_info(uint32, int);
+        static bool too_few_instr();
+        static void check_dwc();
+        static uint64 nb_executed_instr();
+        
 };

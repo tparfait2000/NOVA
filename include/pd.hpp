@@ -162,6 +162,7 @@ public:
     bool compare_and_commit();
     bool vtlb_compare_and_commit();
     void restore_state();
+    void restore_state1();
     void rollback(bool is_vm = false);
     void set_to_be_cowed();
     bool get_to_be_cowed(){

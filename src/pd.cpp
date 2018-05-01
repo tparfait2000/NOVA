@@ -469,6 +469,18 @@ void Pd::restore_state() {
     }
 }
 
+void Pd::restore_state1() {
+    Lock_guard <Spinlock> guard(cow_lock);
+    Cow::cow_elt *cow = cow_list;
+    Quota q = this->quota;
+    while (cow != nullptr) {
+        mword v = cow->page_addr_or_gpa;
+        loc[Cpu::id].replace_cow(q, v, cow->new_phys[0]->phys_addr | (cow->attr & ~Hpt::HPT_W));
+//        Hpt::cow_flush(v);
+        cow = cow->next;
+    }
+}
+
 void Pd::rollback(bool is_vm) {
     Lock_guard <Spinlock> guard(cow_lock);
     Cow::cow_elt *cow = cow_list;
@@ -542,11 +554,11 @@ bool Pd::vtlb_compare_and_commit(){
                 *ptr2 = reinterpret_cast<mword*> (Hpt::remap_cow(q, cow->new_phys[1]->phys_addr, PAGE_SIZE));
         int missmatch_addr = memcmp(ptr1, ptr2, PAGE_SIZE);
         if (missmatch_addr) {
-            mword index = PAGE_SIZE / 4 - missmatch_addr - 1;
+            mword index = PAGE_SIZE /sizeof(mword) - missmatch_addr * 4/sizeof(mword) - 1;
             mword val1 = *(ptr1 + index);
             mword val2 = *(ptr2 + index);
-            Console::print("Pd: %p  phys1 %lx phys2 %lx ptr1: %p  ptr2: %p  val1: %lx  val2: %lx  missmatch_addr: %p",
-                    this, cow->new_phys[0]->phys_addr, cow->new_phys[1]->phys_addr, ptr1, ptr2, val1, val2, ptr2 + index);
+            Console::print("Pd: %p  phys1 %lx phys2 %lx ptr1: %p  ptr2: %p  val1: %lx  val2: %lx  missmatch_addr: %p mword size %ld",
+                    this, cow->new_phys[0]->phys_addr, cow->new_phys[1]->phys_addr, ptr1, ptr2, val1, val2, ptr2 + index, sizeof(mword));
             return true;
         }
         void *ptr = Hpt::remap_cow(q, cow->old_phys);

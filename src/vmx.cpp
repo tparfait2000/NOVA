@@ -45,7 +45,9 @@ Vmcs::vmx_ctrl_ent  Vmcs::ctrl_ent;
 mword               Vmcs::fix_cr0_set, Vmcs::fix_cr0_clr;
 mword               Vmcs::fix_cr4_set, Vmcs::fix_cr4_clr;
 
-Vmcs *              Vmcs::vmcs0 = reinterpret_cast<Vmcs*> (Buddy::allocator.alloc (0, Pd::kern.quota, Buddy::FILL_0)); 
+Vmcs *              Vmcs::vmcs0 = reinterpret_cast<Vmcs*> (Buddy::allocator.alloc (0, Pd::kern.quota, Buddy::FILL_0)),
+     *              Vmcs::vmcs1 = reinterpret_cast<Vmcs*> (Buddy::allocator.alloc (0, Pd::kern.quota, Buddy::FILL_0)), 
+     *              Vmcs::vmcs2 = reinterpret_cast<Vmcs*> (Buddy::allocator.alloc (0, Pd::kern.quota, Buddy::FILL_0)); 
 
 Vmcs::Vmcs (mword esp, mword bmp, mword cr3, uint64 eptp) : rev (basic.revision)
 {
@@ -143,7 +145,7 @@ void Vmcs::init()
 
     fix_cr0_clr |= Cpu::CR0_CD | Cpu::CR0_NW;
 
-    ctrl_cpu[0].set |= CPU_HLT | CPU_IO | CPU_IO_BITMAP | CPU_SECONDARY;
+    ctrl_cpu[0].set |= CPU_HLT | CPU_IO | CPU_IO_BITMAP | CPU_SECONDARY | CPU_RDTSC;
 //    ctrl_cpu[0].clr &= ~CPU_MONITOR_TRAP_FLAG;
     ctrl_cpu[1].set |= CPU_VPID | CPU_URG;
 

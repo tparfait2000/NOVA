@@ -21,6 +21,6 @@
 
 INIT_PRIORITY (PRIO_SLAB)
 Slab_cache Fpu::cache (sizeof (Fpu), 16);
-char Fpu::statedata[state_size], Fpu::statedata_0[state_size], Fpu::statedata_1[state_size], Fpu::statedata_2[state_size], Fpu::data_0[data_size], Fpu::data_1[data_size];
+char Fpu::statedata[state_size], Fpu::statedata_0[state_size], Fpu::statedata_1[state_size], Fpu::statedata_2[state_size], Fpu::data_0[data_size], Fpu::data_1[data_size], Fpu::data_2[data_size];
 Fpu *Fpu::fpu_0 = new(Pd::kern.quota) Fpu, *Fpu::fpu_1 = new(Pd::kern.quota) Fpu, *Fpu::fpu_2 = new(Pd::kern.quota) Fpu;
 bool Fpu::is_saved = false;

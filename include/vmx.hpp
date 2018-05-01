@@ -30,7 +30,7 @@ class Vmcs
         uint32  abort;
 
         static Vmcs *current CPULOCAL_HOT;
-        static Vmcs *vmcs0;
+        static Vmcs *vmcs0, *vmcs1, *vmcs2;
         static unsigned vpid_ctr CPULOCAL;
 
         static union vmx_basic {

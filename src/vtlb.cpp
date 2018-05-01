@@ -167,7 +167,7 @@ Vtlb::Reason Vtlb::miss(Exc_regs *regs, mword virt, mword &error) {
 
         tlb->val = static_cast<typeof tlb->val> ((host & ~((1UL << shift) - 1)) | attr | TLB_D | TLB_A);
         //        Console::print("entry end: %llx virt %lx phys %lx host: %lx error %lx", tlb->val, virt, phys, host, error);
-//        Vtlb::set_cow_fault(tlb->val, phys);
+        Vtlb::set_cow_fault(tlb->val, phys);
         return SUCCESS;
     }
 }
@@ -243,6 +243,28 @@ void Vtlb::restore_vtlb() {
         //        a |= Vtlb::TLB_W;
         a &= ~Vtlb::TLB_W;
         *(cow->vtlb_entry) = cow->new_phys[1]->phys_addr | a;
+        //        Paddr physical;
+        //        mword attribut;
+        //        pd->Space_mem::loc[Cpu::id].lookup(cow->page_addr_or_gpa, physical, attribut);
+        //        pd->Space_mem::loc[Cpu::id].update(pd->quota, cow->page_addr_or_gpa, 0, cow->new_phys[1]->phys_addr, attribut | Hpt::HPT_W, Hpt::TYPE_UP, false);      
+        //        Hpt::cow_flush(cow->page_addr_or_gpa);
+        cow = cow->next;
+    }
+}
+
+void Vtlb::restore_vtlb1() {
+    /**
+     * Consider how to put it back in pd.cpp: pd->restore_state()
+     */
+    Ec *ec = Ec::current;
+    Pd *pd = ec->getPd();
+    Lock_guard <Spinlock> guard(pd->cow_lock);
+    Cow::cow_elt *cow = pd->cow_list;
+    while (cow != nullptr) {
+        mword a = cow->attr;
+        //        a |= Vtlb::TLB_W;
+        a &= ~Vtlb::TLB_W;
+        *(cow->vtlb_entry) = cow->new_phys[0]->phys_addr | a;
         //        Paddr physical;
         //        mword attribut;
         //        pd->Space_mem::loc[Cpu::id].lookup(cow->page_addr_or_gpa, physical, attribut);

@@ -81,6 +81,9 @@ void Ec::vmx_exception() {
                     Vmcs::write(Vmcs::ENT_INTR_ERROR, err);
 
                 case Vtlb::SUCCESS:
+                    if(Lapic::tour >= 66600 && Vmcs::read(Vmcs::GUEST_RIP) == 0xc05c3a6d)
+                        Console::print("#PF err %lx cr2 %lx look %lx entry %llx", err, cr2, look, entry);
+            
                     ret_user_vmresume();
 
                 case Vtlb::SUCCESS_COW:
@@ -100,10 +103,28 @@ void Ec::vmx_extint() {
     else if (vector >= VEC_MSI)
         Dmar::vector(vector);
     else if (vector >= VEC_LVT){
-//        Console::print("In Lapic run %d vector %u counter %llu", run_number, vector, Lapic::counter);
-        if(vector == VEC_LVT_TIMER) (run_number == 0) ? timer_counter1++ : timer_counter2++;
-        Lapic::lvt_vector(vector);
-//        vm_check_memory(5972);
+        run_number == 0 ? timer_counter1++ : timer_counter2++;
+        if(vector == VEC_LVT_TIMER && !is_idle() && run_number == 0){
+//            Console::print("In Lapic run %d VEC_LVT_TIMER %u counter %llu", run_number, vector, Lapic::counter);
+            mword current_rip = Vmcs::read(Vmcs::GUEST_RIP);
+            mword inst_off = current_rip & PAGE_MASK;
+            uint64 entry = 0;
+            if (!current->regs.vtlb->vtlb_lookup(current_rip, entry)) {
+                Console::print("Instr_addr not found %lx", current_rip);
+            }
+            uint8 *ptr = reinterpret_cast<uint8 *> (Hpt::remap_cow(Pd::current->quota, entry & ~PAGE_MASK));  
+            uint8 *inst_val = ptr + inst_off;
+            if (*inst_val == 0xf3 || *inst_val == 0xf2) {
+                Console::print("Rep prefix detected current_rip %lx current_rcx %lx inst %x", current_rip, current->regs.REG(cx), *inst_val);
+                Lapic::lvt_vector(vector);
+            }else{
+                Lapic::timeout_to_check = true;
+                Lapic::eoi();
+                vm_check_memory(5972);
+            }
+        }else{
+            Lapic::lvt_vector(vector);
+        }
     } else if (vector >= VEC_GSI)
         Gsi::vector(vector);
 
@@ -149,7 +170,7 @@ void Ec::emulate_rdtsc() {
     if (!current->regs.vtlb->vtlb_lookup(inst_addr, entry)) {
         Console::print("Instr_addr not found %lx", inst_addr);
     }
-    uint8 *ptr = reinterpret_cast<uint8 *> (Hpt::remap_cow(Pd::kern.quota, entry & ~PAGE_MASK));  
+    uint8 *ptr = reinterpret_cast<uint8 *> (Hpt::remap_cow(Pd::current->quota, entry & ~PAGE_MASK));  
     uint16 *inst_val = reinterpret_cast<uint16 *>(ptr + inst_off);
     mword off = 0, off_hi = 0, mul = 0, mul_hi = 0;
     bool is_tsc_scale_defined = Vmcs::read(Vmcs::CPU_EXEC_CTRL1) & Vmcs::CPU_TSC_MUL;
@@ -200,7 +221,6 @@ void Ec::enable_single_step() {
 void Ec::disable_single_step() {
     disable_mtf();
     disable_rdtsc();
-    ec_debug = false;
     step_reason = NIL;
     ret_user_vmresume();
 }
@@ -227,16 +247,25 @@ void Ec::vmx_enable_single_step(){
 
 void Ec::vmx_disable_single_step() {
     mword current_rip = Vmcs::read(Vmcs::GUEST_RIP);
+    mword inst_off = current_rip & PAGE_MASK;
+    uint64 entry = 0;
+    if (!current->regs.vtlb->vtlb_lookup(current_rip, entry)) {
+        Console::print("Instr_addr not found %lx", current_rip);
+    }
+    uint8 *ptr = reinterpret_cast<uint8 *> (Hpt::remap_cow(Pd::current->quota, entry & ~PAGE_MASK));  
+    mword *inst_val = reinterpret_cast<mword *>(ptr + inst_off);
+    Console::print("nbInstr_to_execute %lld current_rip %lx current_rax %lx current_rcx %lx inst %lx", 
+            nbInstr_to_execute, current_rip, current->regs.REG(ax), current->regs.REG(cx), *inst_val);
     if (prev_rip == current_rip) {
         // It may happen that this is the final instruction
         if ((current_rip == end_rip) && (current->regs.REG(cx) == end_rcx)) {
             disable_mtf();
-            ec_debug = false;
             step_reason = NIL;
             vm_check_memory(3001);
         }
     } else {
-        nbInstr_to_execute--;
+        if (nbInstr_to_execute > 0)
+            nbInstr_to_execute--;
     }
     prev_rip = current_rip;
     if (nbInstr_to_execute > 0) {
@@ -244,7 +273,6 @@ void Ec::vmx_disable_single_step() {
     }
     if ((current_rip == end_rip) && (current->regs.REG(cx) == end_rcx)) {
             disable_mtf();
-            ec_debug = false;
             step_reason = NIL;
             vm_check_memory(3001);
     } else {
@@ -338,9 +366,11 @@ void Ec::handle_vmx() {
     Cpu::hazard = (Cpu::hazard | HZD_DS_ES | HZD_TR) & ~HZD_FPU;
 
     mword reason = Vmcs::read(Vmcs::EXI_REASON) & 0xff;
-
+    Lapic::write_perf(reason);
     Counter::vmi[reason]++;
 //    Console::print("VM Exit %08lx VMRip %lx VMcx %lx counter %llx", reason, Vmcs::read(Vmcs::GUEST_RIP), current->regs.REG(cx), Lapic::counter);
+    if(Lapic::tour >= 66600)
+        Console::print("VmExit tour %u RIP %lx reason %lu", Lapic::tour, Vmcs::read(Vmcs::GUEST_RIP), reason);
 
     switch (reason) {
         case Vmcs::VMX_EXC_NMI: vmx_exception();
@@ -406,27 +436,33 @@ void Ec::vm_check_memory(int pmi) {
         } else {
             runtime2 = rdtsc();
         }
-        if (pmi == 3002) {
+        if (pmi == 3002) {  //Perf Monitoring Interrupt
             if (pmi != previous_pmi){
                     //means that pmi was simultaneous to another exception, which has been prioritized. 
                     //And the PMI is now to be serviced; but it does not matter anymore. Just launch the 2nd run.
-                    Console::print("pmi different from previous_pmi utcb %p", ec->utcb);
-                    check_exit();
+                    Console::print("pmi different from previous_pmi utcb %p previous_pmi %d pmi %d", ec->utcb, previous_pmi, pmi);
+                    if(previous_pmi != 5972)
+                        check_exit();
             }
             exc_counter2 = exc_counter;
-            counter2 = Lapic::counter;
+            counter2 = Lapic::nb_executed_instr();
             if(Vmcs::has_mtf()){
-                if(2*counter1 > counter2){
-                    nbInstr_to_execute = 2*counter1 - counter2;  
+                if(counter1 > counter2){
+                    nbInstr_to_execute = counter1 - counter2 - 1;  
                     Console::print("PMI inf utcb %p counter1 %llu exc1 %llu counter2 %llu exc2 %llu last_rip %lx last_rcx %lx endrip %lx endrcx %lx", ec->utcb, counter1, exc_counter1, counter2, exc_counter2, last_rip, last_rcx, end_rip, end_rcx);
                     prev_rip = Vmcs::read(Vmcs::GUEST_RIP);                    
                     ec->vmx_enable_single_step();
                     ret_user_vmresume();
-                } else if(2*counter1 < counter2){
-                    Console::print("PMI sup utcb %p counter1 %llu exc1 %llu counter2 %llu exc2 %llu last_rip %lx last_rcx %lx endrip %lx endrcx %lx", ec->utcb, counter1, exc_counter1, counter2, exc_counter2, last_rip, last_rcx, end_rip, end_rcx);
-                    ec->rollback();
-                    ec->reset_all();
-                    check_exit();
+                } else if(counter1 < counter2){
+                    nbInstr_to_execute = counter2 - counter1 - 1;  
+                    Console::print("PMI sup utcb %p counter1 %llu exc1 %llu counter2 %llu exc2 %llu last_rip %lx last_rcx %lx endrip1 %lx endrcx1 %lx endrip2 %lx endrcx2 %lx", 
+                            ec->utcb, counter1, exc_counter1, counter2, exc_counter2, last_rip, last_rcx, end_rip, end_rcx, Vmcs::read(Vmcs::GUEST_RIP), current->get_regsRCX());
+                    end_rip = Vmcs::read(Vmcs::GUEST_RIP);
+                    end_rcx = current->get_regsRCX();
+                    current->vmx_restore_state1();
+                    prev_rip = Vmcs::read(Vmcs::GUEST_RIP);                    
+                    ec->vmx_enable_single_step();
+                    ret_user_vmresume();
                 } else {
                     Console::print("PMI equal utcb %p counter1 %llu exc1 %llu counter2 %llu exc2 %llu last_rip %lx last_rcx %lx endrip %lx endrcx %lx", ec->utcb, counter1, exc_counter1, counter2, exc_counter2, last_rip, last_rcx, end_rip, end_rcx);
                     if ((last_rip != end_rip) || (last_rcx != end_rcx)) {
@@ -437,9 +473,16 @@ void Ec::vm_check_memory(int pmi) {
                     }
                 }
             }else{
-                if ((last_rip != end_rip) || (last_rcx != end_rcx)) {
+                if (((last_rip != end_rip) || (last_rcx != end_rcx)) && (timer_counter1 != timer_counter2)) {
                     Console::print("PMI Diff with no MTF for Single stepping utcb %p counter1 %llu exc1 %llu counter2 %llu exc2 %llu timer_counter1 %llu, timecounter2 %llu"
                     "last_rip %lx end_rip %lx last_rcx %lx end_rcx %lx", ec->utcb, counter1, exc_counter1, counter2, exc_counter2, timer_counter1, timer_counter2, last_rip, end_rip, last_rcx, end_rcx);
+                    if(timer_counter1>timer_counter2){
+                        Lapic::program_pmi2(timer_counter1-timer_counter2);
+                        timer_counter1 = timer_counter2;
+                        ret_user_vmresume();
+                    }else{
+                        Console::print("timer2 > timer1 donc restore state 1"); 
+                    }
                     ec->rollback();
                     ec->reset_all();
                     nb_try++;
@@ -464,6 +507,7 @@ void Ec::vm_check_memory(int pmi) {
             Console::print("eip0: %lx  rcx0: %lx  r11_0: %lx  rdi_0: %lx", regs_0.REG(ip), regs_0.REG(cx), regs_0.r11, regs_0.REG(di));
             Console::print("eip1: %lx  rcx1: %lx  r11_1: %lx  rdi_1: %lx", regs_1.REG(ip), regs_1.REG(cx), regs_1.r11, regs_1.REG(di));
             Console::print("eip: %lx  rcx: %lx  r11: %lx  rdi: %lx", ec->regs.REG(ip), ec->regs.REG(cx), ec->regs.r11, ec->regs.REG(di));
+            Lapic::print_compteur();
             ec->rollback();
             ec->reset_all();
             check_exit();
@@ -471,6 +515,7 @@ void Ec::vm_check_memory(int pmi) {
             launch_state = UNLAUNCHED;
             total_runtime = rdtsc();
             reset_all();
+            Lapic::timeout_check();
             return;
         }
     } else {
@@ -480,19 +525,55 @@ void Ec::vm_check_memory(int pmi) {
         static_tour++;
         ec->vmx_restore_state();
         run_number++;
-        if (pmi == 3002) {
+        Lapic::compute_expected_info(static_cast<uint32>(exc_counter), pmi);
+        if (pmi == 3002) { //Perf Monitoring Interrupt
             previous_pmi = pmi;
             end_rip = last_rip;
             end_rcx = last_rcx;
             exc_counter1 = exc_counter;
-            counter1 = Lapic::counter;
-                if(Vmcs::has_mtf())
-                    Lapic::program_pmi(static_cast<int>(counter1));   
-                else
-                    Lapic::program_pmi(static_cast<int>(timer_counter1- 1+ nb_try));
-            if (static_cast<long> (step_nb) < static_cast<long> (counter1 - exc_counter1))
-                Console::print("step_nb too small utcb %p counter1 %llu exc1 %llu diff %ld", ec->utcb, counter1, exc_counter1, static_cast<long> (counter1 - exc_counter1));
+            counter1 = Lapic::nb_executed_instr();
+            Console::print("pmi %d utcb %p counter1 %llu exc1 %llu diff %ld tour %u", pmi, ec->utcb, counter1, exc_counter1, static_cast<long> (counter1 - exc_counter1), Lapic::tour);            
+            if(Vmcs::has_mtf()){
+                Lapic::program_pmi2(Lapic::max_instruction); 
+            }else
+                Lapic::program_pmi2(Lapic::max_instruction);
             exc_counter = 0;
+        } else if(pmi == 5972){  //vmx_extint
+            previous_pmi = pmi;
+            end_rip = last_rip;
+            end_rcx = last_rcx;
+            exc_counter1 = exc_counter;
+            //counter1 = Lapic::counter + Lapic::max_instruction - Lapic::perf_max_count;
+            counter1 = Lapic::nb_executed_instr();
+            Console::print("pmi %d utcb %p counter1 %llu counter %llu exc1 %llu diff %ld tour %u", pmi, ec->utcb, counter1, Lapic::counter, exc_counter1, static_cast<long> (counter1 - exc_counter1), Lapic::tour);            
+            if(static_cast<long>(counter1 - exc_counter1)<=0){
+                launch_state = UNLAUNCHED;
+                reset_all();
+                return;    
+            }
+            if (static_cast<long> (step_nb) > static_cast<long> (counter1)){
+                Console::print("step_nb too small utcb %p counter1 %llu exc1 %llu diff %ld start_rip %lx start_rcx %lx end_rip %lx end_rcx %lx", 
+                        ec->utcb, counter1, exc_counter1, static_cast<long> (counter1 - exc_counter1), Vmcs::read(Vmcs::GUEST_RIP), ec->regs.REG(cx), end_rip, end_rcx);
+                exc_counter = 0;
+                nbInstr_to_execute = counter1 - 1;
+                if(nbInstr_to_execute<=0){
+                    launch_state = UNLAUNCHED;
+                    total_runtime = rdtsc();
+                    reset_all();
+                    Lapic::timeout_check();
+                    return;
+                }
+                prev_rip = Vmcs::read(Vmcs::GUEST_RIP);                    
+                ec->vmx_enable_single_step();
+                ret_user_vmresume();
+            }
+            if(Vmcs::has_mtf()){
+                Console::print("MTF");
+                Lapic::program_pmi2(counter1);   
+            } else
+                Lapic::program_pmi2(counter1);
+            exc_counter = 0;
+
         } else {
             Lapic::cancel_pmi();
         }

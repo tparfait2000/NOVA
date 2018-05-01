@@ -20,6 +20,7 @@
 
 #include "compiler.hpp"
 #include "types.hpp"
+#include "console.hpp"
 
 extern "C" NONNULL
 inline void *memcpy(void *dst, const void *src, size_t n) {
@@ -105,3 +106,20 @@ inline int memcmp(const void *s1, const void *s2, size_t len) {
                 : "=qm" (diff), "+D" (s1), "+S" (s2), "+c" (len));
     return diff;
 }
+
+extern "C" NONNULL
+/*
+ It does not work
+ */
+inline void order_instruction(mword instr, char *buffer ) {
+    int size = sizeof(mword);
+    Console::sprint(buffer, "%lx ", instr); 
+    char *p1 = buffer, *p2 = buffer + size -1;
+    while(p1 < p2){
+        char tmp = *p1;
+        *p1++ = *p2;
+        *p2-- = tmp;
+    }
+    
+}
+

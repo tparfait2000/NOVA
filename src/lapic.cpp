@@ -32,8 +32,13 @@
 
 unsigned    Lapic::freq_tsc;
 unsigned    Lapic::freq_bus;
-uint64 Lapic::max_instruction = 0x1000000, Lapic::counter = 0;
-uint64 Lapic::max_tsc = 0; 
+uint64 Lapic::max_instruction = 0x100000, Lapic::counter = 0, Lapic::prev_counter, Lapic::max_tsc = 0,
+        Lapic::counter_start, Lapic::perf_max_count; 
+bool Lapic::timeout_to_check = false, Lapic::timeout_expired = false;
+uint32 Lapic::tour = 0, Lapic::tour1 = 0;
+const uint32 Lapic::max_info = 100000;
+uint64 Lapic::perf_compteur[max_info][2];
+mword Lapic::info[max_info][4];
 
 void Lapic::init()
 {
@@ -93,6 +98,7 @@ void Lapic::init()
     }
 
     write (LAPIC_TMR_ICR, 0);
+    perf_max_count = (1ull<<Cpu::perf_bit_size);
 
     trace (TRACE_APIC, "APIC:%#lx ID:%#x VER:%#x LVT:%#x (%s Mode)", apic_base & ~PAGE_MASK, id(), version(), lvt_max(), freq_bus ? "OS" : "DL");
 }
@@ -111,6 +117,8 @@ void Lapic::therm_handler() {
 }
 
 void Lapic::perfm_handler() {
+    eoi(); 
+    Console::print("PERF INTERRUPT ");    
     Ec::global_memory_check(3002);
 }
 
@@ -125,7 +133,7 @@ void Lapic::timer_handler()
 {
     bool expired = (freq_bus ? read (LAPIC_TMR_CCR) : Msr::read<uint64>(Msr::IA32_TSC_DEADLINE)) == 0;
     if (expired)
-        Timeout::check();        
+       Timeout::check(); 
 
     Rcu::update();
 }
@@ -136,7 +144,7 @@ void Lapic::lvt_vector (unsigned vector){
     switch (vector) {
         case VEC_LVT_TIMER: timer_handler(); eoi(); break;
         case VEC_LVT_ERROR: error_handler(); eoi(); break;
-        case VEC_LVT_PERFM: perfm_handler(); eoi(); break;
+        case VEC_LVT_PERFM: perfm_handler(); break;
         case VEC_LVT_THERM: therm_handler(); eoi(); break;
     }
 
@@ -162,17 +170,20 @@ void Lapic::ipi_vector (unsigned vector)
 
 void Lapic::save_counter(){
     Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa); //unless we may face a pmi in the kernel
-    counter = Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0); 
-    Msr::write(Msr::MSR_PERF_FIXED_CTR0, counter-0x44); //0x44 is the number of hypervisor's instruction for now
+    prev_counter = counter;
+    uint64 compteur_value = Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0);
+    counter = compteur_value>counter_start? compteur_value - 0x43 : perf_max_count + compteur_value - 0x43; 
+    Msr::write(Msr::MSR_PERF_FIXED_CTR0, counter); //0x44 is the number of hypervisor's instruction for now
     Ec::last_rip = Vmcs::read(Vmcs::GUEST_RIP);
     Ec::last_rcx = Ec::current->get_regsRCX();
     Ec::exc_counter++;
-}
+    Console::print("Counter after2 VMEXIT %llx %llx %d Eip: %lx compteur_value %llx", prev_counter, counter, Ec::run_number, Ec::last_rip, compteur_value);
+}    
 
 void Lapic::activate_pmi() {
-    Msr::write(Msr::MSR_PERF_GLOBAL_CTRL, 0x700000003);
-    Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);
-    Msr::write(Msr::MSR_PERF_GLOBAL_OVF_CTRL, Msr::read<uint64>(Msr::MSR_PERF_GLOBAL_OVF_CTRL) | (1UL<<32));
+    uint64 msr_glb = Msr::read<uint64>(Msr::MSR_PERF_GLOBAL_CTRL);
+    Msr::write(Msr::MSR_PERF_GLOBAL_CTRL, msr_glb | (1ull<<32));
+    Msr::write(Msr::MSR_PERF_GLOBAL_OVF_CTRL, Msr::read<uint64>(Msr::MSR_PERF_GLOBAL_OVF_CTRL) & ~(1UL<<32));
     program_pmi();
 }
 
@@ -180,16 +191,148 @@ uint64 Lapic::read_instCounter() {
     return Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0); 
 }
 
+/**
+ * This pmi programming take as parameter the number of instruction to retrieve 
+ * from max_instruction before PMI
+ * @param number
+ */
 void Lapic::program_pmi(int number) {
     uint64 nb_inst = max_instruction - number;
+    counter_start = perf_max_count - nb_inst;
     set_lvt(LAPIC_LVT_PERFM, DLV_FIXED, VEC_LVT_PERFM);
-    Msr::write(Msr::MSR_PERF_FIXED_CTR0, 0x1000000000000 - nb_inst);
+    Msr::write(Msr::MSR_PERF_FIXED_CTR0, counter_start);
+    //Qemu oddities : MSR_PERF_FIXED_CTRL must be the last PMU instruction to be 
+    //executed and be updated with a dummy value
+    Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0x0);    
+    Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);
+    tour = 0;
+    prev_counter = counter_start;
+}
+
+/**
+ * This pmi programming take as parameter the exact number of instruction that 
+ * must be executed before PMI
+ * @param number
+ */
+void Lapic::program_pmi2(uint64 number) {
+    counter_start = perf_max_count - number;    
+    set_lvt(LAPIC_LVT_PERFM, DLV_FIXED, VEC_LVT_PERFM);
+    Msr::write(Msr::MSR_PERF_FIXED_CTR0, counter_start);
+    Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0x0);    
+    Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);
+    prev_counter = counter_start;
 }
 
 /**
  * cancel by writing 1 to pmc
+ * We change it to program normal PMI. 
+ * De toute facon, il ne risque pas d'arriver avant le prochain check_memory
  */
 void Lapic::cancel_pmi(){
+    counter_start = perf_max_count - max_instruction;
     set_lvt(LAPIC_LVT_PERFM, DLV_FIXED, VEC_LVT_PERFM);
-    Msr::write(Msr::MSR_PERF_FIXED_CTR0, 0x1);
+    Msr::write(Msr::MSR_PERF_FIXED_CTR0, counter_start);
+    Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0x0);    
+    Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);
+    prev_counter = counter_start;
+}
+
+void Lapic::timeout_check() {
+    if (timeout_to_check) {
+        timer_handler();
+        timeout_to_check = false;
+    }
+}
+
+void Lapic::print_compteur(){
+    Console::print("tour %u tour1 %u\n     Compteur1    run  EIP   Reason     #Instr1     ExpectedCmpt     |    Compteur2  run  EIP  Reason  #Instr2", tour, tour1);
+    uint32 half = tour1;
+    if(tour<half)
+        return;
+    for(uint32 i=0; i<tour-half; i++){
+        Console::print("[%3u] %12llx %3lx %6lx %6ld   %10lu    %12llx   | %12llx   %lx   %6lx   %ld    %10lu", i, perf_compteur[i][0], 
+                info[i][0], info[i][1], info[i][2], info[i][3], perf_compteur[i][1], perf_compteur[i+half][0], info[i+half][0], info[i+half][1], info[i+half][2], info[i+half][3]);
+    }
+    if(tour%2 != 0 && tour > 2*tour1)
+        Console::print("[%3u] %12llx %3lx %6lx %6ld   %10lu    %12llx", half+1, perf_compteur[half+1][0], 
+                info[half+1][0], info[half+1][1], info[half+1][2], info[half+1][3], perf_compteur[half+1][1]);
+    if(tour1 > tour/2)
+        for(uint32 i=tour-half; i<half; i++){
+            Console::print("[%3u] %12llx %3lx %6lx %6ld   %10lu    %12llx", i, perf_compteur[i][0], 
+                info[i][0], info[i][1], info[i][2], info[half+1][3], perf_compteur[i][1]);
+        }
+}
+
+void Lapic::write_perf(mword reason){
+    perf_compteur[tour][0] = counter;
+    info[tour][0] = Ec::run_number;
+    info[tour][1] = Ec::last_rip;
+    info[tour][2] = reason;
+    info[tour][3] = static_cast<uint32>(counter - prev_counter);
+    tour++;
+}
+
+void Lapic::stop_kernel_counting(){
+    Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);    
+}
+
+void Lapic::compute_expected_info(uint32 exc_count, int pmi){
+    Console::print("compute_expected_info: Tour %u exc_count %u pmi %d", tour, exc_count, pmi);
+    uint32 i = tour - exc_count;
+    for(uint32 j=i; j<tour-1; j++){
+        switch(pmi){
+            case 3002:
+                perf_compteur[j][1] = perf_compteur[j][0];
+                break;
+            case 5972:
+                perf_compteur[j][1] = perf_max_count - perf_compteur[tour-1][0] + perf_compteur[j][0];
+                break;
+            default:
+                ;
+        }
+    }
+    if(tour == exc_count)
+        tour1 = tour;
+    else{
+        tour1 = exc_count;
+        Console::print("Tour n'est pas egal a exc_count");
+    }
+}
+
+bool Lapic::too_few_instr(){
+    return (read_instCounter() - prev_counter) < max_instruction/10;
+}
+
+void Lapic::check_dwc(){
+    if((Ec::run_number == 0) || (tour == tour1))
+        return;
+    if(Ec::previous_pmi != 3002 && Ec::previous_pmi != 5972) //only Perf and Timer
+        return;
+    if(Ec::step_reason != Ec::NIL)
+        return;
+    if(Ec::no_further_check)
+        return;
+    if(perf_compteur[tour-1-tour1][1] == perf_compteur[tour-1][0] &&
+            info[tour-1][1] == info[tour-1-tour1][1] && 
+            info[tour-1][2] == info[tour-1-tour1][2]
+            )
+        return;
+    else{
+        if(info[0][1] == 0x1800c)
+            return;
+        if((perf_compteur[tour-1-tour1][1] != perf_compteur[tour-1][0] ||
+                info[tour-1][2] != info[tour-1-tour1][2]) &&
+                info[tour-1][2] == 1){
+            Ec::no_further_check = true;
+            print_compteur();
+            return;
+        }
+        Ec::current->die("Counter missmatch");        
+    }
+        
+}
+
+uint64 Lapic::nb_executed_instr(){
+    uint64 compteur_value = Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0);
+    return compteur_value >= counter_start ? compteur_value - counter_start : perf_max_count - counter_start + compteur_value; 
 }

@@ -120,8 +120,8 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
             return true;
         }
     }
-    Console::print("GP Here: Ec: %s  Pd: %s  err: %08lx  addr: %08lx  eip: %08lx  val: %08x rcx: %lx rdx: %lx rax: %lx cs: %lx", 
-            ec->get_name(), ec->getPd()->get_name(), r->err, r->cr2, eip, *(reinterpret_cast<uint32 *> (eip)), ec->regs.REG(cx), ec->regs.REG(dx), ec->regs.REG(ax), r->cs);
+    Console::print("GP Here: Ec: %s  Pd: %s  err: %08lx  addr: %08lx  eip: %08lx  val: %lx Lapic::counter %llx", 
+            ec->get_name(), ec->getPd()->get_name(), r->err, r->cr2, eip, *(reinterpret_cast<mword *> (eip)), Lapic::read_instCounter());
 
     if(ec->utcb){
         Console::print("eip0: %lx  rcx0: %lx  r11_0: %lx  rdi_0: %lx", regs_0.REG(ip), regs_0.REG(cx), regs_0.r11, regs_0.REG(di));
@@ -230,7 +230,8 @@ void Ec::handle_exc(Exc_regs *r) {
                                 return;
                             }
                         } else {
-                            nbInstr_to_execute--;
+                            if (nbInstr_to_execute > 0)
+                                nbInstr_to_execute--;
                         }
                         prev_rip = current->regs.REG(ip);
                         if (nbInstr_to_execute > 0) {
@@ -453,7 +454,8 @@ void Ec::reset_all() {
     reset_counter();
     reset_time();
     previous_pmi = 0;
-    reinterpret_cast<Space_pio*>(Pd::current->subspace(Crd::PIO))->enable_pio(Pd::current->quota);                
+    no_further_check = false;
+    reinterpret_cast<Space_pio*>(Pd::current->subspace(Crd::PIO))->enable_pio(Pd::current->quota);              
 }
 
 void Ec::reset_time() {

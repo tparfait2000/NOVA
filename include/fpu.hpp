@@ -31,7 +31,7 @@ class Fpu
     private:
         static unsigned const data_size = 512, state_size = 108;
         char data[data_size];
-        static char statedata[state_size], statedata_0[state_size], statedata_1[state_size], statedata_2[state_size], data_0[data_size], data_1[data_size] ;
+        static char statedata[state_size], statedata_0[state_size], statedata_1[state_size], statedata_2[state_size], data_0[data_size], data_1[data_size], data_2[data_size];
         static Slab_cache cache;
         static bool is_saved;
         
@@ -87,6 +87,17 @@ class Fpu
             load_state(statedata_0);
         }
         
+        static void dwc_restore1(){
+            if(get_cr0() & (Cpu::CR0_TS | Cpu::CR0_EM))
+                return;
+            if(!is_saved)
+                Console::print("TCHA HO HO: Cpu::CR0_TS || Cpu::CR0_EM = 0 but is_saved is false - dwc_restore");// TS ou EM ont été désactivé en cours de route  
+            fpu_2->save();
+            save_state(statedata_2);
+            fpu_1->load();
+            load_state(statedata_1);
+        }
+        
         static mword dwc_check(){
             if(get_cr0() & (Cpu::CR0_TS | Cpu::CR0_EM))
                 return 0;
@@ -129,6 +140,11 @@ class Fpu
         void restore_data(){
             memcpy(data_1, data, data_size);
             memcpy(data, data_0, data_size);
+        }
+        
+        void restore_data1(){
+            memcpy(data_2, data, data_size);
+            memcpy(data, data_1, data_size);
         }
         
         void roll_back(){

@@ -47,7 +47,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc> {
 private:
     void (*cont)() ALIGNED(16);
     Cpu_regs regs;
-    static Cpu_regs regs_0, regs_1;
+    static Cpu_regs regs_0, regs_1, regs_2;
     Ec * rcap; //Receiver Capability
     Utcb * utcb;
     Refptr<Pd> pd;
@@ -55,8 +55,8 @@ private:
     Ec * prev;
     Ec * next;
     Fpu * fpu;
-    static Msr_area *host_msr_area, *guest_msr_area;
-    static Virtual_apic_page *virtual_apic_page; 
+    static Msr_area *host_msr_area0, *guest_msr_area0, *host_msr_area1, *guest_msr_area1, *host_msr_area2, *guest_msr_area2;
+    static Virtual_apic_page *virtual_apic_page0, *virtual_apic_page1, *virtual_apic_page2; 
     
     char name[str_max_length];
     
@@ -244,7 +244,7 @@ public:
     static uint64 begin_time, end_time, runtime1, runtime2, total_runtime, step_debug_time, static_tour, counter1, counter2, exc_counter, exc_counter1, exc_counter2, gsi_counter1, lvt_counter1, msi_counter1, ipi_counter1,
             gsi_counter2, lvt_counter2, msi_counter2, ipi_counter2, debug_compteur, count_je, nbInstr_to_execute, tsc1, tsc2, timer_counter1, timer_counter2;
     static uint8 run_number, launch_state, step_reason, debug_nb;
-    static bool ec_debug, glb_debug, hardening_started, in_rep_instruction, not_nul_cowlist, jump_ex, fpu_saved;
+    static bool ec_debug, glb_debug, hardening_started, in_rep_instruction, not_nul_cowlist, jump_ex, fpu_saved, no_further_check;
     static int previous_pmi, previous_ret, nb_try;
     
     Ec(Pd *, void (*)(), unsigned, char* const nm = const_cast<char* const> ("Unknown"));
@@ -518,6 +518,7 @@ public:
     
     void vmx_save_state();    
     void vmx_restore_state();
+    void vmx_restore_state1();
     
     bool two_run_ok() {
         return run_number == 2;
@@ -528,8 +529,7 @@ public:
     }
 
     static bool is_idle() {
-//        return launch_state == UNLAUNCHED && step_reason == NIL;
-        return true;
+        return launch_state == UNLAUNCHED && step_reason == NIL;
     }
 
     void set_env(uint64 t) {
@@ -554,6 +554,7 @@ public:
     }
 
     void restore_state();
+    void restore_state1();
     void rollback();
     mword get_regsRIP();
     mword get_regsRCX();

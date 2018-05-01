@@ -77,9 +77,9 @@ void Space_pio::page_fault (mword addr, mword error)
 }
 
 void Space_pio::disable_pio(Quota &quota){
-    //space_mem()->loc[Cpu::id].replace_cow_n(quota, SPC_LOCAL_IOP, 2, hbmp_backup|Hpt::HPT_NX | Hpt::HPT_D | Hpt::HPT_A | Hpt::HPT_W | Hpt::HPT_P);
+    space_mem()->loc[Cpu::id].replace_cow_n(quota, SPC_LOCAL_IOP, 2, hbmp_backup|Hpt::HPT_NX | Hpt::HPT_D | Hpt::HPT_A | Hpt::HPT_W | Hpt::HPT_P);
 }
 
 void Space_pio::enable_pio(Quota &quota){
-    //space_mem()->loc[Cpu::id].replace_cow_n(quota, SPC_LOCAL_IOP, 2, hbmp|Hpt::HPT_NX | Hpt::HPT_D | Hpt::HPT_A | Hpt::HPT_W | Hpt::HPT_P);
+    space_mem()->loc[Cpu::id].replace_cow_n(quota, SPC_LOCAL_IOP, 2, hbmp|Hpt::HPT_NX | Hpt::HPT_D | Hpt::HPT_A | Hpt::HPT_W | Hpt::HPT_P);
 }
