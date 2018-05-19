@@ -39,7 +39,7 @@ Vmcb::Vmcb (Quota &quota, mword bmp, mword nptp) : base_io (bmp), asid (++asid_c
 
 void Vmcb::init()
 {
-    if (!Cpu::feature (Cpu::FEAT_SVM)) {
+    if (!Cpu::feature (Cpu::FEAT_SVM) || (Msr::read<uint64>(Msr::AMD_SVM_VM_CR) & 0x10)) {
         Hip::clr_feature (Hip::FEAT_SVM);
         return;
     }

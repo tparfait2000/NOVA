@@ -90,6 +90,7 @@ class Msr
             IA32_KERNEL_GS_BASE     = 0xc0000102,
 
             AMD_IPMR                = 0xc0010055,
+            AMD_SVM_VM_CR           = 0xc0010114,
             AMD_SVM_HSAVE_PA        = 0xc0010117,
         };
 
