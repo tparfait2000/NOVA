@@ -26,6 +26,10 @@
 #include "ec.hpp"
 #include "svm.hpp"
 
+Vtlb *              Vtlb::vtlb0 = reinterpret_cast<Vtlb*> (Buddy::allocator.alloc (0, Pd::kern.quota, Buddy::NOFILL)),
+     *              Vtlb::vtlb1 = reinterpret_cast<Vtlb*> (Buddy::allocator.alloc (0, Pd::kern.quota, Buddy::NOFILL)), 
+     *              Vtlb::vtlb2 = reinterpret_cast<Vtlb*> (Buddy::allocator.alloc (0, Pd::kern.quota, Buddy::NOFILL)); 
+
 size_t Vtlb::gwalk(Exc_regs *regs, mword gla, mword &gpa, mword &attr, mword &error) {
     if (EXPECT_FALSE(!(regs->cr0_shadow & Cpu::CR0_PG))) {
         gpa = gla;
@@ -166,8 +170,10 @@ Vtlb::Reason Vtlb::miss(Exc_regs *regs, mword virt, mword &error) {
         }
 
         tlb->val = static_cast<typeof tlb->val> ((host & ~((1UL << shift) - 1)) | attr | TLB_D | TLB_A);
-        //        Console::print("entry end: %llx virt %lx phys %lx host: %lx error %lx", tlb->val, virt, phys, host, error);
-        Vtlb::set_cow_fault(tlb->val, phys);
+        if(tlb->val & TLB_W){
+            tlb->val &= ~TLB_W; 
+            tlb->val |= TLB_COW;
+        }
         return SUCCESS;
     }
 }
@@ -274,71 +280,75 @@ void Vtlb::restore_vtlb1() {
     }
 }
 
-Cow::cow_elt *get_cow(uint64* entry, mword guest_phys){
+Cow::cow_elt *get_cow(uint64* entry_ptr, mword guest_phys){
     Ec *ec = Ec::current;
     Pd *pd = ec->getPd();
     Lock_guard <Spinlock> guard(pd->cow_lock);
     Cow::cow_elt *cow = pd->cow_list;
     while (cow != nullptr) {
-        if(cow->vtlb_entry == entry && cow->page_addr_or_gpa == guest_phys)
+        if(cow->vtlb_entry == entry_ptr && cow->page_addr_or_gpa == guest_phys)
             return cow;
         cow = cow->next;
     }
     Console::print("No Cow found ");
     return nullptr;
 }
-void Vtlb::set_cow_fault(uint64 &entry, mword guest_phys) {
+bool Vtlb::resolve_cow_fault(uint64* entry_ptr, mword guest_phys) {
     Ec *ec = Ec::current;
     Pd *pd = ec->getPd();
+    uint64 entry = *entry_ptr;
     Paddr phys = entry & ~PAGE_MASK;
     mword a = entry & PAGE_MASK;
-    if (is_mmio(entry & ~PAGE_MASK)) {
-        Console::print("COW in IO entry %llx, guest_phys %lx", entry, guest_phys);
-        return;
-    } //else 
-    if (entry & TLB_W) {
-        if (Ec::run_number == 1) {
-            Cow::cow_elt *cow = get_cow(&entry, guest_phys & ~PAGE_MASK);
-            entry = cow->new_phys[1]->phys_addr | a;
-            entry |= TLB_W;
-            return;
-        }
-        Cow::cow_elt *ce = nullptr;
-        if (!Cow::get_cow_list_elt(&ce)) //get new cow_elt
-            ec->die("Cow elt exhausted");
+    if (is_mmio(entry & (~PAGE_MASK & ~TLB_COW))) {
+        Console::print("COW in IO entry %llx, guest_phys %lx", entry & (~PAGE_MASK & ~TLB_COW), guest_phys);
+        return false;
+    } 
+    Cow::cow_elt *ce = nullptr;
+    switch(Ec::run_number){
+        case 0:
+            if (!Cow::get_cow_list_elt(&ce)) //get new cow_elt
+                ec->die("Cow elt exhausted");
 
-        if (pd->is_mapped_elsewhere(phys, ce) || Cow::subtitute(phys, ce, guest_phys & ~PAGE_MASK)) {
-            ce->page_addr_or_gpa = guest_phys & ~PAGE_MASK;
-            ce->attr = a;
-            ce->vtlb_entry = &entry;
-        } else // Cow::subtitute will fill cow's fields old_phys, new_phys and frame_index 
-            ec->die("Cow frame exhausted");
-        pd->add_cow(ce);
-        ce->old_phys = phys;
-        entry = ce->new_phys[0]->phys_addr | a;
-        //        Paddr physical;
-        //        mword attribut;
-        //        pd->Space_mem::loc[Cpu::id].lookup(guest_phys, physical, attribut);
-        //        pd->Space_mem::loc[Cpu::id].update(pd->quota, guest_phys, 0, ce->new_phys[0]->phys_addr, attribut | Hpt::HPT_W, Hpt::TYPE_UP, false);      
-        //        Hpt::cow_flush(guest_phys);
-        return;
+            if (pd->is_mapped_elsewhere(phys, ce) || Cow::subtitute(phys, ce, guest_phys & ~PAGE_MASK)) {
+                ce->page_addr_or_gpa = guest_phys & ~PAGE_MASK;
+                ce->attr = a;
+                ce->vtlb_entry = entry_ptr;
+            } else // Cow::subtitute will fill cow's fields old_phys, new_phys and frame_index 
+                ec->die("Cow frame exhausted");
+            pd->add_cow(ce);
+            ce->old_phys = phys;
+            *entry_ptr = ce->new_phys[0]->phys_addr | (a | TLB_W);
+            //        Paddr physical;
+            //        mword attribut;
+            //        pd->Space_mem::loc[Cpu::id].lookup(guest_phys, physical, attribut);
+            //        pd->Space_mem::loc[Cpu::id].update(pd->quota, guest_phys, 0, ce->new_phys[0]->phys_addr, attribut | Hpt::HPT_W, Hpt::TYPE_UP, false);      
+            //        Hpt::cow_flush(guest_phys);
+            break;
+        case 1:
+            ce = get_cow(entry_ptr, guest_phys & ~PAGE_MASK);
+            *entry_ptr = ce->new_phys[1]->phys_addr | (a | TLB_W);
+            break;
+        default:
+            Console::print("this should never happen");
     }
+    Console::print("Cow fault: run %d entry_ptr %p entry %llx *entry_ptr %llx", Ec::run_number, entry_ptr, entry, *entry_ptr);
+    return true;
 }
 
-size_t Vtlb::vtlb_lookup(mword v, uint64 &entry) {
+uint64* Vtlb::vtlb_lookup(mword v) {
     unsigned lev = max();
     unsigned shift;
     Vtlb *tlb, *tlb0;
     for (tlb = this; lev; tlb = static_cast<Vtlb *> (Buddy::phys_to_ptr(tlb->addr()))) {
-        if (!tlb->val)
-            return 0;
+        if (!tlb->val){
+            return nullptr;
+        }
         shift = --lev * bpl() + PAGE_BITS;
         tlb += v >> shift & ((1UL << bpl()) - 1);
         tlb0 = tlb;
         if (tlb->super()) break;
     }
-    entry = tlb0->val;
-    return 1UL << shift;
+    return &(tlb0->val);
 }
 
 void Vtlb::update(Cow::cow_elt *ce) {

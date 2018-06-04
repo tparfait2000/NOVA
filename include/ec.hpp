@@ -242,10 +242,10 @@ public:
     static unsigned affich_num, affich_mod, step_nb;
     static mword prev_rip, last_rip, last_rcx, last_rsp, end_rip, end_rcx, tscm1, tscm2;
     static uint64 begin_time, end_time, runtime1, runtime2, total_runtime, step_debug_time, static_tour, counter1, counter2, exc_counter, exc_counter1, exc_counter2, gsi_counter1, lvt_counter1, msi_counter1, ipi_counter1,
-            gsi_counter2, lvt_counter2, msi_counter2, ipi_counter2, debug_compteur, count_je, nbInstr_to_execute, tsc1, tsc2, timer_counter1, timer_counter2;
+            gsi_counter2, lvt_counter2, msi_counter2, ipi_counter2, debug_compteur, count_je, nbInstr_to_execute, tsc1, tsc2;
     static uint8 run_number, launch_state, step_reason, debug_nb;
     static bool ec_debug, glb_debug, hardening_started, in_rep_instruction, not_nul_cowlist, jump_ex, fpu_saved, no_further_check;
-    static int previous_pmi, previous_ret, nb_try;
+    static int prev_reason, previous_ret, nb_try;
     
     Ec(Pd *, void (*)(), unsigned, char* const nm = const_cast<char* const> ("Unknown"));
     Ec(Pd *, mword, Pd *, void (*)(), unsigned, unsigned, mword, mword, Pt *, char* const nm = const_cast<char* const> ("Unknown"));
@@ -501,8 +501,8 @@ public:
     static void check(mword, bool = true);
 
     REGPARM(1)
-    static void check_memory(int pmi = 0) asm ("memory_checker");
-    static void vm_check_memory(int pmi = 0);
+    static void check_memory(int = 0) asm ("memory_checker");
+    static void vm_check_memory(int = 0);
     REGPARM(1)
     static void saveRegs(Exc_regs *) asm ("saveRegs");
     
@@ -519,6 +519,9 @@ public:
     void vmx_save_state();    
     void vmx_restore_state();
     void vmx_restore_state1();
+    
+    void run2_pmi_check(int);
+    void run1_ext_int_check(int);
     
     bool two_run_ok() {
         return run_number == 2;

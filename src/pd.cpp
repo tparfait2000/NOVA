@@ -557,8 +557,8 @@ bool Pd::vtlb_compare_and_commit(){
             mword index = PAGE_SIZE /sizeof(mword) - missmatch_addr * 4/sizeof(mword) - 1;
             mword val1 = *(ptr1 + index);
             mword val2 = *(ptr2 + index);
-            Console::print("Pd: %p  phys1 %lx phys2 %lx ptr1: %p  ptr2: %p  val1: %lx  val2: %lx  missmatch_addr: %p mword size %ld",
-                    this, cow->new_phys[0]->phys_addr, cow->new_phys[1]->phys_addr, ptr1, ptr2, val1, val2, ptr2 + index, sizeof(mword));
+            Console::print("addr: %lx  phys1 %lx phys2 %lx ptr1: %p  ptr2: %p  val1: %lx  val2: %lx  missmatch_addr: %p mword size %ld",
+                    cow->page_addr_or_gpa, cow->new_phys[0]->phys_addr, cow->new_phys[1]->phys_addr, ptr1, ptr2, val1, val2, ptr2 + index, sizeof(mword));
             return true;
         }
         void *ptr = Hpt::remap_cow(q, cow->old_phys);

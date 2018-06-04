@@ -39,11 +39,11 @@ Slab_cache Ec::cache(sizeof (Ec), 32);
 unsigned Ec::affich_num = 0, Ec::affich_mod = 50000;
 mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx, Ec::tscm1 = 0, Ec::tscm2 = 0;
 bool Ec::ec_debug = false, Ec::glb_debug = false, Ec::hardening_started = false, Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false, Ec::jump_ex = false, Ec::no_further_check = false;
-uint64 Ec::static_tour = 0, Ec::begin_time = 0, Ec::end_time = 0, Ec::exc_counter = 0, Ec::gsi_counter1 = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::lvt_counter1 = 0, Ec::msi_counter1 = 0, Ec::ipi_counter1 = 0, Ec::gsi_counter2 = 0, Ec::lvt_counter2 = 0, Ec::msi_counter2 = 0, Ec::ipi_counter2 = 0, Ec::counter1 = 0, Ec::counter2 = 0, Ec::runtime1 = 0, Ec::runtime2 = 0, Ec::total_runtime = 0, Ec::step_debug_time = 0, Ec::debug_compteur = 0, Ec::count_je = 0, Ec::nbInstr_to_execute = 0, Ec::timer_counter1 = 0, Ec::timer_counter2 = 0;
+uint64 Ec::static_tour = 0, Ec::begin_time = 0, Ec::end_time = 0, Ec::exc_counter = 0, Ec::gsi_counter1 = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::lvt_counter1 = 0, Ec::msi_counter1 = 0, Ec::ipi_counter1 = 0, Ec::gsi_counter2 = 0, Ec::lvt_counter2 = 0, Ec::msi_counter2 = 0, Ec::ipi_counter2 = 0, Ec::counter1 = 0, Ec::counter2 = 0, Ec::runtime1 = 0, Ec::runtime2 = 0, Ec::total_runtime = 0, Ec::step_debug_time = 0, Ec::debug_compteur = 0, Ec::count_je = 0, Ec::nbInstr_to_execute = 0;
 uint8 Ec::run_number = 0, Ec::launch_state = 0, Ec::step_reason = 0, Ec::debug_nb = 0;
 unsigned Ec::step_nb = 200;
 uint64 Ec::tsc1 = 0, Ec::tsc2 = 0; 
-int Ec::previous_pmi = 0, Ec::previous_ret = 0, Ec::nb_try = 0;
+int Ec::prev_reason = 0, Ec::previous_ret = 0, Ec::nb_try = 0;
 
 Ec *Ec::current, *Ec::fpowner;
 // Constructors
@@ -1023,14 +1023,14 @@ void Ec::save_vm_stack() {
      */
     Paddr host_phys;
     mword host_attr, guest_phys, guest_attr, guest_rsp = Vmcs::read(Vmcs::GUEST_RSP) & ~PAGE_MASK;
-    uint64 entry;
-    if (!regs.vtlb->vtlb_lookup(guest_rsp, entry)) return;
+    uint64* entry = regs.vtlb->vtlb_lookup(guest_rsp);
+    if (!entry) return;
     if (!regs.guest_lookup(guest_rsp, guest_phys, guest_attr)) {
         Console::print("Pas normal guest_rsp %lx guest_phys %lx guest_attr %lx", guest_rsp, guest_phys, guest_attr);
         return;
     }
     if (!pd->Space_mem::loc[Cpu::id].lookup(guest_phys, host_phys, host_attr)) return;
-    if (!(host_attr & Hpt::HPT_W) || !(entry & Vtlb::TLB_W)) {
+    if (!(host_attr & Hpt::HPT_W) || !(*entry & Vtlb::TLB_W)) {
         Console::print("Pas writable");
         return;
     }

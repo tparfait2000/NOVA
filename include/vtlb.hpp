@@ -55,7 +55,7 @@ private:
 public:
     static size_t gwalk(Exc_regs *, mword, mword &, mword &, mword &);
     static size_t hwalk(mword, mword &, mword &, mword &);
-
+    static Vtlb *vtlb0, *vtlb1, *vtlb2;
     enum {
         TLB_P = 1UL << 0,
         TLB_W = 1UL << 1,
@@ -68,7 +68,7 @@ public:
         TLB_F = 1UL << 9,
         TLB_M = 1UL << 10,
 
-        TLB_COW = 1UL << 63,
+        TLB_COW = 1ULL << 11,
 
         PTE_P = TLB_P,
         PTE_S = TLB_S,
@@ -101,8 +101,8 @@ public:
     static void set_cow_page_vmx(uint64, uint64 &);
     void restore_vtlb();
     void restore_vtlb1();
-    static void set_cow_fault(uint64 &, mword);
-    size_t vtlb_lookup(mword, uint64&);   
+    static bool resolve_cow_fault(uint64*, mword);
+    uint64* vtlb_lookup(mword);   
     void update(Cow::cow_elt *);
     
     ALWAYS_INLINE

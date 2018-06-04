@@ -331,13 +331,13 @@ void Ec::check_memory(int pmi) {
             runtime2 = rdtsc();
         }
         if (pmi == 3002) {
-            if (pmi != previous_pmi){
+            if (pmi != prev_reason){
                     //means that pmi was simultaneous to another exception, which has been prioritized. 
                     //And the PMI is now to be serviced; but it does not matter anymore. Just launch the 2nd run.
                     Console::print("pmi different from previous_pmi");
                     check_exit();
             }
-            exc_counter2 = Ec::exc_counter;
+            exc_counter2 = exc_counter;
             counter2 = Lapic::read_instCounter();
             if (static_cast<long> (step_nb) > static_cast<long> (counter2 - exc_counter2)) {
                 nbInstr_to_execute = step_nb - counter2 + exc_counter2;
@@ -386,7 +386,7 @@ void Ec::check_memory(int pmi) {
         ec->restore_state();
         run_number++;
         if (pmi == 3002) {
-            previous_pmi = pmi;
+            prev_reason = pmi;
             end_rip = last_rip;
             end_rcx = last_rcx;
             exc_counter1 = exc_counter;
@@ -426,7 +426,7 @@ void Ec::check_exit() {
 }
 
 void Ec::reset_counter() {
-    exc_counter = counter1 = counter2 = exc_counter1 = exc_counter2 = timer_counter1 = timer_counter2 = 0;
+    exc_counter = counter1 = counter2 = exc_counter1 = exc_counter2 = 0;
     gsi_counter1 = lvt_counter1 = msi_counter1 = ipi_counter1 =
             gsi_counter2 = lvt_counter2 = msi_counter2 = ipi_counter2 = 0;
     Lapic::program_pmi();
@@ -453,7 +453,7 @@ void Ec::reset_all() {
     run_number = 0;
     reset_counter();
     reset_time();
-    previous_pmi = 0;
+    prev_reason = 0;
     no_further_check = false;
     reinterpret_cast<Space_pio*>(Pd::current->subspace(Crd::PIO))->enable_pio(Pd::current->quota);              
 }
