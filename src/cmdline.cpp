@@ -6,6 +6,7 @@
  *
  * Copyright (C) 2012-2013 Udo Steinberg, Intel Corporation.
  * Copyright (C) 2014 Udo Steinberg, FireEye, Inc.
+ * Copyright (C) 2015-2018 Alexander Boettcher, Genode Labs GmbH.
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -33,6 +34,7 @@ bool Cmdline::nopcid;
 bool Cmdline::novga;
 bool Cmdline::novpid;
 bool Cmdline::logmem;
+bool Cmdline::fpu_eager;
 
 struct Cmdline::param_map Cmdline::map[] INITDATA =
 {
@@ -46,6 +48,7 @@ struct Cmdline::param_map Cmdline::map[] INITDATA =
     { "novga",      &Cmdline::novga     },
     { "novpid",     &Cmdline::novpid    },
     { "logmem",     &Cmdline::logmem    },
+    { "fpu_eager",  &Cmdline::fpu_eager },
 };
 
 char const *Cmdline::get_arg (char const **line, unsigned &len)

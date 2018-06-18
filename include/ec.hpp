@@ -6,7 +6,7 @@
  *
  * Copyright (C) 2012-2013 Udo Steinberg, Intel Corporation.
  * Copyright (C) 2014 Udo Steinberg, FireEye, Inc.
- * Copyright (C) 2013-2015 Alexander Boettcher, Genode Labs GmbH
+ * Copyright (C) 2012-2018 Alexander Boettcher, Genode Labs GmbH.
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -32,6 +32,7 @@
 #include "timeout_hypercall.hpp"
 #include "tss.hpp"
 #include "si.hpp"
+#include "cmdline.hpp"
 
 #include "stdio.hpp"
 
@@ -137,12 +138,19 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
                 assert (!zero);
 
                 fpowner      = nullptr;
-                Cpu::hazard |= HZD_FPU;
+                if (!Cmdline::fpu_eager) {
+                    assert (!(Cpu::hazard & HZD_FPU));
+                    Fpu::disable();
+                    assert (!(Cpu::hazard & HZD_FPU));
+                }
             }
         }
 
         ALWAYS_INLINE
         static inline void destroy (Ec *obj, Quota &quota) { obj->~Ec(); cache.free (obj, quota); }
+
+        ALWAYS_INLINE
+        inline bool idle_ec() { return !utcb && !regs.vmcb && !regs.vmcs && !regs.vtlb; }
 
         static void free (Rcu_elem * a)
         {
@@ -252,6 +260,18 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         {
             if (EXPECT_FALSE (current->del_rcu()))
                 Rcu::call (current);
+
+            if (Cmdline::fpu_eager) {
+                if (!idle_ec()) {
+                    if (!current->utcb && !this->utcb)
+                        assert(!(Cpu::hazard & HZD_FPU));
+
+                    transfer_fpu(this);
+                    assert(fpowner == this);
+                }
+
+                Cpu::hazard &= ~HZD_FPU;
+            }
 
             current = this;
 

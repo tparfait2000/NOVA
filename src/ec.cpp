@@ -6,7 +6,7 @@
  *
  * Copyright (C) 2012-2013 Udo Steinberg, Intel Corporation.
  * Copyright (C) 2014 Udo Steinberg, FireEye, Inc.
- * Copyright (C) 2013-2015 Alexander Boettcher, Genode Labs GmbH
+ * Copyright (C) 2012-2018 Alexander Boettcher, Genode Labs GmbH.
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -89,6 +89,7 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
 
         regs.dst_portal = NUM_VMI - 2;
         regs.vtlb = new (pd->quota) Vtlb;
+        regs.fpu_on = Cmdline::fpu_eager;
 
         if (Hip::feature() & Hip::FEAT_VMX) {
 
@@ -251,9 +252,13 @@ void Ec::handle_hazard (mword hzd, void (*func)())
         asm volatile ("mov %0, %%ds; mov %0, %%es" : : "r" (SEL_USER_DATA));
     }
 
-    if (hzd & HZD_FPU)
+    if (hzd & HZD_FPU) {
+        if (Cmdline::fpu_eager)
+            die ("FPU HZD detected");
+
         if (current != fpowner)
             Fpu::disable();
+    }
 }
 
 void Ec::ret_user_sysexit()
@@ -434,6 +439,15 @@ void Ec::root_invoke()
     if (Dpt::ord != ~0UL && Dpt::ord > 0x8) {
        trace (0, "disabling super pages for DMAR");
        Dpt::ord = 0x8;
+    }
+
+    /* LazyFP vulnerability - a never ending story Intel ? */
+    if (Cpu::vendor == Cpu::Vendor::INTEL)
+        Cmdline::fpu_eager = true;
+
+    if (Cmdline::fpu_eager) {
+        Ec::current->transfer_fpu(Ec::current);
+        Cpu::hazard &= ~HZD_FPU;
     }
 
     ret_user_sysexit();

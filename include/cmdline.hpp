@@ -6,6 +6,7 @@
  *
  * Copyright (C) 2012-2013 Udo Steinberg, Intel Corporation.
  * Copyright (C) 2014 Udo Steinberg, FireEye, Inc.
+ * Copyright (C) 2017-2018 Alexander Boettcher, Genode Labs GmbH.
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -47,6 +48,7 @@ class Cmdline
         static bool novga;
         static bool novpid;
         static bool logmem;
+        static bool fpu_eager;
 
         INIT
         static void init (char const *);

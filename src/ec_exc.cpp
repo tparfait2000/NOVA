@@ -5,6 +5,7 @@
  * Economic rights: Technische Universitaet Dresden (Germany)
  *
  * Copyright (C) 2012 Udo Steinberg, Intel Corporation.
+ * Copyright (C) 2013-2018 Alexander Boettcher, Genode Labs GmbH.
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -25,18 +26,22 @@
 
 void Ec::load_fpu()
 {
-    if (!utcb)
+    if (!Cmdline::fpu_eager && !utcb)
         regs.fpu_ctrl (true);
 
-    if (EXPECT_FALSE (!fpu))
+    if (EXPECT_FALSE (!fpu)) {
+        if (Cmdline::fpu_eager && !utcb)
+            regs.fpu_ctrl (true);
+
         Fpu::init();
+    }
     else
         fpu->load();
 }
 
 void Ec::save_fpu()
 {
-    if (!utcb)
+    if (!Cmdline::fpu_eager && !utcb)
         regs.fpu_ctrl (false);
 
     if (EXPECT_FALSE (!fpu))
@@ -47,9 +52,7 @@ void Ec::save_fpu()
 
 void Ec::transfer_fpu (Ec *ec)
 {
-    if ((!utcb && !regs.fpu_on) ||
-        (!ec->utcb && !ec->regs.fpu_on))
-      return;
+    assert(!idle_ec());
 
     if (!(Cpu::hazard & HZD_FPU)) {
 
@@ -75,10 +78,16 @@ void Ec::transfer_fpu (Ec *ec)
 
 void Ec::handle_exc_nm()
 {
+    if (Cmdline::fpu_eager)
+        die ("FPU fault");
+
     Fpu::enable();
 
-    if (current == fpowner)
+    if (current == fpowner) {
+        if (!current->utcb && !current->regs.fpu_on)
+           current->regs.fpu_ctrl (true);
         return;
+    }
 
     if (fpowner)
         fpowner->save_fpu();

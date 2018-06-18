@@ -6,7 +6,7 @@
  *
  * Copyright (C) 2012-2013 Udo Steinberg, Intel Corporation.
  * Copyright (C) 2014 Udo Steinberg, FireEye, Inc.
- * Copyright (C) 2013-2015 Alexander Boettcher, Genode Labs GmbH
+ * Copyright (C) 2012-2018 Alexander Boettcher, Genode Labs GmbH
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -177,8 +177,11 @@ void Ec::recv_kern()
     else if (ec->cont == ret_user_vmrun)
         fpu = current->utcb->load_svm (&ec->regs);
 
-    if (EXPECT_FALSE (fpu))
+    if (EXPECT_FALSE (fpu)) {
         ec->transfer_fpu (current);
+        if (Cmdline::fpu_eager)
+           Cpu::hazard &= ~HZD_FPU;
+    }
 
     ret_user_sysexit();
 }
