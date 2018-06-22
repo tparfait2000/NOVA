@@ -10,6 +10,7 @@
 #include "types.hpp"
 #include "buddy.hpp"
 #include "hip.hpp"
+#include "vtlb.hpp"
 
 #ifndef COW_HPP
 #define	COW_HPP
@@ -32,11 +33,12 @@ public:
 
     struct cow_elt {
         mword page_addr_or_gpa; // if VM, this will hold the gpa, else hold page addr
-        uint64 *vtlb_entry;
+        Vtlb *vtlb_entry;
         Paddr old_phys;
         mword attr;
         struct cow_frame* new_phys[2];
         bool used = false;
+        uint64 prev_tlb_val;
         struct cow_elt *next = nullptr;
     };
     static struct cow_elt cow_list[NB_COW_ELT];

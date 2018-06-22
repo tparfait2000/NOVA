@@ -62,14 +62,6 @@ void Ec::vmx_exception() {
             mword err = Vmcs::read(Vmcs::EXI_INTR_ERROR);
             mword cr2 = Vmcs::read(Vmcs::EXI_QUALIFICATION);
 
-            uint64* entry = current->regs.vtlb->vtlb_lookup(cr2);
-            if ((*entry & Vtlb::TLB_COW) && (err & Vtlb::TLB_W)) {
-                if((*entry & PAGE_MASK) == 0xe64)
-                    Console::print("To Debug");
-                if(Vtlb::resolve_cow_fault(entry, cr2)){
-                    ret_user_vmresume();                    
-                }
-            }
             switch (Vtlb::miss(&current->regs, cr2, err)) {
                 case Vtlb::GPA_HPA:
                     //                    vm_check_memory(5961);
@@ -83,9 +75,6 @@ void Ec::vmx_exception() {
                     Vmcs::write(Vmcs::ENT_INTR_ERROR, err);
 
                 case Vtlb::SUCCESS:
-                    if(Lapic::tour >= 66600 && Vmcs::read(Vmcs::GUEST_RIP) == 0xc05c3a6d)
-                        Console::print("#PF err %lx cr2 %lx entry %llx", err, cr2, *entry);
-            
                     ret_user_vmresume();
 
                 case Vtlb::SUCCESS_COW:

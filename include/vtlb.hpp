@@ -101,9 +101,12 @@ public:
     static void set_cow_page_vmx(uint64, uint64 &);
     void restore_vtlb();
     void restore_vtlb1();
-    static bool resolve_cow_fault(uint64*, mword);
-    uint64* vtlb_lookup(mword);   
-    void update(Cow::cow_elt *);
+    static void set_cow_fault(Vtlb*, mword, uint64);
+    uint64* vtlb_lookup(mword);
+    
+    void set_val(uint64 new_val){
+        val = new_val;
+    }
     
     ALWAYS_INLINE
     static inline void *operator new (size_t, Quota &quota) {

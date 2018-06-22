@@ -169,11 +169,10 @@ Vtlb::Reason Vtlb::miss(Exc_regs *regs, mword virt, mword &error) {
             attr |= TLB_S;
         }
 
+        uint64 prev_tlb_val = tlb->val;
         tlb->val = static_cast<typeof tlb->val> ((host & ~((1UL << shift) - 1)) | attr | TLB_D | TLB_A);
-        if(tlb->val & TLB_W){
-            tlb->val &= ~TLB_W; 
-            tlb->val |= TLB_COW;
-        }
+        Console::print("entry end: %llx virt %lx phys %lx host: %lx error %lx", tlb->val, virt, phys, host, error);
+        Vtlb::set_cow_fault(tlb, phys, prev_tlb_val);
         return SUCCESS;
     }
 }
@@ -236,6 +235,78 @@ void Vtlb::set_cow_page_vmx(uint64 virt, uint64 &entry) {
     }
 }
 
+Cow::cow_elt *get_cow(mword phys, mword guest_phys){
+    Ec *ec = Ec::current;
+    Pd *pd = ec->getPd();
+    Lock_guard <Spinlock> guard(pd->cow_lock);
+    Cow::cow_elt *cow = pd->cow_list;
+    while (cow != nullptr) {
+        if(cow->old_phys == phys && cow->page_addr_or_gpa == guest_phys)
+            return cow;
+        cow = cow->next;
+    }
+    Console::print("No Cow found phys %lx phys %lx", phys, guest_phys);
+    return nullptr;
+}
+void Vtlb::set_cow_fault(Vtlb* vtlb, mword guest_phys, uint64 prev_tlb_val) {
+    Ec *ec = Ec::current;
+    Pd *pd = ec->getPd();
+    uint64 entry = vtlb->val;
+    Paddr phys = entry & ~PAGE_MASK;
+    mword a = entry & PAGE_MASK;
+    if (is_mmio(entry & (~PAGE_MASK & ~TLB_COW))) {
+        Console::print("COW in IO entry %llx, guest_phys %lx", entry & (~PAGE_MASK & ~TLB_COW), guest_phys);
+        return;
+    } 
+    Cow::cow_elt *ce = nullptr;
+    switch(Ec::run_number){
+        case 0:
+            if (!Cow::get_cow_list_elt(&ce)) //get new cow_elt
+                ec->die("Cow elt exhausted");
+
+            if (pd->is_mapped_elsewhere(phys, ce) || Cow::subtitute(phys, ce, guest_phys & ~PAGE_MASK)) {
+                ce->page_addr_or_gpa = guest_phys & ~PAGE_MASK;
+                ce->attr = a;
+            } else // Cow::subtitute will fill cow's fields old_phys, new_phys and frame_index 
+                ec->die("Cow frame exhausted");
+            pd->add_cow(ce);
+            ce->old_phys = phys;
+            ce->prev_tlb_val = prev_tlb_val;
+            vtlb->val = ce->new_phys[0]->phys_addr | (a | TLB_W);
+           //        Paddr physical;
+            //        mword attribut;
+            //        pd->Space_mem::loc[Cpu::id].lookup(guest_phys, physical, attribut);
+            //        pd->Space_mem::loc[Cpu::id].update(pd->quota, guest_phys, 0, ce->new_phys[0]->phys_addr, attribut | Hpt::HPT_W, Hpt::TYPE_UP, false);      
+            //        Hpt::cow_flush(guest_phys);
+            break;
+        case 1:
+            ce = get_cow(phys, guest_phys & ~PAGE_MASK);
+            assert(prev_tlb_val == ce->prev_tlb_val);
+            vtlb->val = ce->new_phys[1]->phys_addr | (a | TLB_W);
+            break;
+        default:
+            Console::print("this should never happen");
+    }
+    Console::print("Cow fault: run %d entry_ptr %p entry %llx *entry_ptr %llx gphys %lx prev_val %llx", 
+            Ec::run_number, vtlb, entry, vtlb->val, guest_phys, prev_tlb_val);
+}
+
+uint64* Vtlb::vtlb_lookup(mword v) {
+    unsigned lev = max();
+    unsigned shift;
+    Vtlb *tlb, *tlb0;
+    for (tlb = this; lev; tlb = static_cast<Vtlb *> (Buddy::phys_to_ptr(tlb->addr()))) {
+        if (!tlb->val){
+            return nullptr;
+        }
+        shift = --lev * bpl() + PAGE_BITS;
+        tlb += v >> shift & ((1UL << bpl()) - 1);
+        tlb0 = tlb;
+        if (tlb->super()) break;
+    }
+    return &(tlb0->val);
+}
+
 void Vtlb::restore_vtlb() {
     /**
      * Consider how to put it back in pd.cpp: pd->restore_state()
@@ -278,80 +349,4 @@ void Vtlb::restore_vtlb1() {
         //        Hpt::cow_flush(cow->page_addr_or_gpa);
         cow = cow->next;
     }
-}
-
-Cow::cow_elt *get_cow(uint64* entry_ptr, mword guest_phys){
-    Ec *ec = Ec::current;
-    Pd *pd = ec->getPd();
-    Lock_guard <Spinlock> guard(pd->cow_lock);
-    Cow::cow_elt *cow = pd->cow_list;
-    while (cow != nullptr) {
-        if(cow->vtlb_entry == entry_ptr && cow->page_addr_or_gpa == guest_phys)
-            return cow;
-        cow = cow->next;
-    }
-    Console::print("No Cow found ");
-    return nullptr;
-}
-bool Vtlb::resolve_cow_fault(uint64* entry_ptr, mword guest_phys) {
-    Ec *ec = Ec::current;
-    Pd *pd = ec->getPd();
-    uint64 entry = *entry_ptr;
-    Paddr phys = entry & ~PAGE_MASK;
-    mword a = entry & PAGE_MASK;
-    if (is_mmio(entry & (~PAGE_MASK & ~TLB_COW))) {
-        Console::print("COW in IO entry %llx, guest_phys %lx", entry & (~PAGE_MASK & ~TLB_COW), guest_phys);
-        return false;
-    } 
-    Cow::cow_elt *ce = nullptr;
-    switch(Ec::run_number){
-        case 0:
-            if (!Cow::get_cow_list_elt(&ce)) //get new cow_elt
-                ec->die("Cow elt exhausted");
-
-            if (pd->is_mapped_elsewhere(phys, ce) || Cow::subtitute(phys, ce, guest_phys & ~PAGE_MASK)) {
-                ce->page_addr_or_gpa = guest_phys & ~PAGE_MASK;
-                ce->attr = a;
-                ce->vtlb_entry = entry_ptr;
-            } else // Cow::subtitute will fill cow's fields old_phys, new_phys and frame_index 
-                ec->die("Cow frame exhausted");
-            pd->add_cow(ce);
-            ce->old_phys = phys;
-            *entry_ptr = ce->new_phys[0]->phys_addr | (a | TLB_W);
-            //        Paddr physical;
-            //        mword attribut;
-            //        pd->Space_mem::loc[Cpu::id].lookup(guest_phys, physical, attribut);
-            //        pd->Space_mem::loc[Cpu::id].update(pd->quota, guest_phys, 0, ce->new_phys[0]->phys_addr, attribut | Hpt::HPT_W, Hpt::TYPE_UP, false);      
-            //        Hpt::cow_flush(guest_phys);
-            break;
-        case 1:
-            ce = get_cow(entry_ptr, guest_phys & ~PAGE_MASK);
-            *entry_ptr = ce->new_phys[1]->phys_addr | (a | TLB_W);
-            break;
-        default:
-            Console::print("this should never happen");
-    }
-    Console::print("Cow fault: run %d entry_ptr %p entry %llx *entry_ptr %llx", Ec::run_number, entry_ptr, entry, *entry_ptr);
-    return true;
-}
-
-uint64* Vtlb::vtlb_lookup(mword v) {
-    unsigned lev = max();
-    unsigned shift;
-    Vtlb *tlb, *tlb0;
-    for (tlb = this; lev; tlb = static_cast<Vtlb *> (Buddy::phys_to_ptr(tlb->addr()))) {
-        if (!tlb->val){
-            return nullptr;
-        }
-        shift = --lev * bpl() + PAGE_BITS;
-        tlb += v >> shift & ((1UL << bpl()) - 1);
-        tlb0 = tlb;
-        if (tlb->super()) break;
-    }
-    return &(tlb0->val);
-}
-
-void Vtlb::update(Cow::cow_elt *ce) {
-    ce->vtlb_entry = &this->val;
-    this->val = ce->new_phys[0]->phys_addr | this->attr();
 }

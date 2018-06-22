@@ -725,26 +725,20 @@ void Ec::disable_step_debug() {
 void Ec::restore_state() {
     regs_1 = regs;
     regs = regs_0;
+    pd->restore_state(!utcb);
     Fpu::dwc_restore();
     if (fpu)
         fpu->restore_data();
-    if (utcb)
-        pd->restore_state();
-    else
-        regs.vtlb->restore_vtlb();
 }
 
 void Ec::restore_state1() {
     regs_2 = regs;
     regs = regs_1;
     regs_1 = regs_2;
+    pd->restore_state1(!utcb);
     Fpu::dwc_restore1();
     if (fpu)
         fpu->restore_data1();
-    if (utcb)
-        pd->restore_state1();
-    else
-        regs.vtlb->restore_vtlb1();
 }
 
 void Ec::rollback() {
@@ -755,8 +749,10 @@ void Ec::rollback() {
     pd->rollback(!static_cast<bool>(utcb));
     if (!utcb) {
         regs.vmcs->clear();
-        memcpy(current->regs.vmcs, Vmcs::vmcs0, Vmcs::basic.size);
+        memcpy(regs.vmcs, Vmcs::vmcs0, Vmcs::basic.size);
         regs.vmcs->make_current();
+        
+        memcpy(regs.vtlb, Vtlb::vtlb0, PAGE_SIZE);
     }
 }
 
@@ -799,11 +795,19 @@ void Ec::vmx_save_state() {
     regs.vmcs->clear();
     memcpy(Vmcs::vmcs0, regs.vmcs, Vmcs::basic.size);
     regs.vmcs->make_current();
+    
+    memcpy(Vtlb::vtlb0, regs.vtlb, PAGE_SIZE);    
 }
 
 void Ec::vmx_restore_state() {
     restore_state();
-    
+    memcpy(Vtlb::vtlb1, regs.vtlb, PAGE_SIZE);
+    memcpy(regs.vtlb, Vtlb::vtlb0, PAGE_SIZE);
+
+    if(!utcb){
+        regs.vtlb->flush(true);
+    }
+        
     regs.vmcs->clear();
     memcpy(Vmcs::vmcs1, regs.vmcs, Vmcs::basic.size);
     memcpy(regs.vmcs, Vmcs::vmcs0, Vmcs::basic.size);
@@ -828,6 +832,10 @@ void Ec::vmx_restore_state() {
 
 void Ec::vmx_restore_state1() {
     restore_state1();
+    
+    memcpy(Vtlb::vtlb2, regs.vtlb, PAGE_SIZE);
+    memcpy(regs.vtlb, Vtlb::vtlb1, PAGE_SIZE);
+    
     regs.vmcs->clear();
     memcpy(Vmcs::vmcs2, regs.vmcs, Vmcs::basic.size);
     memcpy(regs.vmcs, Vmcs::vmcs1, Vmcs::basic.size);
@@ -1040,7 +1048,7 @@ void Ec::save_vm_stack() {
     if (pd->is_mapped_elsewhere(host_phys, ce) || Cow::subtitute(host_phys, ce, guest_phys)) {
         ce->page_addr_or_gpa = guest_phys;
         ce->attr = host_attr;
-        regs.vtlb->update(ce);
+        ce->vtlb_entry = regs.vtlb;
     } else // Cow::subtitute will fill cow's fields old_phys, new_phys and frame_index 
         die("Cow frame exhausted");
     pd->add_cow(ce);
