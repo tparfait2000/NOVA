@@ -268,6 +268,7 @@ void Ec::ret_user_sysexit()
         send_msg<Ec::ret_user_sysexit>();
     }
     
+    Console::print("Counter before SYSEXIT %llx", Lapic::read_instCounter());
     Lapic::update_counter();
     Console::print("SysExit Counter %llx", Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
 

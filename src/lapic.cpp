@@ -213,7 +213,8 @@ void Lapic::program_pmi(int number) {
     uint64 nb_inst = perf_max_count - max_instruction + number;
     set_lvt(LAPIC_LVT_PERFM, DLV_FIXED, VEC_LVT_PERFM);
     Msr::write(Msr::MSR_PERF_FIXED_CTR0, nb_inst);
-    Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);
+    Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0x0);    
+    Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xb);
 //    Console::print("counter after %llx", Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
 }
 
@@ -228,4 +229,8 @@ void Lapic::cancel_pmi(){
 void Lapic::update_counter(){
     if(Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0) < perf_max_count -max_instruction)
         program_pmi();    
+}
+
+uint64 Lapic::read_instCounter() {
+    return Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0); 
 }
