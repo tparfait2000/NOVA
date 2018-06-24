@@ -464,7 +464,6 @@ void Pd::restore_state(bool is_vcpu) {
     while (cow != nullptr) {
         mword v = cow->page_addr_or_gpa;
         if(is_vcpu){
-            Console::print("prev_tlb_val %llx", cow->prev_tlb_val);
             cow->vtlb_entry->set_val(cow->prev_tlb_val);
         }else{
             loc[Cpu::id].replace_cow(q, v, cow->new_phys[1]->phys_addr | (cow->attr & ~Hpt::HPT_W));

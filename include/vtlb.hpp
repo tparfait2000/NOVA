@@ -103,7 +103,7 @@ public:
     void restore_vtlb1();
     static void set_cow_fault(Vtlb*, mword, uint64);
     uint64* vtlb_lookup(mword);
-    
+
     void set_val(uint64 new_val){
         val = new_val;
     }

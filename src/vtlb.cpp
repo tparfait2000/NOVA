@@ -245,7 +245,7 @@ Cow::cow_elt *get_cow(mword phys, mword guest_phys){
             return cow;
         cow = cow->next;
     }
-    Console::print("No Cow found phys %lx phys %lx", phys, guest_phys);
+    Console::print("No Cow found phys %lx guest_phys %lx", phys, guest_phys);
     return nullptr;
 }
 void Vtlb::set_cow_fault(Vtlb* vtlb, mword guest_phys, uint64 prev_tlb_val) {
@@ -272,6 +272,7 @@ void Vtlb::set_cow_fault(Vtlb* vtlb, mword guest_phys, uint64 prev_tlb_val) {
             pd->add_cow(ce);
             ce->old_phys = phys;
             ce->prev_tlb_val = prev_tlb_val;
+            ce->vtlb_entry = vtlb;
             vtlb->val = ce->new_phys[0]->phys_addr | (a | TLB_W);
            //        Paddr physical;
             //        mword attribut;
@@ -281,14 +282,19 @@ void Vtlb::set_cow_fault(Vtlb* vtlb, mword guest_phys, uint64 prev_tlb_val) {
             break;
         case 1:
             ce = get_cow(phys, guest_phys & ~PAGE_MASK);
-            assert(prev_tlb_val == ce->prev_tlb_val);
+            if(prev_tlb_val != ce->prev_tlb_val){
+                Console::print("Cow fault: run %d entry_ptr %p entry_val %llx ce->vtlb_entry %p gphys %lx prev_val %llx", 
+                    Ec::run_number, vtlb, entry, ce->vtlb_entry, guest_phys, prev_tlb_val);
+                assert(prev_tlb_val == ce->prev_tlb_val);            
+            }
+//            assert(ce->vtlb_entry == vtlb);
             vtlb->val = ce->new_phys[1]->phys_addr | (a | TLB_W);
             break;
         default:
             Console::print("this should never happen");
     }
-    Console::print("Cow fault: run %d entry_ptr %p entry %llx *entry_ptr %llx gphys %lx prev_val %llx", 
-            Ec::run_number, vtlb, entry, vtlb->val, guest_phys, prev_tlb_val);
+    Console::print("Cow fault: run %d entry_ptr %p entry_val %llx ce->vtlb_entry %p gphys %lx prev_val %llx", 
+            Ec::run_number, vtlb, entry, ce->vtlb_entry, guest_phys, prev_tlb_val);
 }
 
 uint64* Vtlb::vtlb_lookup(mword v) {
@@ -307,46 +313,13 @@ uint64* Vtlb::vtlb_lookup(mword v) {
     return &(tlb0->val);
 }
 
-void Vtlb::restore_vtlb() {
-    /**
-     * Consider how to put it back in pd.cpp: pd->restore_state()
-     */
-    Ec *ec = Ec::current;
-    Pd *pd = ec->getPd();
-    Lock_guard <Spinlock> guard(pd->cow_lock);
-    Cow::cow_elt *cow = pd->cow_list;
-    while (cow != nullptr) {
-        mword a = cow->attr;
-        //        a |= Vtlb::TLB_W;
-        a &= ~Vtlb::TLB_W;
-        *(cow->vtlb_entry) = cow->new_phys[1]->phys_addr | a;
-        //        Paddr physical;
-        //        mword attribut;
-        //        pd->Space_mem::loc[Cpu::id].lookup(cow->page_addr_or_gpa, physical, attribut);
-        //        pd->Space_mem::loc[Cpu::id].update(pd->quota, cow->page_addr_or_gpa, 0, cow->new_phys[1]->phys_addr, attribut | Hpt::HPT_W, Hpt::TYPE_UP, false);      
-        //        Hpt::cow_flush(cow->page_addr_or_gpa);
-        cow = cow->next;
-    }
-}
-
-void Vtlb::restore_vtlb1() {
-    /**
-     * Consider how to put it back in pd.cpp: pd->restore_state()
-     */
-    Ec *ec = Ec::current;
-    Pd *pd = ec->getPd();
-    Lock_guard <Spinlock> guard(pd->cow_lock);
-    Cow::cow_elt *cow = pd->cow_list;
-    while (cow != nullptr) {
-        mword a = cow->attr;
-        //        a |= Vtlb::TLB_W;
-        a &= ~Vtlb::TLB_W;
-        *(cow->vtlb_entry) = cow->new_phys[0]->phys_addr | a;
-        //        Paddr physical;
-        //        mword attribut;
-        //        pd->Space_mem::loc[Cpu::id].lookup(cow->page_addr_or_gpa, physical, attribut);
-        //        pd->Space_mem::loc[Cpu::id].update(pd->quota, cow->page_addr_or_gpa, 0, cow->new_phys[1]->phys_addr, attribut | Hpt::HPT_W, Hpt::TYPE_UP, false);      
-        //        Hpt::cow_flush(cow->page_addr_or_gpa);
-        cow = cow->next;
-    }
-}
+//uint64 Vtlb::replace_cow(uint64 old_val, mword v) {
+//    Vtlb o, *e = this->vtlb_lookup(v);
+//    if(!e) return 0;
+//    
+//    do o = *e; while (o.val != p && !e->set(o.val, p));
+//
+//    flush(v);
+//    return e->addr();
+//    val = old_val;
+//}
