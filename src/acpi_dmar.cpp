@@ -33,6 +33,9 @@ void Acpi_dmar::parse() const
 {
     Dmar *dmar = new (Pd::kern.quota) Dmar (static_cast<Paddr>(phys));
 
+    if (dmar->invalid())
+        return;
+
     if (flags & 1)
         Pci::claim_all (dmar);
 

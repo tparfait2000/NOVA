@@ -254,7 +254,7 @@ class Dmar : public List<Dmar>
                 gcmd &= ~GCMD_IRE;
 
             for (Dmar *dmar = list; dmar; dmar = dmar->next)
-                dmar->command (gcmd);
+                if (!dmar->invalid()) dmar->command (gcmd);
         }
 
         ALWAYS_INLINE
@@ -265,6 +265,12 @@ class Dmar : public List<Dmar>
 
         ALWAYS_INLINE
         static bool ire() { return gcmd & GCMD_IRE; }
+
+        ALWAYS_INLINE
+        bool invalid()
+        {
+            return cap == 0 || ecap == 0 || cap == ~0ULL || ecap == ~0ULL;
+        }
 
         void assign (uint16, Pd *);
         static void release (uint16, Pd *);

@@ -42,6 +42,11 @@ Dmar::Dmar (Paddr p) : List<Dmar> (list), reg_base ((hwdev_addr -= PAGE_SIZE) | 
     cap  = read<uint64>(REG_CAP);
     ecap = read<uint64>(REG_ECAP);
 
+    if (invalid()) {
+        Console::print("DMAR at address %lx is invalid (cap=%llx, ecap=%llx) - IOMMU protection is DISABLED\n", p, cap, ecap);
+        return;
+    }
+
     Dpt::ord = min (Dpt::ord, static_cast<mword>(bit_scan_reverse (static_cast<mword>(cap >> 34) & 0xf) + 2) * Dpt::bpl() - 1);
 
     write<uint32>(REG_FEADDR, 0xfee00000 | Cpu::apic_id[0] << 12);
@@ -70,6 +75,9 @@ Dmar::Dmar (Paddr p) : List<Dmar> (list), reg_base ((hwdev_addr -= PAGE_SIZE) | 
 
 void Dmar::assign (uint16 rid, Pd *p)
 {
+    if (invalid())
+        return;
+
     mword lev = bit_scan_reverse (read<mword>(REG_CAP) >> 8 & 0x1f);
 
     Lock_guard <Spinlock> guard (lock);
@@ -97,6 +105,9 @@ void Dmar::assign (uint16 rid, Pd *p)
 void Dmar::release (uint16 rid, Pd *p)
 {
     for (Dmar *dmar = list; dmar; dmar = dmar->next) {
+
+        if (dmar->invalid())
+            continue;
 
         Lock_guard <Spinlock> guard (dmar->lock);
 
@@ -201,7 +212,7 @@ void Dmar::vector (unsigned vector)
 
     if (EXPECT_TRUE (msi == 0))
         for (Dmar *dmar = list; dmar; dmar = dmar->next)
-            dmar->fault_handler();
+            if (!dmar->invalid()) dmar->fault_handler();
 
     Lapic::eoi();
 }
