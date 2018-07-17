@@ -197,5 +197,8 @@ void Ec::handle_exc (Exc_regs *r)
     if (r->user())
         send_msg<ret_user_iret>();
 
+    if (Ec::current->idle_ec())
+        return;
+
     die ("EXC", r);
 }
