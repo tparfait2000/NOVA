@@ -116,7 +116,7 @@ bool Ec::handle_exc_ts (Exc_regs *r)
     return true;
 }
 
-bool Ec::handle_exc_gp (Exc_regs *)
+bool Ec::handle_exc_gp (Exc_regs *r)
 {
     if (Cpu::hazard & HZD_TR) {
         Cpu::hazard &= ~HZD_TR;
@@ -125,6 +125,10 @@ bool Ec::handle_exc_gp (Exc_regs *)
         return true;
     }
 
+    if (fixup (r->REG(ip))) {
+            r->REG(ax) = r->cr2;
+            return true;
+    }
     return false;
 }
 
@@ -170,6 +174,13 @@ void Ec::handle_exc (Exc_regs *r)
 
     switch (r->vec) {
 
+        case Cpu::EXC_NMI:
+//            Console::print("PMI occured on NMI counter %llx reg %x", Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), 
+//                   Lapic::read_perf_reg());
+//            Lapic::program_pmi();
+//            Console::print("reg %x", Lapic::read_perf_reg());
+            return;
+            
         case Cpu::EXC_NM:
             handle_exc_nm();
             return;
