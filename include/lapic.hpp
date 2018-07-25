@@ -105,9 +105,25 @@ class Lapic
     public:
         static unsigned freq_tsc;
         static unsigned freq_bus;
-        static uint64 max_instruction, perf_max_count;
-        static uint64 counter;
-        
+        static uint64 prev_tsc;
+        static uint64 end_time, begin_time, max_instruction, counter, prev_counter, start_counter, perf_max_count;
+        static bool timeout_to_check, timeout_expired;
+        static uint32 tour, tour1;
+        static const uint32 max_info;
+        static uint64 perf_compteur[][2]; 
+        static mword info[][4];
+        /**
+         * Formules fondamentales 
+         * ----- Delta TSC -----
+         * Delta TSC = Delta T * Frequence tsc
+         * 
+         * ----- Delta IRC (Initial Reset Count) ----
+         * Delta IRC = Delta T * Frequence bus        
+         */
+        static unsigned const max_time = 1000; // 1000 => 1µs (ou 1000ns) si freq_tsc/1000000
+                                               // 1000 => 1000µs (ou 1ms) si freq_tsc/1000 
+        static uint64 max_tsc;
+         
         ALWAYS_INLINE
         static inline unsigned id()
         {
@@ -156,14 +172,29 @@ class Lapic
 
         REGPARM (1)
         static void lvt_vector (unsigned) asm ("lvt_vector");
-
+        
         REGPARM (1)
         static void ipi_vector (unsigned) asm ("ipi_vector");
         
+        REGPARM (0)
+        static void save_counter (void) asm ("save_counter");
+        REGPARM (0)
+        static void stop_kernel_counting (void) asm ("stop_kernel_counting");  
+        
         static void activate_pmi();
-        static void program_pmi(int number = 0);
-        static void cancel_pmi();
-        static void update_counter();
+        
+//        static uint64 readReset_instCounter(uint64 number = 0);
         static uint64 read_instCounter();
-
+        static void program_pmi(int number = 0);
+        static void program_pmi2(uint64);
+        static void cancel_pmi();
+        static void timeout_check();
+        static void print_compteur();
+        static void write_perf(mword);
+        static void compute_expected_info(uint32, int);
+        static bool too_few_instr();
+        static void check_dwc();
+        static uint64 nb_executed_instr();
+        static uint32 diff_counter();
+        
 };

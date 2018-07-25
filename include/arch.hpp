@@ -83,9 +83,11 @@
 #define ARG_3           REG(dx)
 #define ARG_4           REG(ax)
 #define ARG_5           REG(8)
+#define ARG_6           REG(9)
 #define OFS_CR2         0x58
 #define OFS_VEC         0xa8
 #define OFS_CS          0xb8
+#define OFS_RIP         0xb0
 
 #define LOAD_KSP        mov     PREG(sp), PREG(11);     \
                         mov     tss_run + 4, PREG(sp)
@@ -129,6 +131,10 @@
 
 #define RET_USER_HYP    mov     PREG(11), PREG(sp);     \
                         mov     $0x200, PREG(11);       \
+                        sysretq;
+//for single-steping after sysret
+#define RET_USER_HYP_SS mov     PREG(11), PREG(sp);     \
+                        mov     $0x300, PREG(11);       \
                         sysretq;
 
 #define RET_USER_EXC    iretq;

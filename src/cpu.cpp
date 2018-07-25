@@ -164,7 +164,7 @@ void Cpu::check_features()
     
     cpuid (0xa, eax, ebx, ecx, edx);
     perf_bit_size = (edx>>5) & 0xff;
-    Console::print("eax %x ebx %x ecx %x edx %x", eax, ebx, ecx, edx); 
+
 }
 
 void Cpu::setup_thermal()
@@ -242,6 +242,7 @@ void Cpu::init()
     Vmcs::init();
     Vmcb::init();
 
+    set_cr4 (get_cr4() | Cpu::CR4_DE | Cpu::CR4_TSD);
     Mca::init();
 
     trace (TRACE_CPU, "CORE:%x:%x:%x %x:%x:%x:%x [%x] %.48s", package, core, thread, family, model, stepping, platform, patch, reinterpret_cast<char *>(name));

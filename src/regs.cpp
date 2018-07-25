@@ -132,9 +132,9 @@ mword Exc_regs::cr4_set() const
 {
     mword set = nst_on ? 0 :
 #ifdef __i386__
-                Cpu::CR4_PSE;
+            Cpu::CR4_PSE;
 #else
-                Cpu::CR4_PSE | Cpu::CR4_PAE;
+            Cpu::CR4_PSE | Cpu::CR4_PAE;
 #endif
 
     return T::fix_cr4_set | set;
@@ -145,9 +145,9 @@ mword Exc_regs::cr4_msk() const
 {
     mword clr = nst_on ? 0 :
 #ifdef __i386__
-                Cpu::CR4_PGE | Cpu::CR4_PAE;
+            Cpu::CR4_PGE | Cpu::CR4_PAE;
 #else
-                Cpu::CR4_PGE;
+            Cpu::CR4_PGE;
 #endif
 
     return T::fix_cr4_clr | clr | cr4_set<T>();
@@ -452,6 +452,56 @@ template <> void Exc_regs::write_efer<Vmcs> (mword val)
         Vmcs::write (Vmcs::ENT_CONTROLS, Vmcs::read (Vmcs::ENT_CONTROLS) |  Vmcs::ENT_GUEST_64);
     else
         Vmcs::write (Vmcs::ENT_CONTROLS, Vmcs::read (Vmcs::ENT_CONTROLS) & ~Vmcs::ENT_GUEST_64);
+}
+
+size_t Exc_regs::guest_lookup(mword gla, mword &gpa, mword &attr){
+    if (EXPECT_FALSE (!(cr0_shadow & Cpu::CR0_PG))) {
+        gpa = gla;
+        return ~0UL;
+    }
+
+    bool pse = cr4_shadow & (Cpu::CR4_PSE | Cpu::CR4_PAE);
+    unsigned lev = 2;
+
+    for (uint32 e, *pte= reinterpret_cast<uint32 *>(cr3_shadow & ~PAGE_MASK);; pte = reinterpret_cast<uint32 *>(e & ~PAGE_MASK)) {
+
+        unsigned shift = --lev * 10 + PAGE_BITS;
+        pte += gla >> shift & ((1UL << 10) - 1);
+
+        if (User::peek (pte, e) != ~0UL) {
+            gpa = reinterpret_cast<Paddr>(pte);
+            return ~0UL;
+        }
+
+        if (EXPECT_FALSE (!(e & Vtlb::TLB_P)))
+            return 0;
+
+        attr &= e & PAGE_MASK;
+
+        if (lev && (!pse || !(e & Vtlb::TLB_S))) {
+            continue;
+        }
+
+        size_t size = 1UL << shift;
+        gpa = (e & ~PAGE_MASK) | (gla & (size - 1));
+        return size;
+    }
+}
+
+size_t Exc_regs::vtlb_lookup(mword v, uint64 &entry) {
+    unsigned lev = Vtlb::max();
+    unsigned shift;
+    Vtlb *tlb, *tlb0;
+    for (tlb = vtlb; lev; tlb = static_cast<Vtlb *> (Buddy::phys_to_ptr(tlb->get_addr()))) {
+        if (!tlb->get_val())
+            return 0;
+        shift = --lev * Vtlb::bpl() + PAGE_BITS;
+        tlb += v >> shift & ((1UL << Vtlb::bpl()) - 1);
+        tlb0 = tlb;
+        if (tlb->pub_super()) break;
+    }
+    entry = tlb0->get_val();
+    return 1UL << shift;
 }
 
 template mword Exc_regs::linear_address<Vmcb> (mword) const;

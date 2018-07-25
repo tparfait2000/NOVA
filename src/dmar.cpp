@@ -25,6 +25,7 @@
 #include "pd.hpp"
 #include "stdio.hpp"
 #include "vectors.hpp"
+#include "ec.hpp"
 
 INIT_PRIORITY (PRIO_SLAB)
 Slab_cache  Dmar::cache (sizeof (Dmar), 8);
@@ -197,6 +198,11 @@ void Dmar::fault_handler()
 
 void Dmar::vector (unsigned vector)
 {
+    if(Ec::current->one_run_ok())
+        Ec::msi_counter2++;
+    else
+        Ec::msi_counter1++;
+    
     unsigned msi = vector - VEC_MSI;
 
     if (EXPECT_TRUE (msi == 0))

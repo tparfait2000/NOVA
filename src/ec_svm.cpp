@@ -27,21 +27,20 @@ uint8 Ec::ifetch (mword virt)
     mword phys, attr = 0, type = 0;
     uint8 opcode;
 
-    if (!Vtlb::gwalk (&current->regs, virt, phys, attr, type))
-        die ("SVM TLB failure");
+    if (!Vtlb::gwalk(&current->regs, virt, phys, attr, type))
+        die("SVM TLB failure");
 
-    if (User::peek (reinterpret_cast<uint8 *>(phys), opcode) != ~0UL)
-        die ("SVM ifetch failure");
+    if (User::peek(reinterpret_cast<uint8 *> (phys), opcode) != ~0UL)
+        die("SVM ifetch failure");
 
     return opcode;
 }
 
-void Ec::svm_exception (mword reason)
-{
+void Ec::svm_exception(mword reason) {
     if (current->regs.vmcb->exitintinfo & 0x80000000) {
 
-        mword t = static_cast<mword>(current->regs.vmcb->exitintinfo) >> 8 & 0x7;
-        mword v = static_cast<mword>(current->regs.vmcb->exitintinfo) & 0xff;
+        mword t = static_cast<mword> (current->regs.vmcb->exitintinfo) >> 8 & 0x7;
+        mword v = static_cast<mword> (current->regs.vmcb->exitintinfo) & 0xff;
 
         if (t == 0 || (t == 3 && v != 3 && v != 4))
             current->regs.vmcb->inj_control = current->regs.vmcb->exitintinfo;
@@ -53,15 +52,15 @@ void Ec::svm_exception (mword reason)
             current->regs.dst_portal = reason;
             break;
 
-        case 0x47:          // #NM
+        case 0x47: // #NM
             handle_exc_nm();
             ret_user_vmrun();
 
-        case 0x4e:          // #PF
-            mword err = static_cast<mword>(current->regs.vmcb->exitinfo1);
-            mword cr2 = static_cast<mword>(current->regs.vmcb->exitinfo2);
+        case 0x4e: // #PF
+            mword err = static_cast<mword> (current->regs.vmcb->exitinfo1);
+            mword cr2 = static_cast<mword> (current->regs.vmcb->exitinfo2);
 
-            switch (Vtlb::miss (&current->regs, cr2, err)) {
+            switch (Vtlb::miss(&current->regs, cr2, err)) {
 
                 case Vtlb::GPA_HPA:
                     current->regs.nst_error = 0;
@@ -80,15 +79,14 @@ void Ec::svm_exception (mword reason)
     send_msg<ret_user_vmrun>();
 }
 
-void Ec::svm_invlpg()
-{
+void Ec::svm_invlpg() {
     current->regs.svm_update_shadows();
 
-    mword virt = current->regs.linear_address<Vmcb>(static_cast<mword>(current->regs.vmcb->cs.base) + static_cast<mword>(current->regs.vmcb->rip));
+    mword virt = current->regs.linear_address<Vmcb>(static_cast<mword> (current->regs.vmcb->cs.base) + static_cast<mword> (current->regs.vmcb->rip));
 
-    assert (ifetch (virt) == 0xf && ifetch (virt + 1) == 0x1);
+    assert(ifetch(virt) == 0xf && ifetch(virt + 1) == 0x1);
 
-    uint8 mrm = ifetch (virt + 2);
+    uint8 mrm = ifetch(virt + 2);
     uint8 r_m = mrm & 7;
 
     unsigned len = 3;
@@ -100,7 +98,7 @@ void Ec::svm_invlpg()
     }
 
     current->regs.tlb_flush<Vmcb>(true);
-    current->regs.vmcb->adjust_rip (len);
+    current->regs.vmcb->adjust_rip(len);
     ret_user_vmrun();
 }
 
@@ -108,29 +106,29 @@ void Ec::svm_cr(mword const reason)
 {
     current->regs.svm_update_shadows();
 
-    mword virt = current->regs.linear_address<Vmcb>(static_cast<mword>(current->regs.vmcb->cs.base) + static_cast<mword>(current->regs.vmcb->rip));
+    mword virt = current->regs.linear_address<Vmcb>(static_cast<mword> (current->regs.vmcb->cs.base) + static_cast<mword> (current->regs.vmcb->rip));
 
-    assert (ifetch (virt) == 0xf);
+    assert(ifetch(virt) == 0xf);
 
-    uint8 opc = ifetch (virt + 1);
-    uint8 mrm = ifetch (virt + 2);
+    uint8 opc = ifetch(virt + 1);
+    uint8 mrm = ifetch(virt + 2);
 
     unsigned len, gpr = mrm & 0x7, cr = mrm >> 3 & 0x7;
 
     switch (opc) {
 
-        case 0x6:       // CLTS
+        case 0x6: // CLTS
             current->regs.write_cr<Vmcb> (0, current->regs.read_cr<Vmcb> (0) & ~Cpu::CR0_TS);
             len = 2;
             break;
 
-        case 0x20:      // MOV from CR
-            current->regs.svm_write_gpr (gpr, current->regs.read_cr<Vmcb>(cr));
+        case 0x20: // MOV from CR
+            current->regs.svm_write_gpr(gpr, current->regs.read_cr<Vmcb>(cr));
             len = 3;
             break;
 
-        case 0x22:      // MOV to CR
-            current->regs.write_cr<Vmcb> (cr, current->regs.svm_read_gpr (gpr));
+        case 0x22: // MOV to CR
+            current->regs.write_cr<Vmcb> (cr, current->regs.svm_read_gpr(gpr));
             len = 3;
             break;
 
@@ -143,27 +141,26 @@ void Ec::svm_cr(mword const reason)
             }
         }
         default:
-            die ("SVM decode failure");
+            die("SVM decode failure");
     }
 
-    current->regs.vmcb->adjust_rip (len);
+    current->regs.vmcb->adjust_rip(len);
     ret_user_vmrun();
 }
 
-void Ec::handle_svm()
-{
+void Ec::handle_svm() {
     current->regs.vmcb->tlb_control = 0;
 
-    mword reason = static_cast<mword>(current->regs.vmcb->exitcode);
+    mword reason = static_cast<mword> (current->regs.vmcb->exitcode);
 
     switch (reason) {
-        case -1UL:              // Invalid state
+        case -1UL: // Invalid state
             reason = NUM_VMI - 3;
             break;
-        case 0x400:             // NPT
+        case 0x400: // NPT
             reason = NUM_VMI - 4;
-            current->regs.nst_error = static_cast<mword>(current->regs.vmcb->exitinfo1);
-            current->regs.nst_fault = static_cast<mword>(current->regs.vmcb->exitinfo2);
+            current->regs.nst_error = static_cast<mword> (current->regs.vmcb->exitinfo1);
+            current->regs.nst_fault = static_cast<mword> (current->regs.vmcb->exitinfo2);
             break;
     }
 
@@ -174,8 +171,8 @@ void Ec::handle_svm()
         case 0x0 ... 0x1f:      // CR Access
             svm_cr (reason);
 
-        case 0x40 ... 0x5f:     // Exception
-            svm_exception (reason);
+        case 0x40 ... 0x5f: // Exception
+            svm_exception(reason);
 
         case 0x60:              // EXTINT
             asm volatile ("sti; nop; cli" : : : "memory");

@@ -38,7 +38,7 @@ class Quota
     public:
 
         static Quota init;
-
+        
         Quota () : used(0), over(0), upli(0), notr(0) { }
 
         void alloc(mword p)

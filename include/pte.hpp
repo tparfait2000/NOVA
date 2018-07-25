@@ -24,92 +24,117 @@
 #include "atomic.hpp"
 #include "buddy.hpp"
 #include "x86.hpp"
-
+/**
+ * P: Type (Hpt, Dpt or Ept)
+ * E: length (mword (64 bits or 32 bits)
+ * L: level (3 or 4)
+ * B: base page length (offset length: 10 for 32 bits (L = 3) or 9 for 64 bits (L = 4))
+ * 
+ * |**********|**********|************|
+ * P = Hpt
+ * E = 32 bits (mword)
+ * L = 3
+ * B = 10  
+ */
 template <typename P, typename E, unsigned L, unsigned B, bool F>
-class Pte
-{
-    protected:
-        E val;
+class Pte {
+protected:
+    E val;
 
-        P *walk (Quota &quota, E, unsigned long, bool = true);
+    P *walk(Quota &quota, E, unsigned long, bool = true);
 
-        ALWAYS_INLINE
+    ALWAYS_INLINE
         inline bool present() const { return val & P::PTE_P; }
 
-        ALWAYS_INLINE
+    ALWAYS_INLINE
         inline bool super() const { return val & P::PTE_S; }
 
-        ALWAYS_INLINE
+    ALWAYS_INLINE
         inline mword attr() const { return static_cast<mword>(val) & PAGE_MASK; }
 
-        ALWAYS_INLINE
+    ALWAYS_INLINE
         inline Paddr addr() const { return static_cast<Paddr>(val) & ~((1UL << order()) - 1); }
 
-        ALWAYS_INLINE
+    ALWAYS_INLINE
         inline mword order() const { return PAGE_BITS; }
 
-        ALWAYS_INLINE
+    ALWAYS_INLINE
         static inline mword order (mword) { return 0; }
 
-        ALWAYS_INLINE
-        inline bool set (E o, E v)
-        {
-            bool b = Atomic::cmp_swap (val, o, v);
+    ALWAYS_INLINE
+    inline bool set (E o, E v)
+    {
+        bool b = Atomic::cmp_swap (val, o, v);
 
-            if (F && b)
-                flush (this);
+        if (F && b)
+            flush(this);
 
-            return b;
-        }
+        return b;
+    }
 
-        ALWAYS_INLINE
-        static inline void *operator new (size_t, Quota &quota)
-        {
-            void *p = Buddy::allocator.alloc (0, quota, Buddy::FILL_0);
+    ALWAYS_INLINE
+    static inline void *operator new (size_t, Quota &quota) {
+        void *p = Buddy::allocator.alloc(0, quota, Buddy::FILL_0);
 
-            if (F)
-                flush (p, PAGE_SIZE);
+        if (F)
+            flush(p, PAGE_SIZE);
 
-            return p;
-        }
+        return p;
+    }
 
-        ALWAYS_INLINE
+    ALWAYS_INLINE
         static inline void destroy(Pte *obj, Quota &quota) { obj->~Pte(); Buddy::allocator.free (reinterpret_cast<mword>(obj), quota); }
 
-        void free_up (Quota &quota, unsigned l, P *, mword, bool (*) (Paddr, mword, unsigned), bool (*) (unsigned, mword));
+    void free_up(Quota &quota, unsigned l, P *, mword, bool (*) (Paddr, mword, unsigned), bool (*) (unsigned, mword));
 
-    public:
+public:
 
         Pte() : val(0) {}
 
-        enum
-        {
-            ERR_P   = 1UL << 0,
-            ERR_W   = 1UL << 1,
-            ERR_U   = 1UL << 2,
-        };
+    enum {
+        ERR_P = 1UL << 0,
+        ERR_W = 1UL << 1,
+        ERR_U = 1UL << 2,
+    };
 
-        enum Type
-        {
-            TYPE_UP,
-            TYPE_DN,
-            TYPE_DF,
-        };
+    enum Type {
+        TYPE_UP,
+        TYPE_DN,
+        TYPE_DF,
+    };
 
-        ALWAYS_INLINE
+    ALWAYS_INLINE
         static inline unsigned bpl() { return B; }
 
-        ALWAYS_INLINE
+    ALWAYS_INLINE
         static inline unsigned max() { return L; }
 
-        ALWAYS_INLINE
+    ALWAYS_INLINE
         inline E root (Quota &quota, mword l = L - 1) { return Buddy::ptr_to_phys (walk (quota, 0, l)); }
 
-        size_t lookup (E, Paddr &, mword &);
+    size_t lookup(E, Paddr &, mword &);
 
-        bool update (Quota &quota, E, mword, E, mword, Type = TYPE_UP);
+    bool update(Quota &quota, E, mword, E, mword, Type = TYPE_UP, bool set_cow = false);
 
-        void clear (Quota &quota, bool (*) (Paddr, mword, unsigned) = nullptr, bool (*) (unsigned, mword) = nullptr);
+    void clear(Quota &quota, bool (*) (Paddr, mword, unsigned) = nullptr, bool (*) (unsigned, mword) = nullptr);
 
-        bool check(Quota_guard &qg, mword o) { return qg.check(o / (4096 / sizeof(E)) + L); }
+    bool check(Quota_guard &qg, mword o) {
+        return qg.check(o / (4096 / sizeof (E)) + L);
+    }
+    static bool is_mmio(E p);
+    static void set_cow_page(E virt, E &entry);
+    
+    void print_walk(Quota &quota, E, mword);
+    
+    E get_val(){
+        return val;
+    }
+    
+    bool pub_super() const {
+        return val & P::PTE_S;
+    }
+    
+    Paddr get_addr() const {
+        return static_cast<Paddr> (val) & ~((1UL << order()) - 1);
+    }
 };

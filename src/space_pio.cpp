@@ -19,6 +19,10 @@
  */
 
 #include "pd.hpp"
+#include "ec.hpp"
+
+Paddr Space_pio::gbmp_backup = Buddy::ptr_to_phys (Buddy::allocator.alloc (1, Pd::kern.quota, Buddy::FILL_1));
+Paddr Space_pio::hbmp_backup = Buddy::ptr_to_phys (Buddy::allocator.alloc (1, Pd::kern.quota, Buddy::FILL_1));
 
 Space_mem *Space_pio::space_mem()
 {
@@ -49,8 +53,11 @@ void Space_pio::update (Quota &quota, bool host, mword idx, mword attr)
         Atomic::set_mask (*m, idx_to_mask (idx));
 }
 
-bool Space_pio::update (Quota &quota, Mdb *mdb, mword r)
+bool Space_pio::update (Quota &quota, Mdb *mdb, bool set_cow, mword r)
 {
+    if(set_cow)
+        Console::print("set cow  equals true");
+    
     assert (this == mdb->space && this != &Pd::kern);
 
     Lock_guard <Spinlock> guard (mdb->node_lock);
@@ -71,4 +78,12 @@ void Space_pio::page_fault (mword addr, mword error)
 
     if (!Pd::current->Space_mem::loc[Cpu::id].sync_from (Pd::current->quota, Pd::current->Space_mem::hpt, addr, CPU_LOCAL))
         Pd::current->Space_mem::replace (Pd::current->quota, addr, reinterpret_cast<Paddr>(&FRAME_1) | Hpt::HPT_NX | Hpt::HPT_A | Hpt::HPT_P);
+}
+
+void Space_pio::disable_pio(Quota &quota){
+    space_mem()->loc[Cpu::id].replace_cow_n(quota, SPC_LOCAL_IOP, 2, hbmp_backup|Hpt::HPT_NX | Hpt::HPT_D | Hpt::HPT_A | Hpt::HPT_W | Hpt::HPT_P);
+}
+
+void Space_pio::enable_pio(Quota &quota){
+    space_mem()->loc[Cpu::id].replace_cow_n(quota, SPC_LOCAL_IOP, 2, hbmp|Hpt::HPT_NX | Hpt::HPT_D | Hpt::HPT_A | Hpt::HPT_W | Hpt::HPT_P);
 }

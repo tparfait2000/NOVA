@@ -31,6 +31,7 @@
 #include "pd.hpp"
 #include "multiboot.hpp"
 #include "multiboot2.hpp"
+#include "cow.hpp"
 
 extern "C" INIT
 mword kern_ptab_setup()
@@ -77,4 +78,5 @@ void init (mword magic, mword mbi)
     Console_vga::con.setup();
 
     Keyb::init();
+    Cow::initialize();    
 }

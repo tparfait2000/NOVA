@@ -88,16 +88,21 @@ class Msr
             IA32_LSTAR              = 0xc0000082,
             IA32_FMASK              = 0xc0000084,
             IA32_KERNEL_GS_BASE     = 0xc0000102,
-
-            AMD_IPMR                = 0xc0010055,
-            AMD_SVM_VM_CR           = 0xc0010114,
-            AMD_SVM_HSAVE_PA        = 0xc0010117,
+            IA32_PERF_CTL0          = 0xc0010000,
+            IA32_PERF_CTR0          = 0xc0010004,
+            IA32_PERFEVTSEL0        = 0x186,
+            IA32_PERFEVTSEL1        = 0x187,
+            IA32_PMC0               = 0xc1,
+            IA32_PMC1               = 0xc2,
             IA32_PERF_GLOBAL_STATUS = 0x38e,
             MSR_PERF_FIXED_CTRL     = 0x38d,
             MSR_PERF_FIXED_CTR0     = 0x309,
             MSR_PERF_GLOBAL_CTRL    = 0x38f,
             MSR_PERF_GLOBAL_OVF_CTRL = 0x390,
             
+            AMD_IPMR                = 0xc0010055,
+            AMD_SVM_VM_CR           = 0xc0010114,
+            AMD_SVM_HSAVE_PA        = 0xc0010117,            
         };
 
         enum Feature_Control
