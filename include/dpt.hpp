@@ -30,7 +30,7 @@ public:
         DPT_R = 1UL << 0,
         DPT_W = 1UL << 1,
         DPT_S = 1UL << 7,
-        DPT_COW = 1ULL << 60,
+        DPT_COW = 1UL << 11,
 
         PTE_P = DPT_R | DPT_W,
         PTE_S = DPT_S,
@@ -38,6 +38,6 @@ public:
         PTE_COW = DPT_COW,
         PTE_COW_IO = PTE_COW >> 1,
         PTE_W = DPT_W,
-        PTE_U = ~0ULL,
+        PTE_U = 0,
     };
 };

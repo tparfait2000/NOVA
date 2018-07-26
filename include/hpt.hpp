@@ -53,25 +53,27 @@ public:
         HPT_S   = 1UL << 7,
         HPT_G   = 1UL << 8,
 
+//      PTE_COW marks copy-on-write page table entries.
+        HPT_COW = 1UL << 11,
 #ifdef __x86_64__
         HPT_NX  = 1UL << 63,
 #else
         HPT_NX  = 0,
 #endif
-//          PTE_COW marks copy-on-write page table entries.
-        HPT_COW = 1UL << 11,
     };
 
     enum {
         PTE_P   = HPT_P,
         PTE_S   = HPT_S,
         PTE_N   = HPT_A | HPT_U | HPT_W | HPT_P,
+    };
+    
+    enum {
         PTE_COW = HPT_COW,
         PTE_COW_IO = PTE_COW >> 1,
         PTE_W = HPT_W,
-        PTE_U = HPT_U,
+        PTE_U = 1UL << 63,
     };
-
 
     ALWAYS_INLINE
     inline Paddr addr() const

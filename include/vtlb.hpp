@@ -71,11 +71,14 @@ public:
         PTE_P = TLB_P,
         PTE_S = TLB_S,
         PTE_N = TLB_A | TLB_U | TLB_W | TLB_P,
+    };
+    
+    enum {
         PTE_COW = TLB_COW,
-        PTE_COW_IO = PTE_COW >> 1,
-        TLB_COW_IO = PTE_COW_IO,
         PTE_W = TLB_W,
-        PTE_U = ~0ULL,
+        PTE_U = TLB_U,
+        PTE_COW_IO = 1UL << 63,
+        TLB_COW_IO = PTE_COW_IO,
     };
 
     enum Reason
