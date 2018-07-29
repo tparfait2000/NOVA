@@ -23,6 +23,7 @@
 
 #include "compiler.hpp"
 #include "types.hpp"
+#include "arch.hpp"
 
 class Msr
 {

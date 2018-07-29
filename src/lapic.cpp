@@ -80,8 +80,8 @@ void Lapic::init(bool invariant_tsc)
 
         /* read out tsc freq if supported */
         if (Cpu::vendor == Cpu::Vendor::INTEL && Cpu::family == 6) {
-            if (Cpu::model == 0x2a || Cpu::model == 0x2d || /* Sandy Bridge */
-                Cpu::model >= 0x3a) { /* Ivy Bridge and later */
+            if ((Cpu::model == 0x2a || Cpu::model == 0x2d || /* Sandy Bridge */
+                Cpu::model >= 0x3a) && Msr::peek(Msr::MSR_PLATFORM_INFO) == ~0UL) { /* Ivy Bridge and later */
                 ratio = static_cast<unsigned>(Msr::read<uint64>(Msr::MSR_PLATFORM_INFO) >> 8) & 0xff;
                 freq_tsc = static_cast<unsigned>(ratio * 100000);
                 freq_bus = dl ? 0 : 100000;
@@ -163,7 +163,7 @@ void Lapic::perfm_handler() {
         Console::print(" Fake PERF Interrupt compteur %llx nbInst %llu", compteur_value, nb_instr_exe);
         return;
     }
-    Console::print("PERF INTERRUPT ");    
+//    Console::print("PERF INTERRUPT ");    
     Ec::global_memory_check(3002);
 }
 

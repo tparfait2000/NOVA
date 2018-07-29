@@ -56,7 +56,9 @@ void Space_pio::update (Quota &quota, bool host, mword idx, mword attr)
 bool Space_pio::update (Quota &quota, Mdb *mdb, bool set_cow, mword r)
 {
     if(set_cow)
-        Console::print("set cow  equals true");
+        useless_var = true;
+    else
+        useless_var = false;
     
     assert (this == mdb->space && this != &Pd::kern);
 

@@ -106,7 +106,7 @@ Vmcs::Vmcs (mword esp, mword bmp, mword cr3, uint64 eptp) : rev (basic.revision)
 
 void Vmcs::init()
 {
-    //Console::print("Feature %x  vmx %d IA32_FEATURE_CONTROL %d ", Cpu::features[1], Cpu::feature (Cpu::FEAT_VMX), Msr::read<uint32>(Msr::IA32_FEATURE_CONTROL));
+//    Console::print("Feature %x  vmx %d IA32_FEATURE_CONTROL %d ", Cpu::features[1], Cpu::feature (Cpu::FEAT_VMX), Msr::read<uint32>(Msr::IA32_FEATURE_CONTROL));
     if (!Cpu::feature (Cpu::FEAT_VMX)) {
         Hip::clr_feature (Hip::FEAT_VMX);
         return;

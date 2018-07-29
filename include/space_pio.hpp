@@ -29,6 +29,7 @@ class Space_pio : public Space
     private:
         Paddr hbmp, gbmp;
         static Paddr hbmp_backup, gbmp_backup;
+        bool useless_var = false;
         
         ALWAYS_INLINE
         static inline mword idx_to_virt (mword idx)
