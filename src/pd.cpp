@@ -118,7 +118,7 @@ bool Pd::delegate(Pd *snd, mword const snd_base, mword const rcv_base, mword con
             trace (0, "overmap attempt %s - node - PD:%p->%p SB:%#010lx RB:%#010lx O:%#04lx A:%#lx SUB:%lx", deltype, snd, this, snd_base, rcv_base, ord, attr, sub);
             continue;
         }
-        s |= S::update(qg, node, to_be_cowed);
+        s |= S::update(qg, node, 0, to_be_cowed);
 
         if (Cpu::hazard & HZD_OOM) {
             s |= S::update (qg, node, attr);
@@ -148,7 +148,7 @@ void Pd::revoke(mword const base, mword const ord, mword const attr, bool self, 
         if (kim && (ACCESS_ONCE(mdb->next)->dpth > mdb->dpth)) {
             Quota_guard qg(this->quota);
             if (mdb->node_attr & 0x1f) {
-                static_cast<S *> (mdb->space)->update(qg, mdb, this->get_name(), 0x1f);
+                static_cast<S *> (mdb->space)->update(qg, mdb, 0x1f);
                 mdb->demote_node(0x1f);
             }
             static_cast<S *> (mdb->space)->tree_remove(mdb, Avl::State::KIM);
@@ -167,7 +167,7 @@ void Pd::revoke(mword const base, mword const ord, mword const attr, bool self, 
 
             if (demote && node->node_attr & attr) {
                 Quota_guard qg(this->quota);
-                static_cast<S *> (node->space)->update(qg, node, this->get_name(), attr);
+                static_cast<S *> (node->space)->update(qg, node, attr);
                 node->demote_node(attr);
             }
 
@@ -530,7 +530,8 @@ void Pd::rollback(bool is_vcpu) {
     }
 }
 
-void Pd::set_to_be_cowed(){    
+void Pd::set_to_be_cowed(){   
+    return;
     int i = 0; 
     while(names[i] != nullptr){
         if(!strcmp(name, names[i])){

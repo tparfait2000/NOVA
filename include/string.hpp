@@ -134,3 +134,7 @@ inline void order_instruction(mword instr, char *buffer ) {
     
 }
 
+extern "C" NONNULL
+inline int str_equal(char const *s1, char const *s2) {
+    return !strcmp(s1, s2) ? 1 : 0;
+}

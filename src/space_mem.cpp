@@ -40,7 +40,7 @@ void Space_mem::init (Quota &quota, unsigned cpu)
     }
 }
 
-bool Space_mem::update (Quota_guard &quota, Mdb *mdb, bool set_cow, mword r)
+bool Space_mem::update (Quota_guard &quota, Mdb *mdb, mword r, bool set_cow)
 {
     assert (this == mdb->space && this != &Pd::kern);
 

@@ -231,7 +231,7 @@ void Cpu::init()
 
     setup_pcid();
 
-    mword cr4 = get_cr4();
+    mword cr4 = get_cr4() | Cpu::CR4_TSD;
     if (EXPECT_TRUE (feature (FEAT_SMEP)))
         cr4 |= Cpu::CR4_SMEP;
     if (EXPECT_TRUE (feature (FEAT_SMAP)))
@@ -242,7 +242,6 @@ void Cpu::init()
     Vmcs::init();
     Vmcb::init();
 
-    set_cr4 (get_cr4() | Cpu::CR4_DE | Cpu::CR4_TSD);
     Mca::init();
 
     trace (TRACE_CPU, "CORE:%x:%x:%x %x:%x:%x:%x [%x] %.48s", package, core, thread, family, model, stepping, platform, patch, reinterpret_cast<char *>(name));

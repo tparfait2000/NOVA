@@ -304,47 +304,7 @@ void Ec::ret_user_sysexit(){
         launch_state = Ec::SYSEXIT;
         begin_time = rdtsc(); //normalement, cette instruction devrait etre dans le if precedant
     }
-    //    if(!strcmp(current->get_name(), "fb_drv")){
-    //        count_je++;
-    //    }
-    //        mword *p = reinterpret_cast<mword*> (0x18028);
-    //        Paddr physical_addr;
-    //        mword attribut;
-    //        size_t is_mapped = current->getPd()->loc[Cpu::id].lookup(0x18028, physical_addr, attribut);
-    //        if(count_je > 0x1a6){
-    //            if(is_mapped)
-    //                Console::print("value phys %lx 18028: %lx", physical_addr, reinterpret_cast<mword>(*p));
-    //            else
-    //                Console::print("Not mapped phys %lx jump %llx", physical_addr, count_je);
-    //        }
 
-    if (!strcmp(current->get_name(), "fb_drv")) {
-        //        debug_func("Sysreting");
-        mword *v = reinterpret_cast<mword*> (0x18028);
-        Paddr physical_addr;
-        mword attribut;
-        size_t is_mapped = current->getPd()->loc[Cpu::id].lookup(0x18028, physical_addr, attribut);
-        if (is_mapped && (*v != 0x8020)) {
-            //            current->getPd()->loc[Cpu::id].update(current->getPd()->quota, reinterpret_cast<mword> (v), 0, physical_addr, attribut, Hpt::TYPE_UP, false);
-            current->getPd()->loc[Cpu::id].flush(reinterpret_cast<mword> (v));
-            Console::print("Rectifying in Sysret PD: %s EC %s EIP %lx phys %lx 18028:%lx", Pd::current->get_name(), current->get_name(), current->regs.REG(ip), physical_addr, *v);
-        }
-    }
-    //    if(!strcmp(current->get_name(), "fb_drv") && current->regs.REG(cx) == 0x1024852 && (current->regs.r8 == 0x8824a70 || current->regs.r8 == 0x8824a74)){
-    //        mword *p = reinterpret_cast<mword*> (0x18028);
-    //        Console::print("EIP = SYSRETING PD: %s EC %s step_reason %d 0x18028: %lx", Pd::current->get_name(), current->get_name(), step_reason, *p);
-    ////        Cpu_regs reg_d = current->regs;
-    ////        Console::print("eip: %lx  rax %lx  rbx %lx  rcx %lx  rdx %lx esp %lx  rbp %lx  rdix %lx r8 %lx r9 %lx r10 %lx r11 %lx r12 %lx r13 %lx r14 %lx r15 %lx", 
-    ////                reg_d.REG(ip), reg_d.REG(ax), reg_d.REG(bx), reg_d.REG(cx), reg_d.REG(dx), reg_d.REG(sp), reg_d.REG(bp), reg_d.REG(di), reg_d.r8, reg_d.r9, reg_d.r10, reg_d.r11, reg_d.r12, reg_d.r13, reg_d.r14, reg_d.r15);
-    ////        Console::print("r8 %lx",  reg_d.r8);
-    //        debug = true;
-    //        step_reason = GP;
-    //        current->regs.REG(fl) |= Cpu::EFL_TF;
-    ////        Lapic::reset_counter(0xe3184);
-    //    }else if(debug){
-    //        Console::print("DEBUG SYSRETING PD: %s EC %s EIP %lx step_reason %d r8 %lx", Pd::current->get_name(), current->get_name(), current->regs.REG(cx), step_reason, current->regs.r8);
-    //    }
-    //    
     debug_print("Sysreting");
     if (step_reason == NIL) {
         asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : "memory");
@@ -365,31 +325,21 @@ void Ec::ret_user_iret() {
         launch_state = Ec::IRET;
         begin_time = rdtsc();
     }
-    if (!strcmp(current->get_name(), "fb_drv")) {
-        //        debug_func("Ireting");
-        mword *v = reinterpret_cast<mword*> (0x18028);
-        Paddr physical_addr;
-        mword attribut;
-        size_t is_mapped = current->getPd()->loc[Cpu::id].lookup(0x18028, physical_addr, attribut);
-        if (is_mapped && (*v != 0x8020)) {
-            //            current->getPd()->loc[Cpu::id].update(current->getPd()->quota, reinterpret_cast<mword> (v), 0, physical_addr, attribut, Hpt::TYPE_UP, false);
-            current->getPd()->loc[Cpu::id].flush(reinterpret_cast<mword> (v));
-            Console::print("Rectifying in Iret PD: %s EC %s EIP %lx phys %lx 18028:%lx", Pd::current->get_name(), current->get_name(), current->regs.REG(ip), physical_addr, *v);
-        }
-    }
-
+//    if (!strcmp(current->get_name(), "fb_drv")) {
+//        //        debug_func("Ireting");
+//        mword *v = reinterpret_cast<mword*> (0x18028);
+//        Paddr physical_addr;
+//        mword attribut;
+//        size_t is_mapped = current->getPd()->loc[Cpu::id].lookup(0x18028, physical_addr, attribut);
+//        if (is_mapped && (*v != 0x8020)) {
+//            //            current->getPd()->loc[Cpu::id].update(current->getPd()->quota, reinterpret_cast<mword> (v), 0, physical_addr, attribut, Hpt::TYPE_UP, false);
+//            current->getPd()->loc[Cpu::id].flush(reinterpret_cast<mword> (v));
+//            Console::print("Rectifying in Iret PD: %s EC %s EIP %lx phys %lx 18028:%lx", Pd::current->get_name(), current->get_name(), current->regs.REG(ip), physical_addr, *v);
+//        }
+//    }
 
     debug_print("Ireting");
-    //    if (!strcmp(current->get_name(), "fb_drv")) {
-    //        mword *p = reinterpret_cast<mword*> (0x18028);
-    //        Paddr physical_addr;
-    //        mword attribut;
-    //        size_t is_mapped = current->getPd()->loc[Cpu::id].lookup(0x18028, physical_addr, attribut);
-    //        if (is_mapped) {
-    //            Console::print("Ireting PD: %s EC %s EIP %lx phys %lx 18028:%lx", Pd::current->get_name(), current->get_name(), current->regs.REG(ip), physical_addr, *p);
-    //        } else
-    //            Console::print("Not mapped phys");
-    //    }
+
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR LOAD_SEG RET_USER_EXC) : : "m" (current->regs) : "memory");
 
     UNREACHED;

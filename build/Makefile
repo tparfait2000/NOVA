@@ -94,19 +94,19 @@ LFLAGS		:= --defsym=GIT_VER=0x$(call gitrv) --gc-sections --warn-common -static 
 # Rules
 %-$(ARCH).o:	%.ld $(MAKEFILE_LIST)
 		$(call message,PRE,$@)
-		$(CC) $(SFLAGS) -xc -E -P -MT $@ $< -o $@ -DCONFIG_KERNEL_MEMORY=960M
+		$(CC) $(SFLAGS) -xc -E -P -MT $@ $< -o $@ -DCONFIG_KERNEL_MEMORY=32M
 
 %-$(ARCH).o:	%.S $(MAKEFILE_LIST)
 		$(call message,ASM,$@)
-		$(CC) $(SFLAGS) -c -ggdb -o0 $< -o $@
+		$(CC) $(SFLAGS) -c $< -o $@
 
 %-$(ARCH).o:	%.cpp $(MAKEFILE_LIST)
 		$(call message,CMP,$@)
-		$(CC) $(CFLAGS) -c -ggdb -o0 $< -o $@
+		$(CC) $(CFLAGS) -c $< -o $@
 
 $(TARGET):	$(OBJ)
 		$(call message,LNK,$@)
-		$(LD) $(LFLAGS) -ggdb -o0 $^ -o $@
+		$(LD) $(LFLAGS) $^ -o $@
 
 .PHONY:		install
 .PHONY:		clean

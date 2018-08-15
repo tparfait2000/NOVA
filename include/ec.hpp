@@ -531,6 +531,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
         REGPARM(1)
         static void check_memory(int = 0) asm ("memory_checker");
+        REGPARM(1)
         static void vm_check_memory(int = 0);
         REGPARM(1)
         static void saveRegs(Exc_regs *) asm ("saveRegs");
@@ -561,7 +562,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         }
 
         static bool is_idle() {
-            return launch_state == UNLAUNCHED && step_reason == NIL;
+            return true;
         }
 
         void set_env(uint64 t) {

@@ -31,9 +31,9 @@ void bootstrap()
 //    static mword barrier;
 
     Cpu::init();
-    
+
     // Create idle EC
-    Ec::current = new (Pd::kern.quota) Ec (Pd::current = &Pd::kern, Ec::idle, Cpu::id);
+    Ec::current = new (Pd::kern.quota) Ec (Pd::current = &Pd::kern, Ec::idle, Cpu::id, const_cast<char* const>("idle_ec"));
     Ec::current->add_ref();
     Pd::current->add_ref();
     Space_obj::insert_root (Pd::kern.quota, Sc::current = new (Pd::kern.quota) Sc (&Pd::kern, Cpu::id, Ec::current));
@@ -43,7 +43,7 @@ void bootstrap()
 //  for (Atomic::add (barrier, 1UL); barrier != Cpu::online; pause()) ;
 
     Msr::write<uint64>(Msr::IA32_TSC, 0);
-    
+
     // Create root task
     if (Cpu::bsp) {
         Hip::add_check();
@@ -51,8 +51,8 @@ void bootstrap()
         Sc *root_sc = new (Pd::root.quota) Sc (&Pd::root, NUM_EXC + 2, root_ec, Cpu::id, Sc::default_prio, Sc::default_quantum);
         root_sc->remote_enqueue();
     }
-    
-    Lapic::activate_pmi();
 
+    Lapic::activate_pmi();
+   
     Sc::schedule();
 }

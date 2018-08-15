@@ -171,7 +171,6 @@ void Lapic::error_handler()
 {
     write (LAPIC_ESR, 0);
     write (LAPIC_ESR, 0);
-    Console::print("ERROR INTERRUPT");
 }
 
 void Lapic::timer_handler()

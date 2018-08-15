@@ -46,7 +46,7 @@ class Console
         virtual void putc (int) = 0;
         void print_num (uint64, unsigned, unsigned, unsigned);
         void print_str (char const *, unsigned, unsigned);
-        
+
         void sprint_num (uint64, unsigned, unsigned, unsigned, void**);
         void sprint_str (char const *, unsigned, unsigned, void**);
         int vsprintf_help(int , void **);

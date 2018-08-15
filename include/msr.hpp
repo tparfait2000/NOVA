@@ -89,6 +89,7 @@ class Msr
             IA32_LSTAR              = 0xc0000082,
             IA32_FMASK              = 0xc0000084,
             IA32_KERNEL_GS_BASE     = 0xc0000102,
+
             IA32_PERF_CTL0          = 0xc0010000,
             IA32_PERF_CTR0          = 0xc0010004,
             IA32_PERFEVTSEL0        = 0x186,
@@ -122,6 +123,13 @@ class Msr
             return static_cast<T>(static_cast<uint64>(h) << 32 | l);
         }
 
+        template <typename T>
+        ALWAYS_INLINE
+        static inline void write (Register msr, T val)
+        {
+            asm volatile ("wrmsr" : : "a" (static_cast<mword>(val)), "d" (static_cast<mword>(static_cast<uint64>(val) >> 32)), "c" (msr));
+        }
+
         /* try to rdmsr */
         ALWAYS_INLINE
         static inline mword peek(Register msr)				
@@ -131,12 +139,5 @@ class Msr
                          ".section .fixup,\"a\"; .align 8;" EXPAND (WORD) " 1b,2b; .previous"
                          : "=a" (ret) : "c" (msr));
             return ret;
-        }
-
-        template <typename T>
-        ALWAYS_INLINE
-        static inline void write (Register msr, T val)
-        {
-            asm volatile ("wrmsr" : : "a" (static_cast<mword>(val)), "d" (static_cast<mword>(static_cast<uint64>(val) >> 32)), "c" (msr));
         }
 };

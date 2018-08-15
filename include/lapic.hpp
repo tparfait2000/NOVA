@@ -151,7 +151,6 @@ class Lapic
         ALWAYS_INLINE
         static inline void set_timer (uint64 tsc)
         {
-            return;
             if (freq_bus) {
                 uint64 now = rdtsc();
                 uint32 icr;

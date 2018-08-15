@@ -142,7 +142,7 @@ public:
     static void add_cpu();
     static void add_check();
     
-        static Hip_mem* get_mem_desc(){
+    static Hip_mem* get_mem_desc(){
         return hip()->mem_desc;
     }
     
