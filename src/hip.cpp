@@ -173,11 +173,16 @@ void Hip::add_cpu()
 {
     Hip_cpu *cpu = hip()->cpu_desc + Cpu::id;
 
-    cpu->acpi_id = Cpu::acpi_id[Cpu::id];
-    cpu->package = static_cast<uint8>(Cpu::package);
-    cpu->core    = static_cast<uint8>(Cpu::core);
-    cpu->thread  = static_cast<uint8>(Cpu::thread);
-    cpu->flags   = 1;
+    cpu->acpi_id  = Cpu::acpi_id[Cpu::id];
+    cpu->package  = Cpu::package[Cpu::id];
+    cpu->core     = Cpu::core[Cpu::id];
+    cpu->thread   = Cpu::thread[Cpu::id];
+    cpu->flags    = 1;
+    cpu->family   = Cpu::family[Cpu::id];
+    cpu->model    = Cpu::model[Cpu::id];
+    cpu->stepping = Cpu::stepping[Cpu::id] & 0xf;
+    cpu->platform = Cpu::platform[Cpu::id] & 0x7;
+    cpu->patch    = Cpu::patch[Cpu::id];
 }
 
 void Hip::add_check()

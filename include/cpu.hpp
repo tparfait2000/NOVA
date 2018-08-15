@@ -145,19 +145,20 @@ class Cpu
         static uint8    acpi_id[NUM_CPU];
         static uint8    apic_id[NUM_CPU];
 
+        static uint8    package[NUM_CPU];
+        static uint8    core[NUM_CPU];
+        static uint8    thread[NUM_CPU];
+
+        static uint8    platform[NUM_CPU];
+        static uint8    family[NUM_CPU];
+        static uint8    model[NUM_CPU];
+        static uint8    stepping[NUM_CPU];
+        static unsigned patch[NUM_CPU];
+
         static unsigned id                  CPULOCAL_HOT;
         static unsigned hazard              CPULOCAL_HOT;
-        static unsigned package             CPULOCAL;
-        static unsigned core                CPULOCAL;
-        static unsigned thread              CPULOCAL;
-
         static Vendor   vendor              CPULOCAL;
-        static unsigned platform            CPULOCAL;
-        static unsigned family              CPULOCAL;
-        static unsigned model               CPULOCAL;
-        static unsigned stepping            CPULOCAL;
         static unsigned brand               CPULOCAL;
-        static unsigned patch               CPULOCAL;
         static unsigned row                 CPULOCAL;
 
         static uint32 name[12]              CPULOCAL;

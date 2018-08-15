@@ -32,13 +32,19 @@
 unsigned    Lapic::freq_tsc;
 unsigned    Lapic::freq_bus;
 
-void Lapic::init(bool invariant_tsc)
+void Lapic::init_cpuid()
 {
     Paddr apic_base = Msr::read<Paddr>(Msr::IA32_APIC_BASE);
 
     Pd::kern.Space_mem::delreg (Pd::kern.quota, apic_base & ~PAGE_MASK);
     Hptp (Hpt::current()).update (Pd::kern.quota, CPU_LOCAL_APIC, 0, Hpt::HPT_NX | Hpt::HPT_G | Hpt::HPT_UC | Hpt::HPT_W | Hpt::HPT_P, apic_base & ~PAGE_MASK);
 
+    Cpu::id = Cpu::find_by_apic_id (Lapic::id());
+}
+
+void Lapic::init(bool invariant_tsc)
+{
+    Paddr apic_base = Msr::read<Paddr>(Msr::IA32_APIC_BASE);
     Msr::write (Msr::IA32_APIC_BASE, apic_base | 0x800);
 
     uint32 svr = read (LAPIC_SVR);
@@ -65,26 +71,25 @@ void Lapic::init(bool invariant_tsc)
     write (LAPIC_TPR, 0x10);
     write (LAPIC_TMR_DCR, 0xb);
 
-    Cpu::id = Cpu::find_by_apic_id (id());
-
     if ((Cpu::bsp = apic_base & 0x100)) {
         uint64 ratio = 0;
 
         /* read out tsc freq if supported */
-        if (Cpu::vendor == Cpu::Vendor::INTEL && Cpu::family == 6) {
-            if (Cpu::model == 0x2a || Cpu::model == 0x2d || /* Sandy Bridge */
-                Cpu::model >= 0x3a) { /* Ivy Bridge and later */
+        if (Cpu::vendor == Cpu::Vendor::INTEL && Cpu::family[Cpu::id] == 6) {
+            unsigned const model = Cpu::model[Cpu::id];
+            if (model == 0x2a || model == 0x2d || /* Sandy Bridge */
+                model >= 0x3a) { /* Ivy Bridge and later */
                 ratio = static_cast<unsigned>(Msr::read<uint64>(Msr::MSR_PLATFORM_INFO) >> 8) & 0xff;
                 freq_tsc = static_cast<unsigned>(ratio * 100000);
                 freq_bus = dl ? 0 : 100000;
             }
-            if (Cpu::model == 0x1a || Cpu::model == 0x1e || Cpu::model == 0x1f || Cpu::model == 0x2e || /* Nehalem */
-                Cpu::model == 0x25 || Cpu::model == 0x2c || Cpu::model == 0x2f) { /* Xeon Westmere */
+            if (model == 0x1a || model == 0x1e || model == 0x1f || model == 0x2e || /* Nehalem */
+                model == 0x25 || model == 0x2c || model == 0x2f) { /* Xeon Westmere */
                 ratio = static_cast<unsigned>(Msr::read<uint64>(Msr::MSR_PLATFORM_INFO) >> 8) & 0xff;
                 freq_tsc = static_cast<unsigned>(ratio * 133330);
                 freq_bus = dl ? 0 : 133330;
             }
-            if (Cpu::model == 0x17 || Cpu::model == 0xf) { /* Core 2 */
+            if (model == 0x17 || model == 0xf) { /* Core 2 */
                 freq_bus = Msr::read<uint64>(Msr::MSR_FSB_FREQ) & 0x7;
                 switch (freq_bus) {
                     case 0b101: freq_bus = 100000; break;

@@ -51,17 +51,17 @@ uint8       Cpu::apic_id[NUM_CPU];
 
 unsigned    Cpu::id;
 unsigned    Cpu::hazard;
-unsigned    Cpu::package;
-unsigned    Cpu::core;
-unsigned    Cpu::thread;
+uint8       Cpu::package[NUM_CPU];
+uint8       Cpu::core[NUM_CPU];
+uint8       Cpu::thread[NUM_CPU];
 
 Cpu::Vendor Cpu::vendor;
-unsigned    Cpu::platform;
-unsigned    Cpu::family;
-unsigned    Cpu::model;
-unsigned    Cpu::stepping;
+uint8       Cpu::platform[NUM_CPU];
+uint8       Cpu::family[NUM_CPU];
+uint8       Cpu::model[NUM_CPU];
+uint8       Cpu::stepping[NUM_CPU];
 unsigned    Cpu::brand;
-unsigned    Cpu::patch;
+unsigned    Cpu::patch[NUM_CPU];
 unsigned    Cpu::row;
 
 uint32      Cpu::name[12];
@@ -95,7 +95,7 @@ void Cpu::check_features()
 
     if (vendor == INTEL) {
         Msr::write<uint64>(Msr::IA32_BIOS_SIGN_ID, 0);
-        platform = static_cast<unsigned>(Msr::read<uint64>(Msr::IA32_PLATFORM_ID) >> 50) & 7;
+        platform[Cpu::id] = static_cast<unsigned>(Msr::read<uint64>(Msr::IA32_PLATFORM_ID) >> 50) & 7;
     }
 
     switch (static_cast<uint8>(eax)) {
@@ -108,15 +108,15 @@ void Cpu::check_features()
             cpp = (eax >> 26 & 0x3f) + 1;
         case 0x1 ... 0x3:
             cpuid (0x1, eax, ebx, features[1], features[0]);
-            family   = (eax >> 8 & 0xf) + (eax >> 20 & 0xff);
-            model    = (eax >> 4 & 0xf) + (eax >> 12 & 0xf0);
-            stepping =  eax & 0xf;
+            family[Cpu::id]   = ((eax >> 8 & 0xf) + (eax >> 20 & 0xff)) & 0xff;
+            model[Cpu::id]    = ((eax >> 4 & 0xf) + (eax >> 12 & 0xf0)) & 0xff;
+            stepping[Cpu::id] =  eax & 0xf;
             brand    =  ebx & 0xff;
             top      =  ebx >> 24;
             tpp      =  ebx >> 16 & 0xff;
     }
 
-    patch = static_cast<unsigned>(Msr::read<uint64>(Msr::IA32_BIOS_SIGN_ID) >> 32);
+    patch[Cpu::id] = static_cast<unsigned>(Msr::read<uint64>(Msr::IA32_BIOS_SIGN_ID) >> 32);
 
     cpuid (0x80000000, eax, ebx, ecx, edx);
 
@@ -142,13 +142,13 @@ void Cpu::check_features()
     unsigned long t_bits = bit_scan_reverse (tpc - 1) + 1;
     unsigned long c_bits = bit_scan_reverse (cpp - 1) + 1;
 
-    thread  = top            & ((1u << t_bits) - 1);
-    core    = top >>  t_bits & ((1u << c_bits) - 1);
-    package = top >> (t_bits + c_bits);
+    thread[Cpu::id]  = (top            & ((1u << t_bits) - 1)) & 0xff;
+    core[Cpu::id]    = (top >>  t_bits & ((1u << c_bits) - 1)) & 0xff;
+    package[Cpu::id] = (top >> (t_bits + c_bits)) & 0xff;
 
     // Disable C1E on AMD Rev.F and beyond because it stops LAPIC clock
     if (vendor == AMD)
-        if (family > 0xf || (family == 0xf && model >= 0x40))
+        if (family[Cpu::id] > 0xf || (family[Cpu::id] == 0xf && model[Cpu::id] >= 0x40))
             Msr::write (Msr::AMD_IPMR, Msr::read<uint32>(Msr::AMD_IPMR) & ~(3ul << 27));
 
     // enable PAT if available
@@ -205,6 +205,8 @@ void Cpu::init()
     Tss::load();
     Idt::load();
 
+    Lapic::init_cpuid();
+
     // Initialize CPU number and check features
     check_features();
 
@@ -239,7 +241,7 @@ void Cpu::init()
 
     Mca::init();
 
-    trace (TRACE_CPU, "CORE:%x:%x:%x %x:%x:%x:%x [%x] %.48s", package, core, thread, family, model, stepping, platform, patch, reinterpret_cast<char *>(name));
+    trace (TRACE_CPU, "CORE:%x:%x:%x %x:%x:%x:%x [%x] %.48s", package[Cpu::id], core[Cpu::id], thread[Cpu::id], family[Cpu::id], model[Cpu::id], stepping[Cpu::id], platform[Cpu::id], patch[Cpu::id], reinterpret_cast<char *>(name));
 
     Hip::add_cpu();
 

@@ -148,6 +148,7 @@ class Lapic
         }
 
         static void init(bool);
+        static void init_cpuid();
 
         static void send_ipi (unsigned, unsigned, Delivery_mode = DLV_FIXED, Shorthand = DSH_NONE);
 

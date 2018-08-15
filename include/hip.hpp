@@ -33,8 +33,13 @@ class Hip_cpu
         uint8   core;
         uint8   package;
         uint8   acpi_id;
-        uint8   reserved[3];
-};
+        uint8   family;
+        uint8   model;
+        uint8   stepping:4;
+        uint8   platform:3;
+        uint8   reserved:1;
+        uint32  patch;
+} PACKED;
 
 class Hip_mem
 {
