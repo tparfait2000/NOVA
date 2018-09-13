@@ -44,6 +44,8 @@
 #define HV_GLOBAL_FBUF  (CPU_LOCAL - PAGE_SIZE * 2)
 /* (CPU_LOCAL - PAGE_SIZE * 3) used by ioapic/dmar/pci !!! hwdev_addr (hwdev_addr = HV_GLOBAL_FBUF) - PAGE_SIZE !!! */
 
+#define BUDDY_V_MAX     (HV_GLOBAL_CPUS - 0x400000)
+
 #define CPU_LOCAL_STCK  (SPC_LOCAL - PAGE_SIZE * 6)
 #define CPU_LOCAL_APIC  (SPC_LOCAL - PAGE_SIZE * 4)
 #define CPU_LOCAL_DATA  (SPC_LOCAL - PAGE_SIZE * 2)

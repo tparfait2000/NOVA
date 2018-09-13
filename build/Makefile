@@ -94,7 +94,8 @@ LFLAGS		:= --defsym=GIT_VER=0x$(call gitrv) --gc-sections --warn-common -static 
 # Rules
 %-$(ARCH).o:	%.ld $(MAKEFILE_LIST)
 		$(call message,PRE,$@)
-		$(CC) $(SFLAGS) -xc -E -P -MT $@ $< -o $@ -DCONFIG_KERNEL_MEMORY=32M
+		# 4M static memory in BSS for kernel memory
+		$(CC) $(SFLAGS) -xc -E -P -MT $@ $< -o $@ -DCONFIG_MEMORY_BOOT=4M
 
 %-$(ARCH).o:	%.S $(MAKEFILE_LIST)
 		$(call message,ASM,$@)
@@ -102,7 +103,8 @@ LFLAGS		:= --defsym=GIT_VER=0x$(call gitrv) --gc-sections --warn-common -static 
 
 %-$(ARCH).o:	%.cpp $(MAKEFILE_LIST)
 		$(call message,CMP,$@)
-		$(CC) $(CFLAGS) -c $< -o $@
+		# 12M dynamic allocated kernel memory as minimum & no additional dynamic (0 promill) of system memory
+		$(CC) $(CFLAGS) -c $< -o $@ -DCONFIG_MEMORY_DYN_MIN=0xc00000 -DCONFIG_MEMORY_DYN_PER_MILL=0
 
 $(TARGET):	$(OBJ)
 		$(call message,LNK,$@)

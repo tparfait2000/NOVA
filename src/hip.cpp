@@ -30,6 +30,9 @@
 #include "pd.hpp"
 #include "acpi_rsdp.hpp"
 #include "acpi.hpp"
+#include "string.hpp"
+
+extern char _mempool_e;
 
 mword Hip::root_addr;
 mword Hip::root_size;
@@ -61,6 +64,10 @@ void Hip::build (mword magic, mword addr)
         build_mbi2(mem, addr);
 
     add_mhv (mem);
+
+    h->length = static_cast<uint16>(reinterpret_cast<mword>(mem) - reinterpret_cast<mword>(h));
+
+    add_buddy (mem, h);
 
     h->length = static_cast<uint16>(reinterpret_cast<mword>(mem) - reinterpret_cast<mword>(h));
 }
@@ -222,4 +229,110 @@ void Hip::add_check()
                        c = static_cast<uint16>(c - *ptr++)) ;
 
     h->checksum = c;
+}
+
+void Hip::add_buddy (Hip_mem *&mem, Hip * hip)
+{
+    enum { MEMORY_AVAIL = 1 };
+
+    mword const mhv_cnt = (reinterpret_cast<mword>(hip) + hip->length - reinterpret_cast<mword>(hip->mem_desc)) / sizeof(Hip_mem);
+    mword const mhv_end = reinterpret_cast<mword>(&LINK_E);
+    mword mhv_i = mhv_cnt;
+    uint64 system_mem_max = 0;
+
+    /* find memory close behind hypervisor */
+    for (unsigned i = 0; i < mhv_cnt; i++) {
+        Hip_mem * m = hip->mem_desc + i;
+        if (m->type != MEMORY_AVAIL)
+            continue;
+
+        system_mem_max += m->size;
+
+        if ((m->addr <= mhv_end) && (mhv_end < m->addr + m->size))
+            mhv_i = i;
+    }
+
+    if (mhv_i >= mhv_cnt)
+        return;
+
+    Hip_mem const * const cmp = hip->mem_desc + mhv_i;
+    uint64 region_start = mhv_end;
+    uint64 region_end   = cmp->addr + cmp->size;
+
+    /* exclude all reserved memory part of region */
+    for (unsigned i = 0; i < mhv_cnt; i++) {
+        Hip_mem const * const m = hip->mem_desc + i;
+        uint64 const m_end = m->addr + m->size;
+
+        if (m->type == MEMORY_AVAIL)
+            continue;
+        if (m->addr >= region_end)
+            continue;
+        if (m_end <= region_start)
+            continue;
+
+        if (region_start <= m->addr) {
+            uint64 const new_end  = min (region_end, m->addr);
+            uint64 const new_size = new_end - region_start;
+            if (region_end > m_end && region_end - m_end > new_size)
+                region_start = m_end;
+            else
+                region_end = new_end;
+        } else
+        if (region_start <= m_end)
+            region_start = m_end;
+    }
+
+    /* align region_size and region_addr */
+    uint64 region_size = region_end - region_start;
+
+    uint64 const mem_log   = (sizeof(void *) == 4) ? 22 : 21;
+    uint64 const mask_size = 1ULL << mem_log;
+    uint64 const mask      = (mask_size) - 1;
+
+    if (region_start & mask) {
+        uint64 const add = mask_size - (region_start & mask);
+        if (region_size >= add) {
+            region_size  -= add;
+            region_start += add;
+        } else
+            region_size = 0;
+    }
+
+    mword const buddy_start = static_cast<mword>(region_start);
+
+    /* limit to virtual available memory */
+    mword const v_buddy = reinterpret_cast<mword>(&_mempool_e) + (buddy_start - mhv_end);
+    if (v_buddy >= BUDDY_V_MAX)
+        return;
+
+    if (v_buddy + region_size >= BUDDY_V_MAX)
+        region_size = (BUDDY_V_MAX - v_buddy);
+
+    uint64 const kernel_mem_min = CONFIG_MEMORY_DYN_MIN; /* preferred min */
+    uint64 system_mem = system_mem_max / 1000 * CONFIG_MEMORY_DYN_PER_MILL;
+    if (system_mem_max >= kernel_mem_min)
+        system_mem = max(kernel_mem_min, system_mem);
+
+    uint64 const buddy_size = min(system_mem, region_size) & ~mask;
+    if (!buddy_size)
+        return;
+
+    for (unsigned i = 0; i < (buddy_size / 4096); i++) {
+        Paddr const p_buddy = buddy_start + i * 4096;
+        Pd::kern.Space_mem::delreg(Pd::kern.quota, p_buddy);
+
+        if (!(p_buddy & mask))
+            Pd::kern.Space_mem::insert (Pd::kern.quota, v_buddy + i * 4096, mem_log - 12, Hpt::HPT_NX | Hpt::HPT_G | Hpt::HPT_W | Hpt::HPT_P, p_buddy);
+    }
+
+    memset(reinterpret_cast<void *>(v_buddy), 0, static_cast<mword>(buddy_size));
+
+    /* allocate new buddy */
+    new (Pd::kern.quota) Buddy(buddy_start, v_buddy, v_buddy, static_cast<mword>(buddy_size));
+
+    mem->addr = buddy_start;
+    mem->size = buddy_size;
+    mem->type = Hip_mem::HYPERVISOR;
+    mem++;
 }

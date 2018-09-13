@@ -142,6 +142,9 @@ class Hip
         INIT
         static void add_mhv (Hip_mem *&);
 
+        INIT
+        static void add_buddy (Hip_mem *&, Hip *);
+
         static void add_cpu();
         static void add_check();
 };

@@ -450,6 +450,13 @@ void Ec::root_invoke()
         Cpu::hazard &= ~HZD_FPU;
     }
 
+    /* transfer memory from second allocator */
+    Quota tmp;
+    res = Quota::init.transfer_to(tmp, Quota::init.limit());
+    assert(res);
+    res = tmp.transfer_to(Pd::root.quota, tmp.limit());
+    assert(res);
+
     ret_user_sysexit();
 }
 

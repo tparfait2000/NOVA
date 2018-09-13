@@ -114,7 +114,7 @@ SECTIONS
 #endif
         _mempool_f = .;
 
-        . += CONFIG_KERNEL_MEMORY;
+        . += CONFIG_MEMORY_BOOT;
         . = ALIGN(4M);
 
         PROVIDE (LINK_E = . - OFFSET);
