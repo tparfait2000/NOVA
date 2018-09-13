@@ -23,9 +23,10 @@
 #include "extern.hpp"
 #include "memory.hpp"
 #include "spinlock.hpp"
+#include "list.hpp"
 #include "quota.hpp"
 
-class Buddy
+class Buddy : public List<Buddy>
 {
     private:
         class Block
@@ -49,6 +50,8 @@ class Buddy
         mword           order   { 0 };
         Block *         index   { nullptr };
         Block *         head    { nullptr };
+
+        static Buddy * list;
 
         ALWAYS_INLINE
         inline signed long block_to_index (Block *b)
@@ -99,9 +102,17 @@ class Buddy
         INIT
         Buddy (mword phys, mword virt, mword f_addr, size_t size);
 
-        void *alloc (unsigned short ord, Quota &quota, Fill fill);
+        static void *alloc (unsigned short ord, Quota &quota, Fill fill);
 
-        void free (mword addr, Quota &quota);
+        static void free (mword addr, Quota &quota);
+
+     private:
+
+        void *_alloc (unsigned short ord, Quota &quota, Fill fill);
+
+        void _free (mword addr, Quota &quota);
+
+     public:
 
         ALWAYS_INLINE
         static inline void *phys_to_ptr (Paddr phys)
@@ -114,4 +125,7 @@ class Buddy
         {
             return allocator.virt_to_phys (reinterpret_cast<mword>(virt));
         }
+
+        ALWAYS_INLINE
+        static inline void *operator new (size_t, Quota &quota) { return Buddy::allocator.alloc (0, quota, Buddy::FILL_0); }
 };

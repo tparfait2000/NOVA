@@ -42,7 +42,10 @@ Buddy Buddy::allocator (reinterpret_cast<mword>(&_mempool_p),
                         reinterpret_cast<mword>(&_mempool_e) -
                         reinterpret_cast<mword>(&_mempool_l));
 
+Buddy * Buddy::list;
+
 Buddy::Buddy (mword phys, mword virt, mword f_addr, size_t size)
+: List<Buddy>(list)
 {
     // Compute maximum aligned block size
     unsigned long bit = bit_scan_reverse (size);
@@ -73,7 +76,7 @@ Buddy::Buddy (mword phys, mword virt, mword f_addr, size_t size)
         head[i].next = head[i].prev = head + i;
 
     for (mword i = f_addr; i < virt + size; i += PAGE_SIZE)
-        free (i, Quota::init);
+        _free (i, Quota::init);
 }
 
 /*
@@ -82,7 +85,7 @@ Buddy::Buddy (mword phys, mword virt, mword f_addr, size_t size)
  * @param zero      Zero out block content if true
  * @return          Pointer to linear memory region
  */
-void *Buddy::alloc (unsigned short ord, Quota &quota, Fill fill)
+void *Buddy::_alloc (unsigned short ord, Quota &quota, Fill fill)
 {
     Lock_guard <Spinlock> guard (lock);
 
@@ -118,6 +121,16 @@ void *Buddy::alloc (unsigned short ord, Quota &quota, Fill fill)
         return reinterpret_cast<void *>(virt);
     }
 
+    return nullptr;
+}
+
+void *Buddy::alloc (unsigned short ord, Quota &quota, Fill fill)
+{
+    for (Buddy *b = list; b; b = b->next) {
+        void * v = b->_alloc(ord, quota, fill);
+        if (v) return v;
+    }
+
     quota.dump(Pd::current);
 
     Console::panic ("Out of memory");
@@ -127,7 +140,7 @@ void *Buddy::alloc (unsigned short ord, Quota &quota, Fill fill)
  * Free physically contiguous memory region.
  * @param virt     Linear block base address
  */
-void Buddy::free (mword virt, Quota &quota)
+void Buddy::_free (mword virt, Quota &quota)
 {
     signed long idx = page_to_index (virt);
 
@@ -182,6 +195,18 @@ void Buddy::free (mword virt, Quota &quota)
     block->next->prev = h->next = block;
 }
 
+void Buddy::free (mword virt, Quota &quota)
+{
+    for (Buddy *b = list; b; b = b->next) {
+        signed long idx = b->page_to_index (virt);
+        if (idx >= b->min_idx && idx < b->max_idx) {
+            b->_free(virt, quota);
+            return;
+        }
+    }
+
+    Console::panic ("Invalid memory free");
+}
 
 void Quota::dump(void * pd, bool all)
 {
