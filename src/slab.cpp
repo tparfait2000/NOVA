@@ -44,6 +44,8 @@ void *Slab::alloc()
 {
     avail--;
 
+    assert (avail < cache->elem);
+
     void *link = reinterpret_cast<void *>(head - cache->size);
     head = *reinterpret_cast<char **>(head);
     return link;
@@ -51,6 +53,8 @@ void *Slab::alloc()
 
 void Slab::free (void *ptr)
 {
+    assert (avail < cache->elem);
+
     avail++;
 
     char *link = reinterpret_cast<char *>(ptr) + cache->size;
@@ -106,6 +110,8 @@ void Slab_cache::free (void *ptr, Quota &)
     Lock_guard <Spinlock> guard (lock);
 
     Slab *slab = reinterpret_cast<Slab *>(reinterpret_cast<mword>(ptr) & ~PAGE_MASK);
+
+    assert (slab->cache == this);
 
     bool was_full = slab->full();
 
@@ -166,4 +172,17 @@ void Slab_cache::free (void *ptr, Quota &)
             }
         }
     }
+}
+
+void Slab_cache::free (Quota &quota)
+{
+    while (head) {
+        assert (!head->full());
+        assert (head->cache == this);
+        curr = head;
+        Slab::destroy(head, quota);
+        head = curr->next;
+    }
+    assert (!head);
+    curr = nullptr;
 }

@@ -37,12 +37,16 @@ class Slab_cache
          */
         void grow(Quota &quota);
 
+        Slab_cache (const Slab_cache&);
+        Slab_cache &operator = (Slab_cache const &);
+
     public:
         unsigned long size; // Size of an element
         unsigned long buff; // Size of an element buffer (includes link field)
         unsigned long elem; // Number of elements
 
         Slab_cache (unsigned long elem_size, unsigned elem_align);
+        ~Slab_cache () { assert (!head && !curr); }
 
         /*
          * Front end allocator
@@ -53,6 +57,8 @@ class Slab_cache
          * Front end deallocator
          */
         void free (void *ptr, Quota &quota);
+
+        void free (Quota &quota);
 };
 
 class Slab
