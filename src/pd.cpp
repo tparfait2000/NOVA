@@ -24,6 +24,7 @@
 #include "stdio.hpp"
 #include "hip.hpp"
 #include "ec.hpp"
+#include "pt.hpp"
 
 INIT_PRIORITY (PRIO_SLAB)
 Slab_cache Pd::cache (sizeof (Pd), 32);
@@ -34,7 +35,7 @@ INIT_PRIORITY (PRIO_BUDDY)
 ALIGNED(32) Pd Pd::kern (&Pd::kern);
 ALIGNED(32) Pd Pd::root (&Pd::root, NUM_EXC, 0x1f);
 
-Pd::Pd (Pd *own) : Kobject (PD, static_cast<Space_obj *>(own))
+Pd::Pd (Pd *own) : Kobject (PD, static_cast<Space_obj *>(own)), pt_cache (sizeof (Pt), 32)
 {
     hpt = Hptp (reinterpret_cast<mword>(&PDBR));
 
@@ -50,7 +51,7 @@ Pd::Pd (Pd *own) : Kobject (PD, static_cast<Space_obj *>(own))
     Space_pio::addreg (own->quota, 0, 1UL << 16, 7);
 }
 
-Pd::Pd (Pd *own, mword sel, mword a) : Kobject (PD, static_cast<Space_obj *>(own), sel, a, free, pre_free)
+Pd::Pd (Pd *own, mword sel, mword a) : Kobject (PD, static_cast<Space_obj *>(own), sel, a, free, pre_free), pt_cache (sizeof (Pt), 32)
 {
     if (this == &Pd::root) {
         bool res = Quota::init.transfer_to(quota, Quota::init.limit());
@@ -436,6 +437,8 @@ Pd::~Pd()
     for (unsigned cpu = 0; cpu < NUM_CPU; cpu++)
         if (Hip::cpu_online (cpu))
             Space_mem::loc[cpu].clear(quota, Space_mem::hpt.dest_loc, Space_mem::hpt.iter_loc_lev);
+
+    pt_cache.free(quota);
 }
 
 extern "C" int __cxa_atexit(void (*)(void *), void *, void *) { return 0; }

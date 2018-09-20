@@ -23,12 +23,20 @@
 #include "pt.hpp"
 #include "stdio.hpp"
 
-INIT_PRIORITY (PRIO_SLAB)
-Slab_cache Pt::cache (sizeof (Pt), 32);
-
 Pt::Pt (Pd *own, mword sel, Ec *e, Mtd m, mword addr) : Kobject (PT, static_cast<Space_obj *>(own), sel, PERM_CTRL | PERM_CALL | PERM_XCPU, free), ec (e), mtd (m), ip (addr), id(0)
 {
     trace (TRACE_SYSCALL, "PT:%p created (EC:%p IP:%#lx)", this, e, ip);
+}
+
+void * Pt::operator new (size_t, Pd &pd)
+{
+     return pd.pt_cache.alloc(pd.quota);
+}
+
+void Pt::destroy(Pt *obj)
+{
+    Pd &pd = *obj->ec->pd;
+    obj->~Pt(); pd.pt_cache.free (obj, pd.quota);
 }
 
 void Pt::free (Rcu_elem * p)
@@ -38,6 +46,5 @@ void Pt::free (Rcu_elem * p)
     if (!pt->del_ref())
         return;
 
-    Pd *pd = static_cast<Pd *>(static_cast<Space_obj *>(pt->space));
-    destroy(pt, pd->quota);
+    Pt::destroy(pt);
 }

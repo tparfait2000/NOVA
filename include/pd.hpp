@@ -95,6 +95,8 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
 
         Quota quota { };
 
+        Slab_cache pt_cache;
+
         INIT
         Pd (Pd *);
         ~Pd();

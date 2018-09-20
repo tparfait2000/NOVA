@@ -29,8 +29,6 @@ class Ec;
 class Pt : public Kobject, public Refcount
 {
     private:
-        static Slab_cache cache;
-
         static void free (Rcu_elem * p);
 
     public:
@@ -47,9 +45,7 @@ class Pt : public Kobject, public Refcount
         ALWAYS_INLINE
         inline void set_id (mword i) { id = i; }
 
-        ALWAYS_INLINE
-        static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
+        static void *operator new (size_t, Pd &pd);
 
-        ALWAYS_INLINE
-        static inline void destroy(Pt *obj, Quota &quota) { obj->~Pt(); cache.free (obj, quota); }
+        static void destroy(Pt *obj);
 };

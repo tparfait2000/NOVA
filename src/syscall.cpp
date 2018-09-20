@@ -475,10 +475,10 @@ void Ec::sys_create_pt()
         sys_finish<Sys_regs::BAD_CAP>();
     }
 
-    Pt *pt = new (pd->quota) Pt (Pd::current, r->sel(), ec, r->mtd(), r->eip());
+    Pt *pt = new (*ec->pd) Pt (Pd::current, r->sel(), ec, r->mtd(), r->eip());
     if (!Space_obj::insert_root (pd->quota, pt)) {
         trace (TRACE_ERROR, "%s: Non-NULL CAP (%#lx)", __func__, r->sel());
-        Pt::destroy (pt, pd->quota);
+        Pt::destroy (pt);
         sys_finish<Sys_regs::BAD_CAP>();
     }
 

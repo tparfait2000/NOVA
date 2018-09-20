@@ -155,7 +155,7 @@ Ec::~Ec()
     pre_free(this);
 
     if (pt_oom && pt_oom->del_ref())
-        Pt::destroy(pt_oom, pd->quota);
+        Pt::destroy(pt_oom);
 
     if (fpu)
         Fpu::destroy(fpu, pd->quota);
