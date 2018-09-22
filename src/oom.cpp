@@ -129,7 +129,7 @@ void Ec::oom_xcpu(Pt * pt, mword src_pd_id, mword oom_state)
     Ec *xcpu_ec = new (Pd::current->quota) Ec (Pd::current, Pd::current, sys_xcpu_call_oom<C>, pt->ec->cpu, this);
     xcpu_ec->regs.set_pt (reinterpret_cast<mword>(pt), src_pd_id, oom_state);
 
-    Sc *xcpu_sc = new (Pd::current->quota) Sc (Pd::current, xcpu_ec, xcpu_ec->cpu, Sc::current);
+    Sc *xcpu_sc = new (*Pd::current) Sc (Pd::current, xcpu_ec, xcpu_ec->cpu, Sc::current);
 
     xcpu_sc->remote_enqueue();
     this->xcpu_sm->dn (false, 0);

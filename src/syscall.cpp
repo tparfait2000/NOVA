@@ -426,7 +426,7 @@ void Ec::sys_create_sc()
         sys_finish<Sys_regs::BAD_PAR>();
     }
 
-    Sc *sc = new (pd->quota) Sc (Pd::current, r->sel(), ec, ec->cpu, r->qpd().prio(), r->qpd().quantum());
+    Sc *sc = new (*ec->pd) Sc (Pd::current, r->sel(), ec, ec->cpu, r->qpd().prio(), r->qpd().quantum());
     if (!Space_obj::insert_root (pd->quota, sc)) {
         trace (TRACE_ERROR, "%s: Non-NULL CAP (%#lx)", __func__, r->sel());
         delete sc;
@@ -970,7 +970,7 @@ void Ec::sys_xcpu_call()
     current->xcpu_sm = new (*Pd::current) Sm (Pd::current, UNUSED, CNT);
 
     Ec *xcpu_ec = new (Pd::current->quota) Ec (Pd::current, Pd::current, Ec::sys_call, ec->cpu, current);
-    Sc *xcpu_sc = new (Pd::current->quota) Sc (Pd::current, xcpu_ec, xcpu_ec->cpu, Sc::current);
+    Sc *xcpu_sc = new (*xcpu_ec->pd) Sc (Pd::current, xcpu_ec, xcpu_ec->cpu, Sc::current);
 
     xcpu_sc->remote_enqueue();
     current->xcpu_sm->dn (false, 0);

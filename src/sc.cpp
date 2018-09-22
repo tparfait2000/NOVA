@@ -25,9 +25,6 @@
 #include "timeout_budget.hpp"
 #include "vectors.hpp"
 
-INIT_PRIORITY (PRIO_SLAB)
-Slab_cache Sc::cache (sizeof (Sc), 32);
-
 INIT_PRIORITY (PRIO_LOCAL)
 Sc::Rq Sc::rq;
 
@@ -202,4 +199,8 @@ void Sc::rke_handler()
         Cpu::hazard |= HZD_SCHED;
 }
 
-void Sc::operator delete (void *ptr) { cache.free (ptr, static_cast<Sc *>(ptr)->ec->pd->quota); }
+void Sc::operator delete (void *ptr)
+{
+    Pd * pd = static_cast<Sc *>(ptr)->ec->pd;
+    pd->sm_cache.free (ptr, pd->quota);
+}

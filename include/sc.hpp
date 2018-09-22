@@ -44,8 +44,6 @@ class Sc : public Kobject, public Refcount
         Sc *prev { nullptr }, *next { nullptr };
         uint64 tsc { 0 };
 
-        static Slab_cache cache;
-
         static struct Rq {
             Spinlock    lock { };
             Sc *        queue { nullptr };
@@ -112,7 +110,7 @@ class Sc : public Kobject, public Refcount
         static void schedule (bool = false, bool = true);
 
         ALWAYS_INLINE
-        static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
+        static inline void *operator new (size_t, Pd &pd) { return pd.sm_cache.alloc(pd.quota); }
 
         static void operator delete (void *ptr);
 };
