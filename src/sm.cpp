@@ -21,9 +21,6 @@
 #include "sm.hpp"
 #include "stdio.hpp"
 
-INIT_PRIORITY (PRIO_SLAB)
-Slab_cache Sm::cache (sizeof (Sm), 32);
-
 Sm::Sm (Pd *own, mword sel, mword cnt, Sm * s, mword v) : Kobject (SM, static_cast<Space_obj *>(own), sel, 0x3, free), Si (s, v), counter (cnt)
 {
     trace (TRACE_SYSCALL, "SM:%p created (CNT:%lu)", this, cnt);

@@ -148,7 +148,7 @@ Ec::Ec (Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone) : Kobject (EC, stati
 Ec::~Ec()
 {
     if (xcpu_sm) {
-        Sm::destroy(xcpu_sm, pd->quota);
+        Sm::destroy(xcpu_sm, *pd);
         xcpu_sm = nullptr;
     }
 

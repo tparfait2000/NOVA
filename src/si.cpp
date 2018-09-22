@@ -47,7 +47,7 @@ Si::~Si()
 
     if (sm->del_ref()) {
         Pd *pd = static_cast<Pd *>(static_cast<Space_obj *>(sm->space));
-        Sm::destroy(sm, pd->quota);
+        Sm::destroy(sm, *pd);
     }
 }
 

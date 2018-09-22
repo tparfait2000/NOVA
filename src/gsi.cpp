@@ -35,7 +35,7 @@ void Gsi::setup()
 {
     for (unsigned gsi = 0; gsi < NUM_GSI; gsi++) {
 
-        Space_obj::insert_root (Pd::kern.quota, Gsi::gsi_table[gsi].sm = new (Pd::kern.quota) Sm (&Pd::kern, NUM_CPU + gsi));
+        Space_obj::insert_root (Pd::kern.quota, Gsi::gsi_table[gsi].sm = new (Pd::kern) Sm (&Pd::kern, NUM_CPU + gsi));
 
         gsi_table[gsi].vec = static_cast<uint8>(VEC_GSI + gsi);
 

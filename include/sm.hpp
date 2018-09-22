@@ -30,14 +30,18 @@ class Sm : public Kobject, public Refcount, public Queue<Ec>, public Queue<Si>, 
     private:
         mword counter;
 
-        static Slab_cache cache;
-
         static void free (Rcu_elem * a) {
             Sm * sm = static_cast <Sm *>(a);
 
             if (sm->del_ref()) {
                 Pd *pd = static_cast<Pd *>(static_cast<Space_obj *>(sm->space));
-                destroy(sm, pd->quota);
+
+                Slab *slab = reinterpret_cast<Slab *>(reinterpret_cast<mword>(sm) & ~PAGE_MASK);
+                assert (slab);
+                assert (slab->cache);
+                assert (slab->cache == &pd->sm_cache);
+
+                destroy(sm, *pd);
             } else {
                 sm->up();
             }
@@ -149,8 +153,8 @@ class Sm : public Kobject, public Refcount, public Queue<Ec>, public Queue<Si>, 
         }
 
         ALWAYS_INLINE
-        static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
+        static inline void *operator new (size_t, Pd &pd) { return pd.sm_cache.alloc(pd.quota); }
 
         ALWAYS_INLINE
-        static inline void destroy(Sm *obj, Quota &quota) { obj->~Sm(); cache.free (obj, quota); }
+        static inline void destroy(Sm *obj, Pd &pd) { obj->~Sm(); pd.sm_cache.free (obj, pd.quota); }
 };

@@ -124,7 +124,7 @@ void Ec::oom_xcpu(Pt * pt, mword src_pd_id, mword oom_state)
 
     enum { UNUSED = 0, CNT = 0 };
 
-    this->xcpu_sm = new (Pd::current->quota) Sm (Pd::current, UNUSED, CNT);
+    this->xcpu_sm = new (*Pd::current) Sm (Pd::current, UNUSED, CNT);
 
     Ec *xcpu_ec = new (Pd::current->quota) Ec (Pd::current, Pd::current, sys_xcpu_call_oom<C>, pt->ec->cpu, this);
     xcpu_ec->regs.set_pt (reinterpret_cast<mword>(pt), src_pd_id, oom_state);
@@ -163,7 +163,7 @@ void Ec::ret_xcpu_reply_oom()
 {
     assert (current->xcpu_sm);
 
-    Sm::destroy(current->xcpu_sm, Pd::current->quota);
+    Sm::destroy(current->xcpu_sm, *Pd::current);
     current->xcpu_sm = nullptr;
 
     current->cont = C;

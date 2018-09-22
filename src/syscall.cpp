@@ -522,13 +522,13 @@ void Ec::sys_create_sm()
             sys_finish<Sys_regs::BAD_CAP>();
         }
 
-        sm = new (pd->quota) Sm (Pd::current, r->sel(), 0, si, r->cnt());
+        sm = new (*Pd::current) Sm (Pd::current, r->sel(), 0, si, r->cnt());
     } else
-        sm = new (pd->quota) Sm (Pd::current, r->sel(), r->cnt());
+        sm = new (*Pd::current) Sm (Pd::current, r->sel(), r->cnt());
 
     if (!Space_obj::insert_root (pd->quota, sm)) {
         trace (TRACE_ERROR, "%s: Non-NULL CAP (%#lx)", __func__, r->sel());
-        Sm::destroy(sm, pd->quota);
+        Sm::destroy(sm, *pd);
         sys_finish<Sys_regs::BAD_CAP>();
     }
 
@@ -967,7 +967,7 @@ void Ec::sys_xcpu_call()
 
     enum { UNUSED = 0, CNT = 0 };
 
-    current->xcpu_sm = new (Pd::current->quota) Sm (Pd::current, UNUSED, CNT);
+    current->xcpu_sm = new (*Pd::current) Sm (Pd::current, UNUSED, CNT);
 
     Ec *xcpu_ec = new (Pd::current->quota) Ec (Pd::current, Pd::current, Ec::sys_call, ec->cpu, current);
     Sc *xcpu_sc = new (Pd::current->quota) Sc (Pd::current, xcpu_ec, xcpu_ec->cpu, Sc::current);
@@ -982,7 +982,7 @@ void Ec::ret_xcpu_reply()
 {
     assert (current->xcpu_sm);
 
-    Sm::destroy(current->xcpu_sm, Pd::current->quota);
+    Sm::destroy(current->xcpu_sm, *Pd::current);
     current->xcpu_sm = nullptr;
 
     if (current->regs.status() != Sys_regs::SUCCESS) {
