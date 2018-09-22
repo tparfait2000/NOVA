@@ -320,7 +320,7 @@ void Hip::add_buddy (Hip_mem *&mem, Hip * hip)
 
     for (unsigned i = 0; i < (buddy_size / 4096); i++) {
         Paddr const p_buddy = buddy_start + i * 4096;
-        Pd::kern.Space_mem::delreg(Pd::kern.quota, p_buddy);
+        Pd::kern.Space_mem::delreg(Pd::kern.quota, Pd::kern.mdb_cache, p_buddy);
 
         if (!(p_buddy & mask))
             Pd::kern.Space_mem::insert (Pd::kern.quota, v_buddy + i * 4096, mem_log - 12, Hpt::HPT_NX | Hpt::HPT_G | Hpt::HPT_W | Hpt::HPT_P, p_buddy);

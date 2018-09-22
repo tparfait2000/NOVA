@@ -35,23 +35,23 @@ INIT_PRIORITY (PRIO_BUDDY)
 ALIGNED(32) Pd Pd::kern (&Pd::kern);
 ALIGNED(32) Pd Pd::root (&Pd::root, NUM_EXC, 0x1f);
 
-Pd::Pd (Pd *own) : Kobject (PD, static_cast<Space_obj *>(own)), pt_cache (sizeof (Pt), 32)
+Pd::Pd (Pd *own) : Kobject (PD, static_cast<Space_obj *>(own)), pt_cache (sizeof (Pt), 32), mdb_cache (sizeof (Mdb), 16)
 {
     hpt = Hptp (reinterpret_cast<mword>(&PDBR));
 
     Mtrr::init();
 
-    Space_mem::insert_root (own->quota, 0, reinterpret_cast<mword>(&LINK_P));
-    Space_mem::insert_root (own->quota, reinterpret_cast<mword>(&LINK_E), 1ULL << 52);
+    Space_mem::insert_root (own->quota, own->mdb_cache, 0, reinterpret_cast<mword>(&LINK_P));
+    Space_mem::insert_root (own->quota, own->mdb_cache, reinterpret_cast<mword>(&LINK_E), 1ULL << 52);
 
     // HIP
-    Space_mem::insert_root (own->quota, reinterpret_cast<mword>(&FRAME_H), reinterpret_cast<mword>(&FRAME_H) + PAGE_SIZE, 1);
+    Space_mem::insert_root (own->quota, own->mdb_cache, reinterpret_cast<mword>(&FRAME_H), reinterpret_cast<mword>(&FRAME_H) + PAGE_SIZE, 1);
 
     // I/O Ports
-    Space_pio::addreg (own->quota, 0, 1UL << 16, 7);
+    Space_pio::addreg (own->quota, own->mdb_cache, 0, 1UL << 16, 7);
 }
 
-Pd::Pd (Pd *own, mword sel, mword a) : Kobject (PD, static_cast<Space_obj *>(own), sel, a, free, pre_free), pt_cache (sizeof (Pt), 32)
+Pd::Pd (Pd *own, mword sel, mword a) : Kobject (PD, static_cast<Space_obj *>(own), sel, a, free, pre_free), pt_cache (sizeof (Pt), 32) , mdb_cache (sizeof (Mdb), 16)
 {
     if (this == &Pd::root) {
         bool res = Quota::init.transfer_to(quota, Quota::init.limit());
@@ -66,7 +66,7 @@ static void free_mdb(Rcu_elem * e)
     S *space = static_cast<S *>(mdb->space);
     Pd *pd = static_cast<Pd *>(space);
 
-    Mdb::destroy (mdb, pd->quota);
+    Mdb::destroy (mdb, pd->quota, pd->mdb_cache);
 }
 
 template <typename S>
@@ -88,10 +88,10 @@ bool Pd::delegate (Pd *snd, mword const snd_base, mword const rcv_base, mword co
             return s;
         }
 
-        Mdb *node = new (qg) Mdb (static_cast<S *>(this), free_mdb<S>, b - mdb->node_base + mdb->node_phys, b - snd_base + rcv_base, o, 0, mdb->node_type, S::sticky_sub(mdb->node_sub) | sub, static_cast<uint16>(mdb->dpth + 1));
+        Mdb *node = new (qg, mdb_cache) Mdb (static_cast<S *>(this), free_mdb<S>, b - mdb->node_base + mdb->node_phys, b - snd_base + rcv_base, o, 0, mdb->node_type, S::sticky_sub(mdb->node_sub) | sub, static_cast<uint16>(mdb->dpth + 1));
 
         if (!S::tree_insert (node)) {
-            Mdb::destroy (node, qg);
+            Mdb::destroy (node, qg, mdb_cache);
 
             Mdb * x = S::tree_lookup(b - snd_base + rcv_base);
             if (!x || x->prnt != mdb || x->node_attr != attr)
@@ -439,6 +439,7 @@ Pd::~Pd()
             Space_mem::loc[cpu].clear(quota, Space_mem::hpt.dest_loc, Space_mem::hpt.iter_loc_lev);
 
     pt_cache.free(quota);
+    mdb_cache.free(quota);
 }
 
 extern "C" int __cxa_atexit(void (*)(void *), void *, void *) { return 0; }

@@ -20,9 +20,6 @@
 #include "lock_guard.hpp"
 #include "mdb.hpp"
 
-INIT_PRIORITY (PRIO_SLAB)
-Slab_cache Mdb::cache (sizeof (Mdb), 16);
-
 Spinlock Mdb::lock;
 
 bool Mdb::insert_node (Mdb *p, mword a)

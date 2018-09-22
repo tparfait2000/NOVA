@@ -370,7 +370,7 @@ void Ec::sys_create_ec()
         sys_finish<Sys_regs::QUO_OOM>();
     }
 
-    if (EXPECT_FALSE (r->utcb() >= USER_ADDR || r->utcb() & PAGE_MASK || !pd->insert_utcb (pd->quota, r->utcb()))) {
+    if (EXPECT_FALSE (r->utcb() >= USER_ADDR || r->utcb() & PAGE_MASK || !pd->insert_utcb (pd->quota, pd->mdb_cache, r->utcb()))) {
         trace (TRACE_ERROR, "%s: Invalid UTCB address (%#lx)", __func__, r->utcb());
         sys_finish<Sys_regs::BAD_PAR>();
     }

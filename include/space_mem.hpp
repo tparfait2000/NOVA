@@ -124,9 +124,9 @@ class Space_mem : public Space
         }
 
         INIT
-        void insert_root (Quota &quota, uint64, uint64, mword = 0x7);
+        void insert_root (Quota &quota, Slab_cache &, uint64, uint64, mword = 0x7);
 
-        bool insert_utcb (Quota &quota, mword, mword = 0);
+        bool insert_utcb (Quota &quota, Slab_cache &, mword, mword = 0);
 
         bool remove_utcb (mword);
 

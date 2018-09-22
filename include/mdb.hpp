@@ -30,7 +30,6 @@ class Space;
 class Mdb : public Avl, public Rcu_elem
 {
     private:
-        static Slab_cache   cache;
         static Spinlock     lock;
 
         bool alive() const { return prev->next == this && next->prev == this; }
@@ -83,10 +82,10 @@ class Mdb : public Avl, public Rcu_elem
         bool remove_node(bool = true);
 
         ALWAYS_INLINE
-        static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
+        static inline void *operator new (size_t, Quota &quota, Slab_cache &cache) { return cache.alloc(quota); }
 
         ALWAYS_INLINE
-        static inline void destroy (Mdb *obj, Quota &quota) { obj->~Mdb(); cache.free (obj, quota); }
+        static inline void destroy (Mdb *obj, Quota &quota, Slab_cache &cache) { obj->~Mdb(); cache.free (obj, quota); }
 
-        template <typename T> void destroy (T *, Quota &);
+        template <typename T> void destroy (T *, Quota &, Slab_cache &);
 };

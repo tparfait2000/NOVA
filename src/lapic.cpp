@@ -36,7 +36,7 @@ void Lapic::init_cpuid()
 {
     Paddr apic_base = Msr::read<Paddr>(Msr::IA32_APIC_BASE);
 
-    Pd::kern.Space_mem::delreg (Pd::kern.quota, apic_base & ~PAGE_MASK);
+    Pd::kern.Space_mem::delreg (Pd::kern.quota, Pd::kern.mdb_cache, apic_base & ~PAGE_MASK);
     Hptp (Hpt::current()).update (Pd::kern.quota, CPU_LOCAL_APIC, 0, Hpt::HPT_NX | Hpt::HPT_G | Hpt::HPT_UC | Hpt::HPT_W | Hpt::HPT_P, apic_base & ~PAGE_MASK);
 
     Cpu::id = Cpu::find_by_apic_id (Lapic::id());

@@ -170,7 +170,7 @@ void Space_mem::shootdown(Pd * local)
     }
 }
 
-void Space_mem::insert_root (Quota &quota, uint64 s, uint64 e, mword a)
+void Space_mem::insert_root (Quota &quota, Slab_cache &cache, uint64 s, uint64 e, mword a)
 {
     for (uint64 p = s; p < e; s = p) {
 
@@ -186,7 +186,7 @@ void Space_mem::insert_root (Quota &quota, uint64 s, uint64 e, mword a)
         if ((p = min (p, e)) > ~0UL)
             p = static_cast<uint64>(~0UL) + 1;
 
-        addreg (quota, static_cast<mword>(s >> PAGE_BITS), static_cast<mword>(p - s) >> PAGE_BITS, a, t);
+        addreg (quota, cache, static_cast<mword>(s >> PAGE_BITS), static_cast<mword>(p - s) >> PAGE_BITS, a, t);
     }
 }
 
@@ -196,10 +196,10 @@ static void free_mdb(Rcu_elem * e)
     Space_mem *space = static_cast<Space_mem *>(mdb->space);
     Pd        *pd    = static_cast<Pd *>(space);
 
-    Mdb::destroy (mdb, pd->quota);
+    Mdb::destroy (mdb, pd->quota, pd->mdb_cache);
 }
 
-bool Space_mem::insert_utcb (Quota &quota, mword b, mword phys)
+bool Space_mem::insert_utcb (Quota &quota, Slab_cache &cache, mword b, mword phys)
 {
     if (!phys)
        return true;
@@ -207,12 +207,12 @@ bool Space_mem::insert_utcb (Quota &quota, mword b, mword phys)
     if (!b)
         return true;
 
-    Mdb *mdb = new (quota) Mdb (this, free_mdb, phys, b >> PAGE_BITS, 0, 0x3);
+    Mdb *mdb = new (quota, cache) Mdb (this, free_mdb, phys, b >> PAGE_BITS, 0, 0x3);
 
     if (tree_insert (mdb))
         return true;
 
-    Mdb::destroy (mdb, quota);
+    Mdb::destroy (mdb, quota, cache);
 
     return false;
 }

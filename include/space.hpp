@@ -51,15 +51,15 @@ class Space
             return Mdb::remove<Mdb> (&node->space->tree, node);
         }
 
-        void addreg (Quota &quota, mword addr, size_t size, mword attr, mword type = 0)
+        void addreg (Quota &quota, Slab_cache &cache, mword addr, size_t size, mword attr, mword type = 0)
         {
             Lock_guard <Spinlock> guard (lock);
 
             for (mword o; size; size -= 1UL << o, addr += 1UL << o)
-                Mdb::insert<Mdb> (&tree, new (quota) Mdb (nullptr, nullptr, addr, addr, (o = max_order (addr, size)), attr, type));
+                Mdb::insert<Mdb> (&tree, new (quota, cache) Mdb (nullptr, nullptr, addr, addr, (o = max_order (addr, size)), attr, type));
         }
 
-        void delreg (Quota &quota, mword addr)
+        void delreg (Quota &quota, Slab_cache &cache, mword addr)
         {
             Mdb *node;
 
@@ -73,9 +73,9 @@ class Space
 
             mword next = addr + 1, base = node->node_base, last = base + (1UL << node->node_order);
 
-            addreg (quota, base, addr - base, node->node_attr, node->node_type);
-            addreg (quota, next, last - next, node->node_attr, node->node_type);
+            addreg (quota, cache, base, addr - base, node->node_attr, node->node_type);
+            addreg (quota, cache, next, last - next, node->node_attr, node->node_type);
 
-            Mdb::destroy (node, quota);
+            Mdb::destroy (node, quota, cache);
         }
 };
