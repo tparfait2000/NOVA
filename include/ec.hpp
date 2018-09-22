@@ -70,8 +70,6 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         Sm *         xcpu_sm;
         Pt *         pt_oom;
 
-        static Slab_cache cache;
-
         REGPARM (1)
         static void handle_exc (Exc_regs *) asm ("exc_handler");
 
@@ -148,7 +146,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         }
 
         ALWAYS_INLINE
-        static inline void destroy (Ec *obj, Quota &quota) { obj->~Ec(); cache.free (obj, quota); }
+        static inline void destroy (Ec *obj, Pd &pd) { obj->~Ec(); pd.ec_cache.free (obj, pd.quota); }
 
         ALWAYS_INLINE
         inline bool idle_ec() { return !utcb && !regs.vmcb && !regs.vmcs && !regs.vtlb; }
@@ -164,7 +162,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
             if (e->del_ref()) {
                 assert(e != Ec::current);
-                Ec::destroy (e, e->pd->quota);
+                Ec::destroy (e, *e->pd);
             }
         }
 
@@ -465,7 +463,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         static void idl_handler();
 
         ALWAYS_INLINE
-        static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
+        static inline void *operator new (size_t, Pd &pd) { return pd.ec_cache.alloc(pd.quota); }
 
         template <void (*)()>
         NORETURN

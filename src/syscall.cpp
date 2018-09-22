@@ -378,11 +378,11 @@ void Ec::sys_create_ec()
     Capability cap_pt = Space_obj::lookup (r->sel() + 1);
     Pt *pt = cap_pt.obj()->type() == Kobject::PT ? static_cast<Pt *>(cap_pt.obj()) : nullptr;
 
-    Ec *ec = new (pd->quota) Ec (Pd::current, r->sel(), pd, r->flags() & 1 ? static_cast<void (*)()>(send_msg<ret_user_iret>) : nullptr, r->cpu(), r->evt(), r->utcb(), r->esp(), pt);
+    Ec *ec = new (*pd) Ec (Pd::current, r->sel(), pd, r->flags() & 1 ? static_cast<void (*)()>(send_msg<ret_user_iret>) : nullptr, r->cpu(), r->evt(), r->utcb(), r->esp(), pt);
 
     if (!Space_obj::insert_root (pd->quota, ec)) {
         trace (TRACE_ERROR, "%s: Non-NULL CAP (%#lx)", __func__, r->sel());
-        Ec::destroy (ec, ec->pd->quota);
+        Ec::destroy (ec, *ec->pd);
         sys_finish<Sys_regs::BAD_CAP>();
     }
 
@@ -969,7 +969,7 @@ void Ec::sys_xcpu_call()
 
     current->xcpu_sm = new (*Pd::current) Sm (Pd::current, UNUSED, CNT);
 
-    Ec *xcpu_ec = new (Pd::current->quota) Ec (Pd::current, Pd::current, Ec::sys_call, ec->cpu, current);
+    Ec *xcpu_ec = new (*Pd::current) Ec (Pd::current, Pd::current, Ec::sys_call, ec->cpu, current);
     Sc *xcpu_sc = new (*xcpu_ec->pd) Sc (Pd::current, xcpu_ec, xcpu_ec->cpu, Sc::current);
 
     xcpu_sc->remote_enqueue();

@@ -126,7 +126,7 @@ void Ec::oom_xcpu(Pt * pt, mword src_pd_id, mword oom_state)
 
     this->xcpu_sm = new (*Pd::current) Sm (Pd::current, UNUSED, CNT);
 
-    Ec *xcpu_ec = new (Pd::current->quota) Ec (Pd::current, Pd::current, sys_xcpu_call_oom<C>, pt->ec->cpu, this);
+    Ec *xcpu_ec = new (*Pd::current) Ec (Pd::current, Pd::current, sys_xcpu_call_oom<C>, pt->ec->cpu, this);
     xcpu_ec->regs.set_pt (reinterpret_cast<mword>(pt), src_pd_id, oom_state);
 
     Sc *xcpu_sc = new (*Pd::current) Sc (Pd::current, xcpu_ec, xcpu_ec->cpu, Sc::current);

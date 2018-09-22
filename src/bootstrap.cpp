@@ -32,7 +32,7 @@ void bootstrap()
     Cpu::init();
 
     // Create idle EC
-    Ec::current = new (Pd::kern.quota) Ec (Pd::current = &Pd::kern, Ec::idle, Cpu::id);
+    Ec::current = new (Pd::root) Ec (Pd::current = &Pd::kern, Ec::idle, Cpu::id);
     Ec::current->add_ref();
     Pd::current->add_ref();
     Space_obj::insert_root (Pd::kern.quota, Sc::current = new (Pd::root) Sc (&Pd::kern, Cpu::id, Ec::current));
@@ -46,7 +46,7 @@ void bootstrap()
     // Create root task
     if (Cpu::bsp) {
         Hip::add_check();
-        Ec *root_ec = new (Pd::root.quota) Ec (&Pd::root, NUM_EXC + 1, &Pd::root, Ec::root_invoke, Cpu::id, 0, USER_ADDR - 2 * PAGE_SIZE, 0, nullptr);
+        Ec *root_ec = new (Pd::root) Ec (&Pd::root, NUM_EXC + 1, &Pd::root, Ec::root_invoke, Cpu::id, 0, USER_ADDR - 2 * PAGE_SIZE, 0, nullptr);
         Sc *root_sc = new (Pd::root) Sc (&Pd::root, NUM_EXC + 2, root_ec, Cpu::id, Sc::default_prio, Sc::default_quantum);
         root_sc->remote_enqueue();
     }
