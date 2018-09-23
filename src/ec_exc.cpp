@@ -45,7 +45,7 @@ void Ec::save_fpu()
         regs.fpu_ctrl (false);
 
     if (EXPECT_FALSE (!fpu))
-        fpu = new (pd->quota) Fpu;
+        fpu = new (*pd) Fpu;
 
     fpu->save();
 }

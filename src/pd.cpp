@@ -36,7 +36,7 @@ INIT_PRIORITY (PRIO_BUDDY)
 ALIGNED(32) Pd Pd::kern (&Pd::kern);
 ALIGNED(32) Pd Pd::root (&Pd::root, NUM_EXC, 0x1f);
 
-Pd::Pd (Pd *own) : Kobject (PD, static_cast<Space_obj *>(own)), pt_cache (sizeof (Pt), 32), mdb_cache (sizeof (Mdb), 16), sm_cache (sizeof (Sm), 32), sc_cache (sizeof (Sc), 32), ec_cache (sizeof (Ec), 32)
+Pd::Pd (Pd *own) : Kobject (PD, static_cast<Space_obj *>(own)), pt_cache (sizeof (Pt), 32), mdb_cache (sizeof (Mdb), 16), sm_cache (sizeof (Sm), 32), sc_cache (sizeof (Sc), 32), ec_cache (sizeof (Ec), 32), fpu_cache (sizeof (Fpu), 16)
 {
     hpt = Hptp (reinterpret_cast<mword>(&PDBR));
 
@@ -52,7 +52,7 @@ Pd::Pd (Pd *own) : Kobject (PD, static_cast<Space_obj *>(own)), pt_cache (sizeof
     Space_pio::addreg (own->quota, own->mdb_cache, 0, 1UL << 16, 7);
 }
 
-Pd::Pd (Pd *own, mword sel, mword a) : Kobject (PD, static_cast<Space_obj *>(own), sel, a, free, pre_free), pt_cache (sizeof (Pt), 32) , mdb_cache (sizeof (Mdb), 16), sm_cache (sizeof (Sm), 32), sc_cache (sizeof (Sc), 32), ec_cache (sizeof (Ec), 32)
+Pd::Pd (Pd *own, mword sel, mword a) : Kobject (PD, static_cast<Space_obj *>(own), sel, a, free, pre_free), pt_cache (sizeof (Pt), 32) , mdb_cache (sizeof (Mdb), 16), sm_cache (sizeof (Sm), 32), sc_cache (sizeof (Sc), 32), ec_cache (sizeof (Ec), 32), fpu_cache (sizeof (Fpu), 16)
 {
     if (this == &Pd::root) {
         bool res = Quota::init.transfer_to(quota, Quota::init.limit());
@@ -443,6 +443,7 @@ Pd::~Pd()
     sm_cache.free(quota);
     sc_cache.free(quota);
     ec_cache.free(quota);
+    fpu_cache.free(quota);
     mdb_cache.free(quota);
 }
 

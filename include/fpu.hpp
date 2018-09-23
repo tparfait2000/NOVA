@@ -24,13 +24,12 @@
 #include "hazards.hpp"
 #include "slab.hpp"
 #include "x86.hpp"
+#include "pd.hpp"
 
 class Fpu
 {
     private:
         char data[512];
-
-        static Slab_cache cache;
 
     public:
         ALWAYS_INLINE
@@ -49,8 +48,8 @@ class Fpu
         static inline void disable() { set_cr0 (get_cr0() | Cpu::CR0_TS); Cpu::hazard &= ~HZD_FPU; }
 
         ALWAYS_INLINE
-        static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
+        static inline void *operator new (size_t, Pd &pd) { return pd.fpu_cache.alloc(pd.quota); }
 
         ALWAYS_INLINE
-        static inline void destroy(Fpu *obj, Quota &quota) { obj->~Fpu(); cache.free (obj, quota); }
+        static inline void destroy(Fpu *obj, Pd &pd) { obj->~Fpu(); pd.fpu_cache.free (obj, pd.quota); }
 };

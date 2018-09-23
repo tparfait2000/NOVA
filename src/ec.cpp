@@ -155,7 +155,7 @@ Ec::~Ec()
         Pt::destroy(pt_oom);
 
     if (fpu)
-        Fpu::destroy(fpu, pd->quota);
+        Fpu::destroy(fpu, *pd);
 
     if (utcb) {
         Utcb::destroy(utcb, pd->quota);

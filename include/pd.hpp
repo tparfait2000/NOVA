@@ -100,6 +100,7 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
         Slab_cache sm_cache;
         Slab_cache sc_cache;
         Slab_cache ec_cache;
+        Slab_cache fpu_cache;
 
         INIT
         Pd (Pd *);
