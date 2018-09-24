@@ -45,10 +45,10 @@ class Space
             return Mdb::insert<Mdb> (&node->space->tree, node);
         }
 
-        static bool tree_remove (Mdb *node, Avl::State state = Avl::State::REMOVED)
+        static bool tree_remove (Mdb *node)
         {
             Lock_guard <Spinlock> guard (node->space->lock);
-            return Mdb::remove<Mdb> (&node->space->tree, node, state);
+            return Mdb::remove<Mdb> (&node->space->tree, node);
         }
 
         void addreg (Quota &quota, mword addr, size_t size, mword attr, mword type = 0)

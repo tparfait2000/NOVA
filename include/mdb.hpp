@@ -80,7 +80,7 @@ class Mdb : public Avl, public Rcu_elem
 
         bool insert_node (Mdb *, mword);
         void demote_node (mword);
-        bool remove_node();
+        bool remove_node(bool = true);
 
         ALWAYS_INLINE
         static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
@@ -89,10 +89,4 @@ class Mdb : public Avl, public Rcu_elem
         static inline void destroy (Mdb *obj, Quota &quota) { obj->~Mdb(); cache.free (obj, quota); }
 
         template <typename T> void destroy (T *, Quota &);
-
-        ALWAYS_INLINE
-        inline bool accessible() const { return !Avl::removed() && !Avl::invalid(); }
-
-        ALWAYS_INLINE
-        inline bool invalid() const { return Avl::invalid(); }
 };

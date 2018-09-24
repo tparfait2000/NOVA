@@ -97,21 +97,10 @@ bool Avl::insert (Avl **tree, Avl *node)
 }
 
 template <typename S>
-bool Avl::remove (Avl **tree, Avl *node, State state)
+bool Avl::remove (Avl **tree, Avl *node)
 {
     Avl **p = tree, **item = nullptr;
     bool d = false;
-
-    if (node->sta == state)
-        return false;
-
-    if (node->sta == STALE)
-        return false;
-
-    if (node->sta == KIM) {
-        node->sta = STALE;
-        return true;
-    }
 
     for (Avl *n; (n = *tree); tree = n->lnk + d) {
 
@@ -170,10 +159,8 @@ bool Avl::remove (Avl **tree, Avl *node, State state)
     n->lnk[1] = node->lnk[1];
     n->bal    = node->bal;
 
-    node->sta = state;
-
     return true;
 }
 
 template bool Avl::insert<Mdb>(Avl**, Avl*);
-template bool Avl::remove<Mdb>(Avl**, Avl*, State);
+template bool Avl::remove<Mdb>(Avl**, Avl*);

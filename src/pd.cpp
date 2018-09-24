@@ -62,12 +62,8 @@ template <typename S>
 static void free_mdb(Rcu_elem * e)
 {
     Mdb *mdb = static_cast<Mdb *>(e);
-    Pd  *pd  = &Pd::root;
-
-    if (!mdb->invalid()) {
-        S *space = static_cast<S *>(mdb->space);
-        pd = static_cast<Pd *>(space);
-    }
+    S *space = static_cast<S *>(mdb->space);
+    Pd *pd = static_cast<Pd *>(space);
 
     Mdb::destroy (mdb, pd->quota);
 }
@@ -148,7 +144,17 @@ void Pd::revoke (mword const base, mword const ord, mword const attr, bool self,
                 static_cast<S *>(mdb->space)->update (qg, mdb, 0x1f);
                 mdb->demote_node (0x1f);
             }
-            static_cast<S *>(mdb->space)->tree_remove (mdb, Avl::State::KIM);
+
+            bool preempt = Cpu::preemption;
+            if (preempt)
+                Cpu::preempt_disable();
+
+            if (mdb->remove_node(!kim) && static_cast<S *>(mdb->space)->tree_remove (mdb))
+                Rcu::call (mdb);
+
+            if (preempt)
+                Cpu::preempt_enable();
+
             continue;
         }
 
@@ -156,10 +162,10 @@ void Pd::revoke (mword const base, mword const ord, mword const attr, bool self,
 
         unsigned d = node->dpth; bool demote = false;
 
-        for (Mdb *ptr;; node = ptr) {
+        if (self)
+            demote = clamp (node->node_phys, p = b - mdb->node_base + mdb->node_phys, node->node_order, o) != ~0UL;
 
-            if (node->dpth == d + !self)
-                demote = clamp (node->node_phys, p = b - mdb->node_base + mdb->node_phys, node->node_order, o) != ~0UL;
+        for (Mdb *ptr;; node = ptr) {
 
             if (demote && node->node_attr & attr) {
                 Quota_guard qg(this->quota);
@@ -171,14 +177,16 @@ void Pd::revoke (mword const base, mword const ord, mword const attr, bool self,
 
             if (ptr->dpth <= d)
                 break;
+
+            if (!self && ptr->prnt == mdb)
+                demote = clamp (ptr->node_phys, p = b - mdb->node_base + mdb->node_phys, ptr->node_order, o) != ~0UL;
         }
 
         Mdb *x = ACCESS_ONCE (node->next);
 
         assert ((x->dpth <= d) ||
                 (self && !(x->node_attr & attr)) ||
-                (!self && ((mdb == node) || (d + 1 == x->dpth) || !(x->node_attr & attr))));
-        assert (x->dpth > node->dpth ? (x->dpth == node->dpth + 1) : true);
+                (!self && ((mdb == node) || (d + 1 >= x->dpth) || !(x->node_attr & attr))));
 
         bool preempt = Cpu::preemption;
 
@@ -244,7 +252,7 @@ void Pd::xlt_crd (Pd *pd, Crd xlt, Crd &crd)
         Mdb *mdb, *node;
 
         for (node = mdb = snd->tree_lookup (sb); node; node = node->prnt)
-            if (node->space == rcv && node != mdb && node->accessible())
+            if (node->space == rcv && node != mdb)
                 if ((ro = clamp (node->node_base, rb, node->node_order, ro)) != ~0UL)
                     break;
 

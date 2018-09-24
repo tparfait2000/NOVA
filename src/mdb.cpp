@@ -29,9 +29,6 @@ bool Mdb::insert_node (Mdb *p, mword a)
 {
     Lock_guard <Spinlock> guard (lock);
 
-    if (!accessible())
-        return false;
-
     if (!p->alive())
         return false;
 
@@ -52,7 +49,7 @@ void Mdb::demote_node (mword a)
     node_attr &= ~a;
 }
 
-bool Mdb::remove_node()
+bool Mdb::remove_node(bool leaf)
 {
     if (node_attr)
         return false;
@@ -62,8 +59,11 @@ bool Mdb::remove_node()
     if (!alive())
         return false;
 
-    if (next->dpth > dpth)
+    if (leaf && next->dpth > dpth)
         return false;
+
+    if (!leaf)
+        next->prnt = prnt;
 
     next->prev = prev;
     prev->next = next;
