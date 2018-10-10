@@ -26,6 +26,7 @@
 #include "stdio.hpp"
 #include "vectors.hpp"
 #include "ec.hpp"
+#include "Pending_int.hpp"
 
 INIT_PRIORITY (PRIO_SLAB)
 Slab_cache  Dmar::cache (sizeof (Dmar), 8);
@@ -198,16 +199,21 @@ void Dmar::fault_handler()
 
 void Dmar::vector (unsigned vector)
 {
-    if(Ec::current->one_run_ok())
-        Ec::msi_counter2++;
-    else
-        Ec::msi_counter1++;
-    
-    unsigned msi = vector - VEC_MSI;
+    if(Ec::is_idle()){
+        exec_msi(vector, false);
+    }else{
+        Pending_int::add_pending_interrupt(Pending_int::INT_MSI, vector);
+        Lapic::eoi();
+    }
+}
+
+void Dmar::exec_msi(unsigned vector, bool pending){
+   unsigned msi = vector - VEC_MSI;
 
     if (EXPECT_TRUE (msi == 0))
         for (Dmar *dmar = list; dmar; dmar = dmar->next)
             dmar->fault_handler();
 
-    Lapic::eoi();
+    if(!pending)
+        Lapic::eoi();
 }

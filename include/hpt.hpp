@@ -54,6 +54,7 @@ public:
         HPT_G   = 1UL << 8,
 
 //      PTE_COW marks copy-on-write page table entries.
+        HPT_COW_IO = 1UL << 10,
         HPT_COW = 1UL << 11,
 #ifdef __x86_64__
         HPT_NX  = 1UL << 63,
@@ -112,7 +113,7 @@ public:
         asm volatile ("mov %0, %%cr3" : : "r" (val | pcid) : "memory");
     }
     
-    bool sync_from(Quota &quota, Hpt, mword, mword);
+    bool sync_from(Quota &quota, Hpt, mword, mword, mword = 0);
 
     void sync_master_range(Quota &quota, mword, mword);
 
@@ -142,6 +143,9 @@ public:
         
     Paddr replace_cow(Quota &quota, mword, mword);
     void replace_cow_n(Quota &quota, mword, int, mword);
+    static void print(char const *s, mword v);
+    static void set_cow_page(mword virt, mword &entry);
+
 };
 
 class Hptp : public Hpt {

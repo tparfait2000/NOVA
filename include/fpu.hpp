@@ -91,7 +91,7 @@ class Fpu
             if(get_cr0() & (Cpu::CR0_TS | Cpu::CR0_EM))
                 return;
             if(!is_saved)
-                Console::print("TCHA HO HO: Cpu::CR0_TS || Cpu::CR0_EM = 0 but is_saved is false - dwc_restore");// TS ou EM ont été désactivé en cours de route  
+                Console::print("TCHA HO HO: Cpu::CR0_TS || Cpu::CR0_EM = 0 but is_saved is false - dwc_restore1");// TS ou EM ont été désactivé en cours de route  
             fpu_2->save();
             save_state(statedata_2);
             fpu_1->load();
@@ -126,8 +126,6 @@ class Fpu
         static void dwc_rollback(){
             if(get_cr0() & (Cpu::CR0_TS | Cpu::CR0_EM))
                 return;
-            if(!is_saved)
-                Console::print("TCHA HO HO: Cpu::CR0_TS || Cpu::CR0_EM = 0 but is_saved is false - dwc_rollback");// TS ou EM ont été désactivé en cours de route  
             fpu_0->load();
             load_state(statedata_0);
             is_saved = false;            

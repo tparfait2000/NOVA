@@ -28,13 +28,17 @@ class Queue
 {
     private:
         T *headptr;
+        T *tailptr;
 
     public:
         ALWAYS_INLINE
-        inline Queue() : headptr (nullptr) {}
+        inline Queue() : headptr (nullptr), tailptr(nullptr) {}
 
         ALWAYS_INLINE
         inline T *head() const { return headptr; }
+
+        ALWAYS_INLINE
+        inline T *tail() const { return headptr ? headptr->prev : tailptr; }
 
         ALWAYS_INLINE
         inline void enqueue (T *t)

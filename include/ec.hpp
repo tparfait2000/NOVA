@@ -36,12 +36,13 @@
 
 #include "stdio.hpp"
 #include "vmx.hpp"
+#include "pe.hpp"
 
 class Utcb;
 class Sm;
 class Pt;
 
-class Ec : public Kobject, public Refcount, public Queue<Sc>
+class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
 {
     friend class Queue<Ec>;
     friend class Sc;
@@ -101,8 +102,8 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         NORETURN
         static inline void svm_exception(mword);
 
-            NORETURN
-            static inline void svm_cr(mword);
+        NORETURN
+        static inline void svm_cr(mword);
 
         NORETURN
         static inline void svm_invlpg();
@@ -228,7 +229,6 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
         static Fpu *fpu_0, *fpu_1, *fpu_2;
         int previous_reason = 0, nb_extint = 0;
-        uint64 tour = 0;
         mword io_addr = {}, io_attr = {};
         Paddr io_phys = {};
 
@@ -250,25 +250,49 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         };
 
         enum Step_reason {
-            NIL = 0,
-            MMIO = 1,
-            PIO = 2,
-            RDTSC = 3,
-            PMI = 4,
-            GP,
+            SR_NIL = 0,
+            SR_MMIO = 1,
+            SR_PIO = 2,
+            SR_RDTSC = 3,
+            SR_PMI = 4,
+            SR_GP = 5,
+            SR_DBG = 6,
+            SR_EQU = 7,
         };
 
-        static unsigned affich_num, affich_mod, step_nb;
-        static mword prev_rip, last_rip, last_rcx, last_rsp, end_rip, end_rcx, tscm1, tscm2;
-        static uint64 begin_time, end_time, runtime1, runtime2, total_runtime, step_debug_time, static_tour, counter1, counter2, exc_counter, exc_counter1, exc_counter2, gsi_counter1, lvt_counter1, msi_counter1, ipi_counter1,
-                gsi_counter2, lvt_counter2, msi_counter2, ipi_counter2, debug_compteur, count_je, nbInstr_to_execute, tsc1, tsc2;
+        enum PE_stopby {
+            PES_DEFAULT         = 0,
+            PES_PMI             = 1,
+            PES_PAGE_FAULT      = 2,
+            PES_SYS_ENTER       = 3,
+            PES_VMX_EXIT        = 4,
+            PES_INVALID_TSS     = 5,
+            PES_GP_FAULT        = 6,
+            PES_DEV_NOT_AVAIL   = 7,
+            PES_SEND_MSG        = 8, 
+            PES_MMIO            = 9,
+            PES_SINGLE_STEP     = 10,
+            PES_VMX_SEND_MSG    = 11,
+            PES_VMX_EXT_INT     = 12,
+            PES_GSI             = 13,
+            PES_MSI             = 14,
+            PES_LVT             = 15,
+        };
+        static const uint64 step_nb;
+        static mword prev_rip, last_rip, last_rcx, last_rsp, end_rip, end_rcx, instruction_value, outpout_table0[][2], outpout_table1[][2];
+        static uint64 counter1, counter2, exc_counter, exc_counter1, exc_counter2, gsi_counter1, lvt_counter1, msi_counter1, ipi_counter1, gsi_counter2, lvt_counter2, msi_counter2, 
+        ipi_counter2, debug_compteur, count_je, nbInstr_to_execute, tsc1, tsc2, nb_inst_single_step, second_run_instr_number, first_run_instr_number, single_step_number, 
+        counter_userspace, double_interrupt_counter, double_interrupt_counter1, double_interrupt_counter2, ipi_counter, msi_counter, gsi_counter, lvt_counter, exc_no_pf_counter,
+        exc_no_pf_counter1, exc_no_pf_counter2, pf_counter, pf_counter1, pf_counter2, rep_counter, rep_counter1, rep_counter2, hlt_counter, hlt_counter1, hlt_counter2, shadow_counter, shadow_counter1,
+        shadow_counter2, distance_instruction;
         static uint8 run_number, launch_state, step_reason, debug_nb;
-        static bool ec_debug, glb_debug, hardening_started, in_rep_instruction, not_nul_cowlist, jump_ex, fpu_saved, no_further_check;
-        static int prev_reason, previous_ret, nb_try;
-
-        Ec(Pd *, void (*)(), unsigned, char* const nm = const_cast<char* const> ("Unknown"));
-        Ec(Pd *, mword, Pd *, void (*)(), unsigned, unsigned, mword, mword, Pt *, char* const nm = const_cast<char* const> ("Unknown"));
-        Ec(Pd *, Pd *, void (*f)(), unsigned, Ec *, char* const nm = const_cast<char* const> ("Unknown"));
+        static bool ec_debug, glb_debug, hardening_started, in_rep_instruction, not_nul_cowlist, jump_ex, fpu_saved, no_further_check, first_run_advanced;
+        static int prev_reason, previous_ret, nb_try, reg_diff;
+        static const char* regs_name_table[];
+        
+        Ec(Pd *, void (*)(), unsigned, char const *nm = "Unknown");
+        Ec(Pd *, mword, Pd *, void (*)(), unsigned, unsigned, mword, mword, Pt *, char const *nm = "Unknown");
+        Ec(Pd *, Pd *, void (*f)(), unsigned, Ec *, char const *nm = "Unknown");
 
         ~Ec();
 
@@ -364,7 +388,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
                 bool ok = Sc::current->add_ref();
                 assert (ok);
 
-                enqueue (Sc::current);
+                Queue<Sc>::enqueue (Sc::current);
             }
 
             Sc::schedule (true);
@@ -378,7 +402,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
             Lock_guard <Spinlock> guard (lock);
 
-            for (Sc *s; dequeue (s = head()); ) {
+            for (Sc *s; Queue<Sc>::dequeue (s = Queue<Sc>::head()); ) {
                 if (EXPECT_TRUE(!s->last_ref()) || s->ec->partner) {
                     s->remote_enqueue(false);
                     continue;
@@ -530,7 +554,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         static void check(mword, bool = true);
 
         REGPARM(1)
-        static void check_memory(int = 0) asm ("memory_checker");
+        static void check_memory(PE_stopby = PES_DEFAULT) asm ("memory_checker");
         REGPARM(1)
         static void vm_check_memory(int = 0);
         REGPARM(1)
@@ -541,7 +565,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
         void resolve_PIO_execption();
 
-        void enable_step_debug(Step_reason raison = NIL, mword fault_addr = 0, Paddr fault_phys = 0, mword fault_attr = 0); 
+        void enable_step_debug(Step_reason raison = SR_NIL, mword fault_addr = 0, Paddr fault_phys = 0, mword fault_attr = 0); 
         void disable_step_debug();
 
         void save_state(); 
@@ -562,7 +586,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         }
 
         static bool is_idle() {
-            return true;
+            return launch_state == UNLAUNCHED && step_reason == SR_NIL;
         }
 
         void set_env(uint64 t) {
@@ -582,10 +606,6 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
             return name;
         }
 
-        static void global_memory_check(int pmi){
-            current->utcb ? check_memory(pmi): vm_check_memory(pmi);
-        }
-
         void restore_state();
         void restore_state1();
         void rollback();
@@ -598,7 +618,6 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         static void reset_counter();
         static void check_exit();
         static void print_stat(bool);
-        static void reset_time();
         static void reset_all();
         static void Setx86DebugReg(mword, int );
         static void debug_func(const char*);
@@ -622,4 +641,16 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         static void resolve_rdtscp();
         NORETURN
         static void disable_single_step();
+        bool is_virutalcpu() {return utcb ? false : true; }
+        mword get_reg(int);
+        int compare_regs_mute();
+        bool single_step_finished();
+        void free_recorded_pe();
+        void print_recorded_pe();
+        bool cmp_pe_to_head(Pe*, Pe::Member_type);
+        bool cmp_pe_to_tail(Pe*, Pe::Member_type);
+        void mark_pe_tail();
+        void take_snaphot();
+        static void count_interrupt(mword);
+        static void check_instr_number_equals(int);
 };

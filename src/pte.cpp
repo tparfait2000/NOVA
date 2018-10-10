@@ -127,7 +127,7 @@ bool Pte<P, E, L, B, F>::update(Quota &quota, E v, mword o, E p, mword a, Type t
         p |= P::order (o % B) | (l ? P::PTE_S : 0) | a;
         s = 1UL << (l * B + PAGE_BITS);
         if (set_cow) {
-            set_cow_page(v, p);
+            P::set_cow_page(v, p);
         }
     } else
         p = s = 0;
@@ -188,26 +188,6 @@ void Pte<P, E, L, B, F>::free_up(Quota &quota, unsigned l, P * e, mword v, bool 
             Pte::destroy(p, quota);
     }
 }
-
-template <typename P, typename E, unsigned L, unsigned B, bool F>
-/**
- * 
- *  */
-void Pte<P, E, L, B, F>::set_cow_page(E virt, E &entry) {
-//    if(P::table_type() == Ept) return;
-    return;
-    if ((virt < USER_ADDR) && (entry & P::PTE_P) && (entry & P::PTE_U)) {
-        if (is_mmio(entry & ~PAGE_MASK)) {
-            entry |= P::PTE_COW | P::PTE_COW_IO;
-            entry &= ~P::PTE_P;
-        } else if (entry & P::PTE_W) {
-            entry |= P::PTE_COW;
-            entry &= ~P::PTE_COW_IO;
-            entry &= ~P::PTE_W;
-        }
-    }
-}
-
 
 template class Pte<Dpt, uint64, 4, 9, true>;
 template class Pte<Ept, uint64, 4, 9, false>;

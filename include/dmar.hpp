@@ -107,7 +107,7 @@ class Dmar : public List<Dmar>
         static Dmar_ctx *   ctx;
         static Dmar_irt *   irt;
         static uint32       gcmd;
-
+        
         static Dmar *       list;
         static Slab_cache   cache;
 
@@ -243,7 +243,7 @@ class Dmar : public List<Dmar>
     public:
         INIT
         Dmar (Paddr);
-
+        
         ALWAYS_INLINE
         static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
 
@@ -271,4 +271,5 @@ class Dmar : public List<Dmar>
 
         REGPARM (1)
         static void vector (unsigned) asm ("msi_vector");
+        static void exec_msi(unsigned, bool);
 };

@@ -34,9 +34,7 @@ INIT_PRIORITY(PRIO_BUDDY)
 ALIGNED(32) Pd Pd::kern(&Pd::kern);
 ALIGNED(32) Pd Pd::root(&Pd::root, NUM_EXC, 0x1f);
 
-const char *Pd::names[] = {"root", "init", "init -> timer", "init -> rtc_drv", "init -> ps2_drv", "init -> acpi_drv",
-    "init -> acpi_report_rom", "init -> platform_drv", "init -> nic_drv", "init -> fb_drv",
-    "init -> seoul", "init -> platform_drv -> nic_drv", nullptr};
+const char *Pd::names[] = {nullptr};
 
 Pd::Pd(Pd *own) : Kobject(PD, static_cast<Space_obj *> (own)) {
     copy_string(name, const_cast<char* const> ("kern_pd"));
@@ -121,7 +119,7 @@ bool Pd::delegate(Pd *snd, mword const snd_base, mword const rcv_base, mword con
         s |= S::update(qg, node, 0, to_be_cowed);
 
         if (Cpu::hazard & HZD_OOM) {
-            s |= S::update (qg, node, attr);
+            s |= S::update (qg, node, attr, to_be_cowed);
             node->demote_node (attr);
             if (node->remove_node() && S::tree_remove (node))
                 Rcu::call (node);
@@ -489,9 +487,8 @@ void Pd::restore_state(bool is_vcpu) {
         if(is_vcpu){
             cow->vtlb_entry->set_val(cow->prev_tlb_val);
         }else{
-            loc[Cpu::id].replace_cow(q, v, cow->new_phys[1]->phys_addr | (cow->attr & ~Hpt::HPT_W));
+            loc[Cpu::id].replace_cow(q, v, cow->new_phys[1]->phys_addr | (cow->attr | Hpt::HPT_W));
         }
-//        Hpt::cow_flush(v);
         cow = cow->next;
     }
 }
@@ -506,7 +503,6 @@ void Pd::restore_state1(bool is_vcpu) {
             cow->vtlb_entry->set_val(cow->new_phys[0]->phys_addr | (cow->attr | Vtlb::TLB_W));
         }else{
             loc[Cpu::id].replace_cow(q, v, cow->new_phys[0]->phys_addr | (cow->attr | Hpt::HPT_W));
-//        Hpt::cow_flush(v);
         }
         cow = cow->next;
     }
@@ -523,7 +519,6 @@ void Pd::rollback(bool is_vcpu) {
             cow->vtlb_entry->set_val(cow->prev_tlb_val);
         }else{
             loc[Cpu::id].replace_cow(q, v, old_phys| (cow->attr & ~Hpt::HPT_W));
-            Hpt::cow_flush(v);
         }
         Cow::free_cow_elt(cow);
         cow = cow->next;
@@ -531,16 +526,15 @@ void Pd::rollback(bool is_vcpu) {
 }
 
 void Pd::set_to_be_cowed(){   
-    return;
     int i = 0; 
     while(names[i] != nullptr){
-        if(!strcmp(name, names[i])){
-            to_be_cowed = true;
+        if(str_equal(name, names[i])){
+            to_be_cowed = false;
             return;
         }
         i++;
     }
-    to_be_cowed = false; 
+    to_be_cowed = true; 
 }
 
 bool Pd::compare_and_commit() {
@@ -564,8 +558,7 @@ bool Pd::compare_and_commit() {
         mword v = cow->page_addr_or_gpa;
         void *ptr = Hpt::remap_cow(q, old_phys);
         memcpy(ptr, reinterpret_cast<const void*> (v), PAGE_SIZE);
-        loc[Cpu::id].replace_cow(q, v, old_phys | (cow->attr & ~Hpt::HPT_W)); // the old frame may have been released; so we have to retain it
-        Hpt::cow_flush(v);
+        loc[Cpu::id].replace_cow(q, v, old_phys | (cow->attr & ~Hpt::HPT_W)); 
         Cow::free_cow_elt(cow);
         cow = cow->next;
     }
@@ -593,6 +586,23 @@ bool Pd::vtlb_compare_and_commit(){
         memcpy(ptr, ptr2, PAGE_SIZE);
         cow->vtlb_entry->set_val(cow->old_phys | (cow->attr & ~Vtlb::TLB_W));
         Cow::free_cow_elt(cow);
+        cow = cow->next;
+    }
+    return false;
+}
+
+
+bool Pd::compare_memory_mute() {
+    Cow::cow_elt *cow = cow_list;
+    Quota q = this->quota;
+    while (cow != nullptr) {
+        //        Console::print("Compare v: %p  phys: %p  ce: %p  phys1: %p  phys2: %p", cow->page_addr_or_gpa, cow->old_phys, cow, cow->new_phys[0]->phys_addr, cow->new_phys[1]->phys_addr);
+        mword *ptr1 = reinterpret_cast<mword*> (Hpt::remap_cow(q, cow->new_phys[0]->phys_addr)),
+                *ptr2 = reinterpret_cast<mword*> (cow->page_addr_or_gpa);
+        int missmatch_addr = memcmp(ptr1, ptr2, PAGE_SIZE);
+        if (missmatch_addr) {
+            return true;
+        }
         cow = cow->next;
     }
     return false;

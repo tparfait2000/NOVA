@@ -53,7 +53,7 @@ void Ec::vmx_exception() {
             ret_user_vmresume();
 
         case 0x307: // #NM
-            vm_check_memory(5971);
+            vm_check_memory(PES_DEV_NOT_AVAIL);
             handle_exc_nm();
             ret_user_vmresume();
 
@@ -76,7 +76,7 @@ void Ec::vmx_exception() {
                     ret_user_vmresume();
             }
     }
-    vm_check_memory(5964);
+    vm_check_memory(PES_VMX_SEND_MSG);
 
     send_msg<ret_user_vmresume>();
 }
@@ -85,7 +85,7 @@ void Ec::vmx_extint() {
     unsigned vector = Vmcs::read(Vmcs::EXI_INTR_INFO) & 0xff;
     if(run_number == 0 && vector != VEC_LVT_PERFM){ //Non PMI external interrupt in 
         Lapic::eoi();
-        vm_check_memory(5972);
+        vm_check_memory(PES_VMX_EXT_INT);
     }
     if (vector >= VEC_IPI)
         Lapic::ipi_vector(vector);
@@ -182,14 +182,14 @@ void Ec::enable_single_step() {
     enable_mtf();
     enable_rdtsc();
 //    ec_debug = true;
-    step_reason = RDTSC;
+    step_reason = SR_RDTSC;
     current->regs.vmcs->make_current();
 }
 
 void Ec::disable_single_step() {
     disable_mtf();
     disable_rdtsc();
-    step_reason = NIL;
+    step_reason = SR_NIL;
     ret_user_vmresume();
 }
 
@@ -209,7 +209,7 @@ void Ec::resolve_rdtscp() {
 void Ec::vmx_enable_single_step(){
     enable_mtf();
 //    ec_debug = true;
-    step_reason = PMI;
+    step_reason = SR_PMI;
     current->regs.vmcs->make_current();
 }
 
@@ -228,8 +228,8 @@ void Ec::vmx_disable_single_step() {
         // It may happen that this is the final instruction
         if ((current_rip == end_rip) && (current->regs.REG(cx) == end_rcx)) {
             disable_mtf();
-            step_reason = NIL;
-            vm_check_memory(3001);
+            step_reason = SR_NIL;
+            vm_check_memory(PES_PMI);
         }
     } else {
         if (nbInstr_to_execute > 0)
@@ -241,8 +241,8 @@ void Ec::vmx_disable_single_step() {
     }
     if ((current_rip == end_rip) && (current->regs.REG(cx) == end_rcx)) {
             disable_mtf();
-            step_reason = NIL;
-            vm_check_memory(3001);
+            step_reason = SR_NIL;
+            vm_check_memory(PES_PMI);
     } else {
         nbInstr_to_execute = 1;
         ret_user_vmresume();
@@ -361,9 +361,9 @@ void Ec::handle_vmx() {
         }
         case Vmcs::VMX_MTF:
             switch(step_reason){
-                case RDTSC:
+                case SR_RDTSC:
                     disable_single_step();
-                case PMI:
+                case SR_PMI:
                     vmx_disable_single_step();
             }
         case Vmcs::VMX_EPT_VIOLATION:
@@ -398,8 +398,6 @@ void Ec::vm_check_memory(int reason) {
     
     switch (run_number){
         case 0:
-            ec->tour++;
-            static_tour++;
             exc_counter1 = exc_counter;
             exc_counter = 0;
             end_rip = last_rip;
@@ -412,10 +410,10 @@ void Ec::vm_check_memory(int reason) {
                     reason, ec->utcb, counter1, Lapic::counter, exc_counter1, static_cast<long> (counter1 - exc_counter1), Lapic::tour, last_rip);            
             Lapic::compute_expected_info(static_cast<uint32>(exc_counter1), reason);
             switch(reason){
-                case 3002: //Perf Monitoring Interrupt
-                    Lapic::program_pmi2(Lapic::max_instruction);
+                case PES_SINGLE_STEP: //Perf Monitoring Interrupt
+                    Lapic::program_pmi2(MAX_INSTRUCTION);
                     break;
-                case 5972: // vmx external interrupt
+                case PES_VMX_EXT_INT: // vmx external interrupt
                     if(counter1 == 0){ //No instruction was executed
                         launch_state = UNLAUNCHED;
                         reset_all();
@@ -432,8 +430,6 @@ void Ec::vm_check_memory(int reason) {
             if (reason == 3002) {
                 ec->run2_pmi_check(reason);            
             }
-            ec->tour++;
-            static_tour++;
             int regs_not_ok = ec->compare_regs(reason);
             bool cc = false;
             if (regs_not_ok) {
@@ -442,7 +438,7 @@ void Ec::vm_check_memory(int reason) {
             }
             cc |= pd->vtlb_compare_and_commit();
             if (cc) {
-                Console::print("Checking failed Ec: %p utcb %p PMI: %d Pd: %s tour: %lld  s_tour: %lld  launch_state: %d", ec, ec->utcb, reason, pd->get_name(), ec->tour, static_tour, launch_state);
+                Console::print("Checking failed Ec: %p utcb %p PMI: %d Pd: %s launch_state: %d", ec, ec->utcb, reason, pd->get_name(), launch_state);
                 Console::print("eip0: %lx  rcx0: %lx  r11_0: %lx  rdi_0: %lx", regs_0.REG(ip), regs_0.REG(cx), regs_0.r11, regs_0.REG(di));
                 Console::print("eip1: %lx  rcx1: %lx  r11_1: %lx  rdi_1: %lx", regs_1.REG(ip), regs_1.REG(cx), regs_1.r11, regs_1.REG(di));
                 Console::print("eip: %lx  rcx: %lx  r11: %lx  rdi: %lx", ec->regs.REG(ip), ec->regs.REG(cx), ec->regs.r11, ec->regs.REG(di));
@@ -452,7 +448,6 @@ void Ec::vm_check_memory(int reason) {
                 check_exit();
             } else {
                 launch_state = UNLAUNCHED;
-                total_runtime = rdtsc();
                 reset_all();
                 return;
             }

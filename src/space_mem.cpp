@@ -115,7 +115,7 @@ bool Space_mem::update (Quota_guard &quota, Mdb *mdb, mword r, bool set_cow)
             Cpu::hazard |= HZD_OOM;
             return f;
         }
-        if(ord < Hpt::bpl())
+        if(ord < Hpt::bpl() || !(a & Hpt::HPT_W))
             f |= hpt.update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), Hpt::hw_attr (a), r ? Hpt::TYPE_DN : Hpt::TYPE_UP, set_cow);
         else{
             mword max_ord = ord - Hpt::bpl() + 1;
@@ -136,7 +136,7 @@ bool Space_mem::update (Quota_guard &quota, Mdb *mdb, mword r, bool set_cow)
                     return (r || f);
                 }
 
-                if(ord < Hpt::bpl())
+                if(ord < Hpt::bpl() || !(a & Hpt::HPT_W))
                     loc[j].update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), Hpt::hw_attr (a), Hpt::TYPE_DF, set_cow);
                 else{
                     mword max_ord = ord - Hpt::bpl() + 1;

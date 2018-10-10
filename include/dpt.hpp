@@ -40,4 +40,12 @@ public:
         PTE_W = DPT_W,
         PTE_U = 0,
     };
+    
+    static void print(char const *s, uint64 v){
+        Console::print("%s %llx", s, v);
+    }
+    
+    static void set_cow_page(uint64 virt, uint64 &entry) {
+        Console::print("set_cow_page in DPT %llx %llx", virt, entry);
+    }
 };

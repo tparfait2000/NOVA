@@ -27,6 +27,7 @@
 #include "lapic.hpp"
 #include "sm.hpp"
 #include "vectors.hpp"
+#include "Pending_int.hpp"
 
 Gsi         Gsi::gsi_table[NUM_GSI];
 unsigned    Gsi::irq_table[NUM_IRQ];
@@ -88,11 +89,18 @@ void Gsi::unmask (unsigned gsi)
 
 void Gsi::vector (unsigned vector)
 {
-    if(Ec::current->one_run_ok())
-        Ec::gsi_counter2++;
-    else
-        Ec::gsi_counter1++;
+    unsigned gsi = vector - VEC_GSI;
+
+    if(Ec::is_idle() || gsi == Acpi::gsi){// Acpi::gsi (0x9) triggers too much (10000) so we choose not to delay it
+        exec_gsi(vector, false);
+    }else{
+        Pending_int::add_pending_interrupt(Pending_int::INT_GSI, vector);
+        Lapic::eoi();        
+    }
     
+}
+
+void Gsi::exec_gsi(unsigned vector, bool pending){
     unsigned gsi = vector - VEC_GSI;
 
     if (gsi == Keyb::gsi)
@@ -104,7 +112,8 @@ void Gsi::vector (unsigned vector)
     else if (gsi_table[gsi].trg)
         mask (gsi);
 
-    Lapic::eoi();
+    if(!pending)
+        Lapic::eoi();
 
     gsi_table[gsi].sm->submit();
 

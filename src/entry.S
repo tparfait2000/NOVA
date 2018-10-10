@@ -83,12 +83,15 @@ INTRGATE                \DPL
 .endm
         
 .macro                  SAVE_REGS
+                        testb   $3, OFS_CS (%REG(bx))
+                        jz 2f
                         SAVE_FLAGS
                         SAVE_GPR
                         mov     %REG(bx), %ARG_1
                         call saveRegs
                         LOAD_GPR
                         LOAD_FLAGS
+2:
 .endm
    
 .macro                  SAVE_FLAGS
@@ -240,7 +243,7 @@ entry_sysenter:         LOAD_KSP
                         mov     $(CPU_LOCAL_STCK + PAGE_SIZE), %REG(sp)
                         SAVE_FLAGS
                         SAVE_GPR
-                        mov     $1258, %ARG_1
+                        mov     $3, %ARG_1              //PES_SYSENTER
                         call    memory_checker
                         LOAD_GPR
                         LOAD_FLAGS

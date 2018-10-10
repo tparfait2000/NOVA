@@ -123,6 +123,12 @@ class Space_mem : public Space
             return hpt.replace (quota, v, p);
         }
 
+        ALWAYS_INLINE
+        inline Paddr replace_cow (Quota &quota, mword v, Paddr p)
+        {
+            return hpt.replace_cow (quota, v, p);
+        }
+        
         INIT
         void insert_root (Quota &quota, uint64, uint64, mword = 0x7);
 

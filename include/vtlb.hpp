@@ -99,7 +99,6 @@ public:
 
     static Reason miss(Exc_regs *, mword, mword &);
     bool is_cow_pf(uint64 &, mword , mword);
-    static void set_cow_page_vmx(uint64, uint64 &);
     void restore_vtlb();
     void restore_vtlb1();
     static void set_cow_fault(Vtlb*, mword, uint64);
@@ -119,4 +118,14 @@ public:
         obj->~Vtlb();
         Buddy::allocator.free(reinterpret_cast<mword> (obj), quota);
     }
+    
+    #ifdef __i386__
+        static void print(char* s, uint32 v);
+        static void set_cow_page(uint32 virt, uint32 &entry) {
+            Console::print("set_cow_page in Vtlb %lx %lx", virt, entry);
+        }
+    #else
+        static void print(char const *s, uint64 v);
+        static void set_cow_page(uint64 virt, uint64 &entry);
+    #endif
 };

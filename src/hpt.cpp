@@ -33,7 +33,7 @@
 //        print_walk(quota, v, l);
 //    }
 //}
-bool Hpt::sync_from(Quota &quota, Hpt src, mword v, mword o) {
+bool Hpt::sync_from(Quota &quota, Hpt src, mword v, mword o, mword err) {
     mword l = (bit_scan_reverse(v ^ o) - PAGE_BITS) / bpl();
 
     Hpt *s = static_cast<Hpt *> (src.walk(quota, v, l, false));
@@ -47,7 +47,7 @@ bool Hpt::sync_from(Quota &quota, Hpt src, mword v, mword o) {
         return false;
 
     d->val = s->val;
-
+    is_cow_fault(quota, v, err);
     return true;
 }
 
@@ -119,16 +119,16 @@ bool Hpt::is_cow_fault(Quota &quota, mword v, mword err) {
         Ec *ec = Ec::current;
         Pd *pd = ec->getPd();
         if (!(a & Hpt::HPT_P) && (a & Hpt::PTE_COW_IO)) { //Memory mapped IO
-            //            if (Ec::current->ec_debug) {
-            //                            Console::print("Cow error in IO: v: %p  phys: %p, attr: %p",
-            //                                    v, phys, a);
-            ////                Ec::current->ec_debug = false;
-            //            }
-            ec->check_memory(1257);
+//      if (Ec::current->ec_debug) {
+//          Console::print("Cow error in IO: v: %lx  phys: %lx, attr: %lx",
+//                                        v, phys, a);
+//          Ec::current->ec_debug = false;
+//      }
+            ec->check_memory(Ec::PES_MMIO);
             replace_cow(quota, v, phys | a | Hpt::HPT_P); // the old frame may have been released; so we have to retain it
 //            cow_flush(v);
             //            Console::print("Read MMIO");
-            ec->enable_step_debug(Ec::MMIO, v, phys, a);
+            ec->enable_step_debug(Ec::SR_MMIO, v, phys, a);
             return true;
         } else if ((err & Hpt::ERR_W) && !(a & Hpt::HPT_W)) {
             //            if (Ec::current->ec_debug) {
@@ -141,8 +141,8 @@ bool Hpt::is_cow_fault(Quota &quota, mword v, mword err) {
                 replace_cow(quota, v, phys | a | Hpt::HPT_W);
                 //              Console::print("Cow Error above USER_ADDR");
             } else {
-                if (Ec::step_reason && (Ec::step_reason != Ec::GP)) {//Cow error in single stepping : why this? we don't know; qemu oddities
-                    if (Ec::step_reason != Ec::PIO)
+                if (Ec::step_reason && (Ec::step_reason != Ec::SR_DBG) && (Ec::step_reason != Ec::SR_GP)) {//Cow error in single stepping : why this? we don't know; qemu oddities
+                    if (Ec::step_reason != Ec::SR_PIO)
                         Console::print("Cow error in single stepping v: %lx  phys: %lx  Pd: %s", v, phys, pd->get_name());
                     if (ec->is_io_exc()) {
                         replace_cow(quota, v, phys | a | Hpt::HPT_W);
@@ -193,4 +193,19 @@ void Hpt::replace_cow_n(Quota &quota, mword v, int n, mword p) {
         replace_cow(quota, v+i*PAGE_SIZE, p+i*PAGE_SIZE);
 }
 
+void Hpt::print(char const *s, mword v){
+    Console::print("%s %lx", s, v);
+}
 
+void Hpt::set_cow_page(mword virt, mword &entry) {
+    if ((virt < USER_ADDR) && (entry & HPT_P) && (entry & HPT_U)) {
+        if (is_mmio(entry & ~(PAGE_MASK|HPT_NX))) {
+            entry |= HPT_COW | HPT_COW_IO;
+            entry &= ~HPT_P;
+        } else if (entry & HPT_W) {
+            entry |= HPT_COW;
+            entry &= ~HPT_COW_IO;
+            entry &= ~HPT_W;
+        }
+    }
+}

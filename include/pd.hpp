@@ -170,7 +170,7 @@ public:
     void assign_rid(uint16 r);
 
     ALWAYS_INLINE
-        static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
+    static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
 
     ALWAYS_INLINE
     static inline void operator delete (void *ptr) {
@@ -196,4 +196,5 @@ public:
     bool get_to_be_cowed(){
         return to_be_cowed;
     }
+    bool compare_memory_mute();
 };

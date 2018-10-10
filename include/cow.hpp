@@ -12,9 +12,6 @@
 #include "hip.hpp"
 #include "vtlb.hpp"
 
-#ifndef COW_HPP
-#define	COW_HPP
-
 class Cow {
 private:
     static Spinlock cow_lock;
@@ -92,5 +89,3 @@ public:
     static void initialize();
 
 };
-
-#endif	/* COW_HPP */

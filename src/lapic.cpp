@@ -29,11 +29,11 @@
 #include "timeout.hpp"
 #include "vectors.hpp"
 #include "vmx.hpp"
+#include "Pending_int.hpp"
 
 unsigned    Lapic::freq_tsc;
 unsigned    Lapic::freq_bus;
-uint64 Lapic::max_instruction = 0x100000, Lapic::counter = 0, Lapic::prev_counter, Lapic::max_tsc = 0,
-        Lapic::start_counter, Lapic::perf_max_count; 
+uint64 Lapic::counter = 0, Lapic::prev_counter, Lapic::max_tsc = 0, Lapic::start_counter, Lapic::perf_max_count; 
 bool Lapic::timeout_to_check = false, Lapic::timeout_expired = false;
 uint32 Lapic::tour = 0, Lapic::tour1 = 0;
 const uint32 Lapic::max_info = 100000;
@@ -157,14 +157,7 @@ void Lapic::therm_handler() {
 
 void Lapic::perfm_handler() {
     eoi(); 
-    uint64 compteur_value = read_instCounter(), nb_instr_exe = nb_executed_instr();
-    if((compteur_value > 0x10000 && compteur_value < (perf_max_count - max_instruction))|| 
-            (compteur_value > (perf_max_count - max_instruction) && compteur_value < perf_max_count - 0x1000)){// Qemu Odities
-        Console::print(" Fake PERF Interrupt compteur %llx nbInst %llu", compteur_value, nb_instr_exe);
-        return;
-    }
-//    Console::print("PERF INTERRUPT ");    
-    Ec::global_memory_check(3002);
+    Ec::current->is_virutalcpu() ? Ec::vm_check_memory(Ec::PES_PMI): Ec::check_memory(Ec::PES_PMI);
 }
 
 void Lapic::error_handler()
@@ -183,17 +176,30 @@ void Lapic::timer_handler()
 }
 
 void Lapic::lvt_vector (unsigned vector){    
-    unsigned lvt = vector - VEC_LVT;
-
-    switch (vector) {
-        case VEC_LVT_TIMER: timer_handler(); eoi(); break;
-        case VEC_LVT_ERROR: error_handler(); eoi(); break;
-        case VEC_LVT_PERFM: perfm_handler(); break;
-        case VEC_LVT_THERM: therm_handler(); eoi(); break;
+    if(vector == VEC_LVT_PERFM){
+        Counter::print<1,16> (++Counter::lvt[vector - VEC_LVT], Console_vga::COLOR_LIGHT_BLUE, vector - VEC_LVT + SPN_LVT);
+        perfm_handler();
+        return;
     }
+    if(Ec::is_idle()){
+        exec_lvt(vector, false);
+    }else{
+        Pending_int::add_pending_interrupt(Pending_int::INT_LAPIC, vector);
+        eoi();
+    }    
+}
 
+void Lapic::exec_lvt(unsigned vector, bool pending){
+    unsigned lvt = vector - VEC_LVT;
     
-    Counter::print<1,16> (++Counter::lvt[lvt], Console_vga::COLOR_LIGHT_BLUE, lvt + SPN_LVT);
+    switch (vector) {
+        case VEC_LVT_TIMER: timer_handler(); if(!pending) eoi(); break;
+        case VEC_LVT_ERROR: error_handler(); if(!pending) eoi(); break;
+        case VEC_LVT_PERFM: Console::panic("VEC_LVT_PERFM here"); //No VEC_LVT_PERFM here
+        case VEC_LVT_THERM: therm_handler(); if(!pending) eoi(); break;
+    }    
+ 
+    Counter::print<1,16> (++Counter::lvt[lvt], Console_vga::COLOR_LIGHT_BLUE, lvt + SPN_LVT);    
 }
 
 void Lapic::ipi_vector (unsigned vector)
@@ -210,7 +216,10 @@ void Lapic::ipi_vector (unsigned vector)
 
     Counter::print<1,16> (++Counter::ipi[ipi], Console_vga::COLOR_LIGHT_GREEN, ipi + SPN_IPI);
 }
-
+/**
+ * Called only from entry.S
+ * Only used in case of virtualization
+ */
 void Lapic::save_counter(){
     Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa); //unless we may face a pmi in the kernel
     uint64 compteur_value = Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), deduced_cmpteurValue = compteur_value - 0x43;
@@ -236,12 +245,11 @@ uint64 Lapic::read_instCounter() {
 
 /**
  * This pmi programming take as parameter the number of instruction to retrieve 
- * from max_instruction before PMI
+ * from MAX_INSTRUCTION before PMI
  * @param number
  */
-void Lapic::program_pmi(int number) {
-    uint64 nb_inst = max_instruction - number;
-    start_counter = perf_max_count - nb_inst;
+void Lapic::program_pmi(uint64 number) {
+    start_counter = number ? perf_max_count - number : perf_max_count - MAX_INSTRUCTION;
     set_lvt(LAPIC_LVT_PERFM, DLV_FIXED, VEC_LVT_PERFM);
     Msr::write(Msr::MSR_PERF_FIXED_CTR0, start_counter);
     //Qemu oddities : MSR_PERF_FIXED_CTRL must be the last PMU instruction to be 
@@ -272,7 +280,7 @@ void Lapic::program_pmi2(uint64 number) {
  * De toute facon, il ne risque pas d'arriver avant le prochain check_memory
  */
 void Lapic::cancel_pmi(){
-    start_counter = perf_max_count - max_instruction;
+    start_counter = perf_max_count - MAX_INSTRUCTION;
     set_lvt(LAPIC_LVT_PERFM, DLV_FIXED, VEC_LVT_PERFM);
     Msr::write(Msr::MSR_PERF_FIXED_CTR0, start_counter);
     Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0x0);    
@@ -348,7 +356,7 @@ void Lapic::compute_expected_info(uint32 exc_count, int pmi){
 }
 
 bool Lapic::too_few_instr(){
-    return (read_instCounter() - prev_counter) < max_instruction/10;
+    return (read_instCounter() - prev_counter) < MAX_INSTRUCTION/10;
 }
 
 void Lapic::check_dwc(){
@@ -356,7 +364,7 @@ void Lapic::check_dwc(){
         return;
     if(Ec::prev_reason != 3002 && Ec::prev_reason != 5972) //only Perf and Timer
         return;
-    if(Ec::step_reason != Ec::NIL)
+    if(Ec::step_reason != Ec::SR_NIL)
         return;
     if(Ec::no_further_check)
         return;

@@ -52,7 +52,7 @@ inline void *memcpy(void *dst, const void *src, size_t n) {
 }
 
 extern "C" NONNULL
-inline void copy_string(char *target, char *source) {
+inline void copy_string(char *target, const char *source) {
     uint32 length = 1;
     while (*source && length < str_max_length) {
         *target = *source;

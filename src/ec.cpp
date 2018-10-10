@@ -34,31 +34,39 @@
 #include "msr.hpp"
 #include "lapic.hpp"
 #include "string.hpp"
+#include "vectors.hpp"
+#include "pe.hpp"
 
 INIT_PRIORITY(PRIO_SLAB)
 Slab_cache Ec::cache(sizeof (Ec), 32);
-unsigned Ec::affich_num = 0, Ec::affich_mod = 50000;
-mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx, Ec::tscm1 = 0, Ec::tscm2 = 0;
-bool Ec::ec_debug = false, Ec::glb_debug = false, Ec::hardening_started = false, Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false, Ec::jump_ex = false, Ec::no_further_check = false;
-uint64 Ec::static_tour = 0, Ec::begin_time = 0, Ec::end_time = 0, Ec::exc_counter = 0, Ec::gsi_counter1 = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::lvt_counter1 = 0, Ec::msi_counter1 = 0, Ec::ipi_counter1 = 0, Ec::gsi_counter2 = 0, Ec::lvt_counter2 = 0, Ec::msi_counter2 = 0, Ec::ipi_counter2 = 0, Ec::counter1 = 0, Ec::counter2 = 0, Ec::runtime1 = 0, Ec::runtime2 = 0, Ec::total_runtime = 0, Ec::step_debug_time = 0, Ec::debug_compteur = 0, Ec::count_je = 0, Ec::nbInstr_to_execute = 0;
+mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx;
+bool Ec::ec_debug = false, Ec::glb_debug = false, Ec::hardening_started = false, Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false, Ec::jump_ex = false, Ec::no_further_check = false, Ec::first_run_advanced = false;
+uint64 Ec::exc_counter = 0, Ec::gsi_counter1 = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::lvt_counter1 = 0, Ec::msi_counter1 = 0, Ec::ipi_counter1 = 0, Ec::gsi_counter2 = 0,
+        Ec::lvt_counter2 = 0, Ec::msi_counter2 = 0, Ec::ipi_counter2 = 0, Ec::counter1 = 0, Ec::counter2 = 0, Ec::debug_compteur = 0, Ec::count_je = 0, Ec::nbInstr_to_execute = 0,
+        Ec::nb_inst_single_step = 0, Ec::second_run_instr_number = 0, Ec::first_run_instr_number = 0, Ec::single_step_number = 0, Ec::counter_userspace = 0,
+        Ec::double_interrupt_counter = 0, Ec::double_interrupt_counter1 = 0, Ec::double_interrupt_counter2 = 0, Ec::ipi_counter = 0, Ec::msi_counter = 0, Ec::gsi_counter = 0, Ec::pf_counter = 0,
+        Ec::exc_no_pf_counter = 0, Ec::pf_counter1 = 0, Ec::pf_counter2 = 0, Ec::lvt_counter = 0, Ec::exc_no_pf_counter1 = 0, Ec::exc_no_pf_counter2 = 0, Ec::rep_counter = 0, Ec::rep_counter1 = 0, Ec::rep_counter2 = 0,
+        Ec::hlt_counter = 0, Ec::hlt_counter1 = 0, Ec::hlt_counter2 = 0, Ec::distance_instruction = 0;
 uint8 Ec::run_number = 0, Ec::launch_state = 0, Ec::step_reason = 0, Ec::debug_nb = 0;
-unsigned Ec::step_nb = 200;
-uint64 Ec::tsc1 = 0, Ec::tsc2 = 0; 
-int Ec::prev_reason = 0, Ec::previous_ret = 0, Ec::nb_try = 0;
-
+const uint64 Ec::step_nb = 200;
+uint64 Ec::tsc1 = 0, Ec::tsc2 = 0;
+int Ec::prev_reason = 0, Ec::previous_ret = 0, Ec::nb_try = 0, Ec::reg_diff = 0;
+const char* Ec::regs_name_table[19] = {"N/A", "RAX", "RDX", "RCX", "RBX", "RBP", "RSI", "RDI", "R8", "R9", "R10", "R11", "R12", "R13", "R14", "R15", "RIP", "RFLAG", "RSP"};
+mword Ec::outpout_table0[MAX_INSTRUCTION + step_nb][2];
+mword Ec::outpout_table1[MAX_INSTRUCTION + step_nb][2];
 Ec *Ec::current, *Ec::fpowner;
 // Constructors
 
 Cpu_regs Ec::regs_0, Ec::regs_1, Ec::regs_2;
 
 Msr_area *Ec::host_msr_area0 = new (Pd::kern.quota) Msr_area, *Ec::guest_msr_area0 = new (Pd::kern.quota) Msr_area,
-         *Ec::host_msr_area1 = new (Pd::kern.quota) Msr_area, *Ec::guest_msr_area1 = new (Pd::kern.quota) Msr_area,
-         *Ec::host_msr_area2 = new (Pd::kern.quota) Msr_area, *Ec::guest_msr_area2 = new (Pd::kern.quota) Msr_area;
-Virtual_apic_page *Ec::virtual_apic_page0 = new (Pd::kern.quota) Virtual_apic_page, 
-                  *Ec::virtual_apic_page1 = new (Pd::kern.quota) Virtual_apic_page,
-                  *Ec::virtual_apic_page2 = new (Pd::kern.quota) Virtual_apic_page; 
+        *Ec::host_msr_area1 = new (Pd::kern.quota) Msr_area, *Ec::guest_msr_area1 = new (Pd::kern.quota) Msr_area,
+        *Ec::host_msr_area2 = new (Pd::kern.quota) Msr_area, *Ec::guest_msr_area2 = new (Pd::kern.quota) Msr_area;
+Virtual_apic_page *Ec::virtual_apic_page0 = new (Pd::kern.quota) Virtual_apic_page,
+        *Ec::virtual_apic_page1 = new (Pd::kern.quota) Virtual_apic_page,
+        *Ec::virtual_apic_page2 = new (Pd::kern.quota) Virtual_apic_page;
 
-Ec::Ec (Pd *own, void (*f)(), unsigned c, char* const nm) : Kobject (EC, static_cast<Space_obj *>(own)), cont (f), pd (own), partner (nullptr), prev (nullptr), next (nullptr), fpu (nullptr), cpu (static_cast<uint16>(c)), glb (true), evt (0), timeout (this), user_utcb (0), xcpu_sm (nullptr), pt_oom(nullptr){
+Ec::Ec(Pd *own, void (*f)(), unsigned c, char const *nm) : Kobject(EC, static_cast<Space_obj *> (own)), cont(f), pd(own), partner(nullptr), prev(nullptr), next(nullptr), fpu(nullptr), cpu(static_cast<uint16> (c)), glb(true), evt(0), timeout(this), user_utcb(0), xcpu_sm(nullptr), pt_oom(nullptr) {
     trace(TRACE_SYSCALL, "EC:%p created (PD:%p Kernel)", this, own);
     copy_string(name, nm);
     regs.vtlb = nullptr;
@@ -77,7 +85,7 @@ Ec::Ec (Pd *own, void (*f)(), unsigned c, char* const nm) : Kobject (EC, static_
  * @param u : user thread control block
  * @param s : stack pointer
  */
-Ec::Ec(Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u, mword s, Pt *oom, char* const nm) : Kobject(EC, static_cast<Space_obj *> (own), sel, 0xd, free, pre_free), cont(f), pd(p), partner(nullptr), prev(nullptr), next(nullptr), fpu(nullptr), cpu(static_cast<uint16> (c)), glb(!!f), evt(e), timeout(this), user_utcb(u), xcpu_sm(nullptr), pt_oom(oom) {
+Ec::Ec(Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u, mword s, Pt *oom, char const *nm) : Kobject(EC, static_cast<Space_obj *> (own), sel, 0xd, free, pre_free), cont(f), pd(p), partner(nullptr), prev(nullptr), next(nullptr), fpu(nullptr), cpu(static_cast<uint16> (c)), glb(!!f), evt(e), timeout(this), user_utcb(u), xcpu_sm(nullptr), pt_oom(oom) {
     // Make sure we have a PTAB for this CPU in the PD
     pd->Space_mem::init(pd->quota, c);
     copy_string(name, nm);
@@ -103,7 +111,7 @@ Ec::Ec(Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u, 
 
         utcb = new (pd->quota) Utcb;
 
-        pd->Space_mem::insert(pd->quota, u, 0, Hpt::HPT_U | Hpt::HPT_W | Hpt::HPT_P, Buddy::ptr_to_phys(utcb), pd->get_to_be_cowed() ? true:false);
+        pd->Space_mem::insert(pd->quota, u, 0, Hpt::HPT_U | Hpt::HPT_W | Hpt::HPT_P, Buddy::ptr_to_phys(utcb), pd->get_to_be_cowed() ? true : false);
 
         regs.dst_portal = NUM_EXC - 2;
 
@@ -160,7 +168,7 @@ Ec::Ec(Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u, 
     }
 }
 
-Ec::Ec(Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone, char* const nm) : Kobject(EC, static_cast<Space_obj *> (own), 0, 0xd, free, pre_free), cont(f), regs(clone->regs), rcap(clone), utcb(clone->utcb), pd(p), partner(nullptr), prev(nullptr), next(nullptr), fpu(clone->fpu), cpu(static_cast<uint16> (c)), glb(!!f), evt(clone->evt), timeout(this), user_utcb(0), xcpu_sm(clone->xcpu_sm), pt_oom(clone->pt_oom) {
+Ec::Ec(Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone, char const *nm) : Kobject(EC, static_cast<Space_obj *> (own), 0, 0xd, free, pre_free), cont(f), regs(clone->regs), rcap(clone), utcb(clone->utcb), pd(p), partner(nullptr), prev(nullptr), next(nullptr), fpu(clone->fpu), cpu(static_cast<uint16> (c)), glb(!!f), evt(clone->evt), timeout(this), user_utcb(0), xcpu_sm(clone->xcpu_sm), pt_oom(clone->pt_oom) {
     // Make sure we have a PTAB for this CPU in the PD
     pd->Space_mem::init(pd->quota, c);
     copy_string(name, nm);
@@ -174,8 +182,8 @@ Ec::Ec(Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone, char* const nm) : Kob
 }
 
 //De-constructor
-Ec::~Ec()
-{
+
+Ec::~Ec() {
     if (xcpu_sm) {
         Sm::destroy(xcpu_sm, pd->quota);
         xcpu_sm = nullptr;
@@ -282,18 +290,18 @@ void Ec::handle_hazard(mword hzd, void (*func)()) {
 
     if (hzd & HZD_FPU) {
         if (Cmdline::fpu_eager)
-            die ("FPU HZD detected");
+            die("FPU HZD detected");
 
         if (current != fpowner)
             Fpu::disable();
     }
 }
 
-void Ec::ret_user_sysexit(){
+void Ec::ret_user_sysexit() {
     if (is_idle()) {
         mword hzd = (Cpu::hazard | current->regs.hazard()) & (HZD_RECALL | HZD_STEP | HZD_RCU | HZD_FPU | HZD_DS_ES | HZD_SCHED);
-        if (EXPECT_FALSE (hzd))
-            handle_hazard (hzd, ret_user_sysexit);
+        if (EXPECT_FALSE(hzd))
+            handle_hazard(hzd, ret_user_sysexit);
 
         if (current->regs.ARG_IP >= USER_ADDR) {
             current->regs.dst_portal = 13;
@@ -302,11 +310,10 @@ void Ec::ret_user_sysexit(){
 
         current->save_state();
         launch_state = Ec::SYSEXIT;
-        begin_time = rdtsc(); //normalement, cette instruction devrait etre dans le if precedant
     }
 
     debug_print("Sysreting");
-    if (step_reason == NIL) {
+    if (step_reason == SR_NIL) {
         asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : "memory");
     } else {
         asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP_SS) : : "m" (current->regs) : "memory");
@@ -323,20 +330,7 @@ void Ec::ret_user_iret() {
 
         current->save_state();
         launch_state = Ec::IRET;
-        begin_time = rdtsc();
     }
-//    if (!strcmp(current->get_name(), "fb_drv")) {
-//        //        debug_func("Ireting");
-//        mword *v = reinterpret_cast<mword*> (0x18028);
-//        Paddr physical_addr;
-//        mword attribut;
-//        size_t is_mapped = current->getPd()->loc[Cpu::id].lookup(0x18028, physical_addr, attribut);
-//        if (is_mapped && (*v != 0x8020)) {
-//            //            current->getPd()->loc[Cpu::id].update(current->getPd()->quota, reinterpret_cast<mword> (v), 0, physical_addr, attribut, Hpt::TYPE_UP, false);
-//            current->getPd()->loc[Cpu::id].flush(reinterpret_cast<mword> (v));
-//            Console::print("Rectifying in Iret PD: %s EC %s EIP %lx phys %lx 18028:%lx", Pd::current->get_name(), current->get_name(), current->regs.REG(ip), physical_addr, *v);
-//        }
-//    }
 
     debug_print("Ireting");
 
@@ -381,9 +375,9 @@ void Ec::ret_user_vmresume() {
 
     if (EXPECT_FALSE(get_cr2() != current->regs.cr2))
         set_cr2(current->regs.cr2);
-    if(Lapic::tour >= 66600)
+    if (Lapic::tour >= 66600)
         Console::print("VmRun tour %u RIM %lx", Lapic::tour, Vmcs::read(Vmcs::GUEST_RIP));
-//    Console::print("Counter before VMENTRY %llx", Lapic::read_instCounter());
+    //    Console::print("Counter before VMENTRY %llx", Lapic::read_instCounter());
     Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xb);
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR)
                 "vmresume;"
@@ -533,14 +527,13 @@ bool Ec::fixup(mword &eip) {
     return false;
 }
 
-void Ec::die (char const *reason, Exc_regs *r)
-{
+void Ec::die(char const *reason, Exc_regs *r) {
     bool const show = current->pd == &Pd::kern || current->pd == &Pd::root;
 
     if (current->utcb || show) {
         if (show || !strmatch(reason, "PT not found", 12))
-        trace (0, "Killed EC:%p SC:%p V:%#lx CS:%#lx IP:%#lx(%#lx) CR2:%#lx ERR:%#lx (%s) %s",
-               current, Sc::current, r->vec, r->cs, r->REG(ip), r->ARG_IP, r->cr2, r->err, reason, current->pd == &Pd::root ? "Pd::root" : current->pd == &Pd::kern ? "Pd::kern" : "");
+            trace(0, "Killed EC:%p SC:%p V:%#lx CS:%#lx IP:%#lx(%#lx) CR2:%#lx ERR:%#lx (%s) %s",
+                current, Sc::current, r->vec, r->cs, r->REG(ip), r->ARG_IP, r->cr2, r->err, reason, current->pd == &Pd::root ? "Pd::root" : current->pd == &Pd::kern ? "Pd::kern" : "");
     } else
         trace(0, "Killed EC:%p SC:%p V:%#lx CR0:%#lx CR3:%#lx CR4:%#lx (%s) Pd: %s Ec: %s",
             current, Sc::current, r->vec, r->cr0_shadow, r->cr3_shadow, r->cr4_shadow, reason, Pd::current->get_name(), Ec::current->get_name());
@@ -549,8 +542,8 @@ void Ec::die (char const *reason, Exc_regs *r)
 
     if (ec)
         ec->cont = ec->cont == ret_user_sysexit ? static_cast<void (*)()> (sys_finish<Sys_regs::COM_ABT>) : dead;
-    
-    reply (dead);
+
+    reply(dead);
 }
 
 void Ec::xcpu_return() {
@@ -563,9 +556,9 @@ void Ec::xcpu_return() {
 
     current->xcpu_sm->up(ret_xcpu_reply);
 
-    current->rcap    = nullptr;
-    current->utcb    = nullptr;
-    current->fpu     = nullptr;
+    current->rcap = nullptr;
+    current->utcb = nullptr;
+    current->fpu = nullptr;
     current->xcpu_sm = nullptr;
 
     Rcu::call(current);
@@ -623,8 +616,8 @@ bool Ec::is_io_exc(mword eip) {
 
 void Ec::resolve_PIO_execption() {
     //    Console::print("Read PIO");
-    reinterpret_cast<Space_pio*>(Pd::current->subspace(Crd::PIO))->enable_pio(Pd::current->quota);
-    Ec::current->enable_step_debug(PIO, SPC_LOCAL_IOP, 0, 0);
+    reinterpret_cast<Space_pio*> (pd->subspace(Crd::PIO))->enable_pio(pd->quota);
+    Ec::current->enable_step_debug(SR_PIO, SPC_LOCAL_IOP, 0, 0);
 }
 
 //void Ec::resolve_temp_exception() {
@@ -637,30 +630,32 @@ void Ec::enable_step_debug(Step_reason reason, mword fault_addr, Paddr fault_phy
     regs.REG(fl) |= Cpu::EFL_TF;
     step_reason = reason;
     switch (reason) {
-        case PIO:
-        case MMIO:
+        case SR_PIO:
+        case SR_MMIO:
             io_addr = fault_addr;
             io_phys = fault_phys;
             io_attr = fault_attr;
             launch_state = Launch_type::IRET; // to ensure that this will finished before any other thread is scheduled
             break;
-        case RDTSC:
+        case SR_RDTSC:
             set_cr4(get_cr4() & ~Cpu::CR4_TSD);
             launch_state = Launch_type::IRET; // to ensure that this will finished before any other thread is scheduled
             break;
-        case PMI:
-            {
-                uint8 *ptr = reinterpret_cast<uint8 *> (end_rip);
-                if (*ptr == 0xf3 || *ptr == 0xf2) {
-                    Console::print("Rep prefix detected");
-                    in_rep_instruction = true;
-                    Cpu::disable_fast_string();
-                }
-            break;
+        case SR_PMI:
+        case SR_EQU:
+        {
+            uint8 *ptr = reinterpret_cast<uint8 *> (end_rip);
+            if (*ptr == 0xf3 || *ptr == 0xf2) {
+                Console::print("Rep prefix detected");
+                in_rep_instruction = true;
+                Cpu::disable_fast_string();
             }
-        case NIL:
+            break;
+        }
+        case SR_DBG:
+            break;
+        case SR_NIL:
         default:
-            Console::print("Unknown debug reason -- Enable");
             die("Unknown debug reason -- Enable");
             break;
     }
@@ -669,31 +664,34 @@ void Ec::enable_step_debug(Step_reason reason, mword fault_addr, Paddr fault_phy
 void Ec::disable_step_debug() {
     regs.REG(fl) &= ~Cpu::EFL_TF;
     switch (step_reason) {
-        case MMIO:
+        case SR_MMIO:
             //            Console::print("MMIO read");
             Pd::current->loc[Cpu::id].replace_cow(Pd::current->quota, io_addr, io_phys | (io_attr & ~Hpt::HPT_P));
             Hpt::cow_flush(io_addr);
             break;
-        case PIO:
-//                        Console::print("PIO read");
-            reinterpret_cast<Space_pio*>(Pd::current->subspace(Crd::PIO))->disable_pio(Pd::current->quota);
+        case SR_PIO:
+            //            Console::print("PIO read");
+            reinterpret_cast<Space_pio*> (pd->subspace(Crd::PIO))->disable_pio(pd->quota);
             break;
-        case RDTSC:
+        case SR_RDTSC:
             //            Console::print("TSC read Ec: %p, is_idle(): %d  IP: %p", current, is_idle(), current->regs.REG(ip));
             set_cr4(get_cr4() | Cpu::CR4_TSD);
             break;
-        case PMI:
+        case SR_PMI:
+        case SR_EQU:            
             if (in_rep_instruction) {
                 Cpu::enable_fast_string();
                 in_rep_instruction = false;
             }
             nbInstr_to_execute = 0;
             break;
+        case SR_DBG:
+            break;
         default:
-            Console::print("Unknown debug reason -- Disable");
+            die("Unknown debug reason -- Disable");
             break;
     }
-    step_reason = NIL;
+    step_reason = SR_NIL;
 }
 
 void Ec::restore_state() {
@@ -720,34 +718,31 @@ void Ec::rollback() {
     Fpu::dwc_rollback();
     if (fpu)
         fpu->roll_back();
-    pd->rollback(!static_cast<bool>(utcb));
+    pd->rollback(!static_cast<bool> (utcb));
     if (!utcb) {
         regs.vmcs->clear();
         memcpy(regs.vmcs, Vmcs::vmcs0, Vmcs::basic.size);
         regs.vmcs->make_current();
-        
         memcpy(regs.vtlb, Vtlb::vtlb0, PAGE_SIZE);
     }
 }
 
 void Ec::saveRegs(Exc_regs *r) {
-    if (r->cs & 3) {
-        end_time = rdtsc();
-        last_rip = r->REG(ip);
-        last_rcx = r->REG(cx);
-        exc_counter++;
-        //        if(ec_debug)
-        //        Console::print("vector: %lu  cs: %lx  rip: %lx  rcx: %lx  instr %llu", r->vec, r->cs, r->REG(ip), r->REG(cx), Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0));
-    }
+    last_rip = r->REG(ip);
+    last_rcx = r->REG(cx);
+    exc_counter++;
+    count_interrupt(r->vec);
+    current->take_snaphot();   
     return;
 }
 
 void Ec::save_state() {
     regs_0 = regs;
-    Fpu::dwc_save();        
+    Fpu::dwc_save();
     if (fpu)
         fpu->save_data();
-    reinterpret_cast<Space_pio*>(Pd::current->subspace(Crd::PIO))->disable_pio(Pd::current->quota);
+    if (regs.REG(ip) == 0x10052de)
+        Console::print("10052de");
 }
 
 void Ec::vmx_save_state() {
@@ -765,12 +760,12 @@ void Ec::vmx_save_state() {
     Virtual_apic_page *cur_virtual_apic_page =
             reinterpret_cast<Virtual_apic_page*> (Buddy::phys_to_ptr(virtual_apic_page_phys));
     memcpy(virtual_apic_page0, cur_virtual_apic_page, PAGE_SIZE);
-    
+
     regs.vmcs->clear();
     memcpy(Vmcs::vmcs0, regs.vmcs, Vmcs::basic.size);
     regs.vmcs->make_current();
-    
-    memcpy(Vtlb::vtlb0, regs.vtlb, PAGE_SIZE);    
+
+    memcpy(Vtlb::vtlb0, regs.vtlb, PAGE_SIZE);
 }
 
 void Ec::vmx_restore_state() {
@@ -778,15 +773,15 @@ void Ec::vmx_restore_state() {
     memcpy(Vtlb::vtlb1, regs.vtlb, PAGE_SIZE);
     memcpy(regs.vtlb, Vtlb::vtlb0, PAGE_SIZE);
 
-    if(!utcb){
+    if (!utcb) {
         regs.vtlb->flush(true);
     }
-        
+
     regs.vmcs->clear();
     memcpy(Vmcs::vmcs1, regs.vmcs, Vmcs::basic.size);
     memcpy(regs.vmcs, Vmcs::vmcs0, Vmcs::basic.size);
     regs.vmcs->make_current();
-    
+
     mword host_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
     Msr_area *cur_host_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(host_msr_area_phys));
     memcpy(host_msr_area1, cur_host_msr_area, PAGE_SIZE);
@@ -806,16 +801,16 @@ void Ec::vmx_restore_state() {
 
 void Ec::vmx_restore_state1() {
     restore_state1();
-    
+
     memcpy(Vtlb::vtlb2, regs.vtlb, PAGE_SIZE);
     memcpy(regs.vtlb, Vtlb::vtlb1, PAGE_SIZE);
-    
+
     regs.vmcs->clear();
     memcpy(Vmcs::vmcs2, regs.vmcs, Vmcs::basic.size);
     memcpy(regs.vmcs, Vmcs::vmcs1, Vmcs::basic.size);
     regs.vmcs->make_current();
     Console::print("Restoring...");
-    
+
     mword host_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
     Msr_area *cur_host_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(host_msr_area_phys));
     memcpy(host_msr_area2, cur_host_msr_area, PAGE_SIZE);
@@ -841,59 +836,97 @@ mword Ec::get_regsRCX() {
     return regs.REG(cx);
 }
 
+void regs_missmatch_print(char const *reg_name, mword reg_0, mword reg_1, mword reg) {
+    Console::print("REGS does not match %s : reg_0 %lx reg_1 %lx reg %lx", reg_name, reg_0, reg_1, reg);
+}
+
 int Ec::compare_regs(int reason) {
-    if (regs.r15 != regs_1.r15)
-        return 1;
-    if (regs.r14 != regs_1.r14)
-        return 2;
-    if (regs.r13 != regs_1.r13)
-        return 3;
-    if (regs.r12 != regs_1.r12)
-        return 4;
+    if (regs.r15 != regs_1.r15) {
+        regs_missmatch_print("R15", regs_0.r15, regs_1.r15, regs.r15);
+        return 15;
+    }
+    if (regs.r14 != regs_1.r14) {
+        regs_missmatch_print("R14", regs_0.r14, regs_1.r14, regs.r14);
+        return 14;
+    }
+    if (regs.r13 != regs_1.r13) {
+        regs_missmatch_print("R13", regs_0.r13, regs_1.r13, regs.r13);
+        return 13;
+    }
+    if (regs.r12 != regs_1.r12) {
+        regs_missmatch_print("R12", regs_0.r12, regs_1.r12, regs.r12);
+        return 12;
+    }
     if (regs.r11 != regs_1.r11) {
         // resume flag  or trap flag may be set if reason is step-mode
         // but it is unclear why. Must be fixed later
         if (((regs.r11 | 1u << 16) == regs_1.r11) || (regs.r11 == (regs_1.r11 | 1u << 8)))
             return 0;
         else {
-            Console::print("R11: %lx  R11_1: %lx  R11or1: %lx", regs.r11, regs_1.r11, regs.r11 | 1u << 8);
-            return 5;
+            regs_missmatch_print("R11", regs_0.r11, regs_1.r11, regs.r11);
+            return 11;
         }
     }
-    if (regs.r10 != regs_1.r10)
-        return 6;
-    if (regs.r9 != regs_1.r9)
-        return 7;
-    if (regs.r8 != regs_1.r8)
-        return 8;
-    if (regs.REG(di) != regs_1.REG(di))
-        return 9;
-    if (regs.REG(si) != regs_1.REG(si))
+    if (regs.r10 != regs_1.r10) {
+        regs_missmatch_print("R10", regs_0.r10, regs_1.r10, regs.r10);
         return 10;
-    if (regs.REG(bp) != regs_1.REG(bp))
-        return 11;
-    if (regs.REG(bx) != regs_1.REG(bx))
-        return 12;
-    if (regs.REG(cx) != regs_1.REG(cx))
-        return 13;
-    if (regs.REG(dx) != regs_1.REG(dx))
-        return 14;
-    if (regs.REG(ax) != regs_1.REG(ax))
-        return 15;
-    if (fpu && fpu->data_check()) 
+    }
+    if (regs.r9 != regs_1.r9) {
+        regs_missmatch_print("R9", regs_0.r9, regs_1.r9, regs.r9);
+        return 9;
+    }
+    if (regs.r8 != regs_1.r8) {
+        regs_missmatch_print("R8", regs_0.r8, regs_1.r8, regs.r8);
+        return 8;
+    }
+    if (regs.REG(di) != regs_1.REG(di)) {
+        regs_missmatch_print("RDI", regs_0.REG(di), regs_1.REG(di), regs.REG(di));
+        return 7;
+    }
+    if (regs.REG(si) != regs_1.REG(si)) {
+        regs_missmatch_print("RSI", regs_0.REG(si), regs_1.REG(si), regs.REG(si));
+        return 6;
+    }
+    if (regs.REG(bp) != regs_1.REG(bp)) {
+        regs_missmatch_print("RBP", regs_0.REG(bp), regs_1.REG(bp), regs.REG(bp));
+        return 5;
+    }
+    if (regs.REG(bx) != regs_1.REG(bx)) {
+        regs_missmatch_print("RBX", regs_0.REG(bx), regs_1.REG(bx), regs.REG(bx));
+        return 4;
+    }
+    if (regs.REG(cx) != regs_1.REG(cx)) {
+        regs_missmatch_print("RCX", regs_0.REG(cx), regs_1.REG(cx), regs.REG(cx));
+        return 3;
+    }
+    if (regs.REG(dx) != regs_1.REG(dx)) {
+        regs_missmatch_print("RDX", regs_0.REG(dx), regs_1.REG(dx), regs.REG(dx));
+        return 2;
+    }
+    if (regs.REG(ax) != regs_1.REG(ax)) {
+        regs_missmatch_print("RAX", regs_0.REG(ax), regs_1.REG(ax), regs.REG(ax));
+        return 1;
+    }
+    if (fpu && fpu->data_check())
         return 16;
-    if(Fpu::dwc_check())
+    if (Fpu::dwc_check())
         return 17;
-    if (reason == 1258 || !utcb) // following checks are not valid if reason is Sysenter or current is vCPU
+    if (reason == PES_SYS_ENTER || !utcb) // following checks are not valid if reason is Sysenter or current is vCPU
         return 0;
-    if ((regs.REG(ip) != regs_1.REG(ip)))
+    if ((regs.REG(ip) != regs_1.REG(ip))) {
+        regs_missmatch_print("RIP", regs_0.REG(ip), regs_1.REG(ip), regs.REG(ip));
         return 18;
-    if ((regs.REG(fl) != regs_1.REG(fl)) && ((regs.REG(fl) | (1u << 16)) != regs_1.REG(fl)))
-        // resume flag may be set if reason is step-mode but it is curious why this flag is set in regs_1 and not in regs.
-        // the contrary would be understandable. Must be fixed later
-        return 19;
-    if (regs.REG(sp) != regs_1.REG(sp))
+    }
+//    if ((regs.REG(fl) != regs_1.REG(fl)) && ((regs.REG(fl) | (1u << 16)) != regs_1.REG(fl))) {
+//        regs_missmatch_print("RFLAGS", regs_0.REG(fl), regs_1.REG(fl), regs.REG(fl));
+//        // resume flag may be set if reason is step-mode but it is curious why this flag is set in regs_1 and not in regs.
+//        // the contrary would be understandable. Must be fixed later
+//        return 19;
+//    }
+    if (regs.REG(sp) != regs_1.REG(sp)) {
+        regs_missmatch_print("RSP", regs_0.REG(sp), regs_1.REG(sp), regs.REG(sp));
         return 20;
+    }
     return 0;
 }
 
@@ -1028,4 +1061,266 @@ void Ec::save_vm_stack() {
     pd->add_cow(ce);
     pd->Space_mem::loc[Cpu::id].update(pd->quota, guest_phys, 0, ce->new_phys[0]->phys_addr, host_attr | Hpt::HPT_W, Hpt::Type::TYPE_UP, false);
     Hpt::cow_flush(guest_phys);
+}
+
+mword Ec::get_reg(int reg_number) {
+    switch (reg_number) {
+        case 1:
+            return regs.REG(ax);
+        case 2:
+            return regs.REG(dx);
+        case 3:
+            return regs.REG(cx);
+        case 4:
+            return regs.REG(bx);
+        case 5:
+            return regs.REG(bp);
+        case 6:
+            return regs.REG(si);
+        case 7:
+            return regs.REG(di);
+        case 8:
+            return regs.r8;
+        case 9:
+            return regs.r9;
+        case 10:
+            return regs.r10;
+        case 11:
+            return regs.r11;
+        case 12:
+            return regs.r12;
+        case 13:
+            return regs.r13;
+        case 14:
+            return regs.r14;
+        case 15:
+            return regs.r15;
+        case 16:
+            return 0; //FPU to be dealt with later
+        case 17:
+            return 0; //FPU to be dealt with later
+        case 18:
+            return regs.REG(ip);
+        case 19:
+            return regs.REG(fl);
+        case 20:
+            return regs.REG(sp);
+    }
+    return 0;
+}
+
+int Ec::compare_regs_mute() {
+    if (regs.r15 != regs_1.r15) {
+        return 15;
+    }
+    if (regs.r14 != regs_1.r14) {
+        return 14;
+    }
+    if (regs.r13 != regs_1.r13) {
+        return 13;
+    }
+    if (regs.r12 != regs_1.r12) {
+        return 12;
+    }
+    if (regs.r11 != regs_1.r11) {
+        // resume flag  or trap flag may be set if reason is step-mode
+        // but it is unclear why. Must be fixed later
+        if (((regs.r11 | 1u << 16) == regs_1.r11) || (regs.r11 == (regs_1.r11 | 1u << 8)))
+            return 0;
+        else {
+            return 11;
+        }
+    }
+    if (regs.r10 != regs_1.r10) {
+        return 10;
+    }
+    if (regs.r9 != regs_1.r9) {
+        return 9;
+    }
+    if (regs.r8 != regs_1.r8) {
+        return 8;
+    }
+    if (regs.REG(di) != regs_1.REG(di)) {
+        return 7;
+    }
+    if (regs.REG(si) != regs_1.REG(si)) {
+        return 6;
+    }
+    if (regs.REG(bp) != regs_1.REG(bp)) {
+        return 5;
+    }
+    if (regs.REG(bx) != regs_1.REG(bx)) {
+        return 4;
+    }
+    if (regs.REG(cx) != regs_1.REG(cx)) {
+        return 3;
+    }
+    if (regs.REG(dx) != regs_1.REG(dx)) {
+        return 2;
+    }
+    if (regs.REG(ax) != regs_1.REG(ax)) {
+        return 1;
+    }
+    if ((regs.REG(ip) != regs_1.REG(ip))) {
+        return 18;
+    }
+    if (regs.REG(sp) != regs_1.REG(sp)) {
+        return 20;
+    }
+    return 0;
+}
+
+bool Ec::single_step_finished() {
+    return !(compare_regs_mute() || pd->compare_memory_mute());
+}
+
+void Ec::free_recorded_pe() {
+    Pe *pe = nullptr;
+    while (Queue<Pe>::dequeue(pe = Queue<Pe>::head())) {
+        Pe::destroy(pe, Pd::kern.quota);
+    }
+}
+
+void Ec::print_recorded_pe(){
+    Pe *pe = Queue<Pe>::head();
+    if(!pe)
+        return;
+    do {
+        pe->print();
+        pe = pe->get_next();
+    } while(pe != Queue<Pe>::head());
+}
+
+bool Ec::cmp_pe_to_tail(Pe* pe, Pe::Member_type member){
+    Pe *tail = Queue<Pe>::tail();    
+    if(tail && pe != tail)
+        return tail->cmp_to(member, pe);
+    else
+        return false;
+}
+
+void Ec::mark_pe_tail(){
+    Pe *tail = Queue<Pe>::tail();        
+    assert(tail);
+    tail->mark(); 
+}
+
+void Ec::take_snaphot(){
+    counter_userspace = Lapic::read_instCounter();    
+    Pe* pe = new(Pd::kern.quota) Pe(current->get_name(), current->getPd()->get_name(), last_rip);
+    pe->add_counter(counter_userspace);
+    Paddr p;
+    mword a;
+//    Console::print("length %lx %lu", length, sizeof(mword));
+    if (Ec::current->getPd()->Space_mem::loc[Cpu::id].lookup(last_rip, p, a)){
+        mword length = PAGE_SIZE - (last_rip & PAGE_MASK);
+        if(length < sizeof(mword)){ // cross two pages: rip = 0x...FF9
+            if (Ec::current->getPd()->Space_mem::loc[Cpu::id].lookup(last_rip + sizeof(mword), p, a)){
+                pe->add_instruction(*(reinterpret_cast<mword *> (last_rip)));
+            }else{
+                switch(length){
+                    case 1: 
+                        pe->add_instruction(*(reinterpret_cast<uint8 *> (last_rip)));
+                        break;
+                    case 2 ... 3:
+                        pe->add_instruction(*(reinterpret_cast<uint16 *> (last_rip)));                        
+                        break;
+                    case 4 ... 7:
+                        pe->add_instruction(*(reinterpret_cast<uint32 *> (last_rip)));                
+                        break;
+                    default: 
+                        Console::panic("Unknown length size %lx", length);
+                }
+            }
+        }else{
+            pe->add_instruction(*(reinterpret_cast<mword *> (last_rip)));
+        }
+        uint8 *ptr = reinterpret_cast<uint8 *> (last_rip);
+        if (*ptr == 0xf3 || *ptr == 0xf2) { // rep prefix instruction
+            rep_counter++;
+    //            exc_counter--;
+        }
+        if (*ptr == 0xf4) { // halt instruction
+            hlt_counter++;
+    //            exc_counter--;
+        } else {
+            if (Ec::current->getPd()->Space_mem::loc[Cpu::id].lookup(last_rip - 1, p, a) &&
+                    *(ptr - 1) == 0xf4) {
+                hlt_counter++;
+    //                exc_counter--;
+            }
+        }
+    }
+    if (current->cmp_pe_to_tail(pe, Pe::RETIREMENT_COUNTER)) {
+        double_interrupt_counter++;
+    }
+    Queue<Pe>::enqueue(pe);
+}
+
+void Ec::count_interrupt(mword vector){
+    switch (vector) {
+        case 0 ... Cpu::EXC_PF - 1:
+            exc_no_pf_counter++;
+            break;
+        case Cpu::EXC_PF:
+            pf_counter++;
+            break;
+        case Cpu::EXC_PF + 1 ... VEC_GSI - 1:
+            exc_no_pf_counter++;
+            break;
+        case VEC_GSI ... VEC_LVT - 1:
+            gsi_counter++;
+            break;
+        case VEC_LVT ... VEC_MSI - 1:
+            lvt_counter++;
+            break;
+        case VEC_MSI ... VEC_IPI - 1:
+            msi_counter++;
+            break;
+        case VEC_IPI ... VEC_MAX - 1:
+            ipi_counter++;
+            break;
+    }
+}
+/**
+ * 
+ * @param from
+ */
+void Ec::check_instr_number_equals(int from){
+    uint64 nb_run1, nb_run2;
+    char instr_number_comp[8] = "Inf";
+    if(distance_instruction <= 2) {
+        if(first_run_advanced){
+            nb_run1 = first_run_instr_number + nb_inst_single_step; 
+            nb_run2 = second_run_instr_number;
+            first_run_advanced = false;
+            copy_string(instr_number_comp, "Equ sup");
+        } else{
+            nb_run1 = first_run_instr_number; 
+            nb_run2 = second_run_instr_number + nb_inst_single_step;
+            copy_string(instr_number_comp, "Equ inf");            
+        }
+    } else if(first_run_instr_number > second_run_instr_number){
+        nb_run1 = first_run_instr_number; nb_run2 = second_run_instr_number + nb_inst_single_step;
+    } else {
+        nb_run1 = first_run_instr_number + nb_inst_single_step; nb_run2 = second_run_instr_number;        
+        copy_string(instr_number_comp, "Sup");
+    }
+    long nb_run_diff = nb_run1 < nb_run2 ? nb_run2 - nb_run1 : -(nb_run1 - nb_run2);
+    if(nb_run_diff != 0){
+        Console::print("%s %d: ec %s pd %s nb_run1 %llu nb_run2 %llu nb_run_diff %ld counter1 %llu exc1 %llu pf1 %llu dic1 %llu rep1 %llu hlt1 %llu "
+        "counter2 %llu exc2 %llu pf2 %llu dic2 %llu rep2 %llu hlt2 %llu ss %llu "
+        "ipi1 %llu msi1 %llu gsi1 %llu lvt1 %llu exc_no_pf1 %llu ipi2 %llu msi2 %llu gsi2 %llu lvt2 %llu exc_no_pf2 %llu", 
+        instr_number_comp, from, current->get_name(), current->getPd()->get_name(), nb_run1, nb_run2,  nb_run_diff, counter1, exc_counter1, pf_counter1, double_interrupt_counter1, rep_counter1, hlt_counter1, 
+        counter2, exc_counter2, pf_counter2, double_interrupt_counter2, rep_counter2, hlt_counter2, nb_inst_single_step, 
+        ipi_counter1, msi_counter1, gsi_counter1, lvt_counter1, exc_no_pf_counter1, ipi_counter2, msi_counter2, gsi_counter2, lvt_counter2, exc_no_pf_counter2);
+    }else{
+        Console::print("%s %d: ec %s pd %s counter1 %llu exc1 %llu pf1 %llu dic1 %llu rep1 %llu hlt1 %llu "
+        "counter2 %llu exc2 %llu pf2 %llu dic2 %llu rep2 %llu hlt2 %llu ss %llu "
+        "ipi1 %llu msi1 %llu gsi1 %llu lvt1 %llu exc_no_pf1 %llu ipi2 %llu msi2 %llu gsi2 %llu lvt2 %llu exc_no_pf2 %llu", 
+        instr_number_comp, from, current->get_name(), current->getPd()->get_name(), counter1, exc_counter1, pf_counter1, double_interrupt_counter1, rep_counter1, hlt_counter1, 
+        counter2, exc_counter2, pf_counter2, double_interrupt_counter2, rep_counter2, hlt_counter2, nb_inst_single_step, 
+        ipi_counter1, msi_counter1, gsi_counter1, lvt_counter1, exc_no_pf_counter1, ipi_counter2, msi_counter2, gsi_counter2, lvt_counter2, exc_no_pf_counter2);
+    }
+    current->print_recorded_pe();
 }

@@ -14,7 +14,6 @@ uint32 Cow::frame_index_max = 0;
 uint32 Cow::elt_index_max = 0;
 struct Cow::cow_elt Cow::cow_list[NB_COW_ELT];
 struct Cow::cow_frame Cow::cow_frames[NB_COW_FRAME];
-bool Cow::max_displayed = false;
 struct Cow::block Cow::block_elts[NB_BLOCK_ELT];
 struct Cow::block* Cow::ram_mem_list = nullptr;
 
@@ -74,7 +73,6 @@ bool Cow::get_new_cow_frame(cow_frame** frame_ptr) {
     cow_frames[frame_index].used = true;
     if (frame_index > frame_index_max) {
         frame_index_max = frame_index;
-        max_displayed = false;
     }
     *frame_ptr = &cow_frames[frame_index];
     //        if (Cpu::id != 0)
@@ -88,7 +86,6 @@ bool Cow::get_cow_list_elt(cow_elt** cow_ptr) {
     if (!get_cow_list_elt(elt_index)) return false;
     if (elt_index > elt_index_max) {
         elt_index_max = elt_index;
-        max_displayed = false;
     }
     *cow_ptr = &cow_list[elt_index];
     return true;

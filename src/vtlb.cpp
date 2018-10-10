@@ -221,7 +221,7 @@ void Vtlb::flush(bool full) {
     Counter::print<1, 16> (++Counter::vtlb_flush, Console_vga::COLOR_LIGHT_RED, SPN_VFL);
 }
 
-void Vtlb::set_cow_page_vmx(uint64 virt, uint64 &entry) {
+void Vtlb::set_cow_page(uint64 virt, uint64 &entry) {
     if ((virt < USER_ADDR) && (entry & TLB_P) && (entry & TLB_U)) {
         if (is_mmio(entry & ~PAGE_MASK)) {
             entry |= TLB_COW | TLB_COW_IO;
@@ -322,3 +322,7 @@ uint64* Vtlb::vtlb_lookup(mword v) {
 //    return e->addr();
 //    val = old_val;
 //}
+
+void Vtlb::print(char const *s, uint64 v){
+    Console::print("%s %llx", s, v);
+}

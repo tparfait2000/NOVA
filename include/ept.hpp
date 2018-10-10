@@ -63,4 +63,12 @@ class Ept : public Pte<Ept, uint64, 4, 9, false>
         asm volatile ("invept %1, %2; seta %0" : "=q" (ret) : "m" (desc), "r" (ept_type) : "cc", "memory");
         assert (ret);
     }
+    
+    static void print(char const *s, uint64 v){
+        Console::print("%s %llx", s, v);
+    }
+    
+    static void set_cow_page(uint64 virt, uint64 &entry) {
+        Console::print("set_cow_page in EPT %llx %llx", virt, entry);
+    }
 };
