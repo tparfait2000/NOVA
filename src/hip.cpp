@@ -262,7 +262,10 @@ void Hip::add_buddy (Hip_mem *&mem, Hip * hip)
     /* exclude all reserved memory part of region */
     for (unsigned i = 0; i < mhv_cnt; i++) {
         Hip_mem const * const m = hip->mem_desc + i;
-        uint64 const m_end = m->addr + m->size;
+        uint64 m_end = m->addr + m->size;
+
+        if (m->type == Hip_mem::MB2_FB)
+            m_end = m->addr + m->aux * (m->size >> 40);
 
         if (m->type == MEMORY_AVAIL)
             continue;
