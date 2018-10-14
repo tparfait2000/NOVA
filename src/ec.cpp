@@ -39,7 +39,8 @@
 
 INIT_PRIORITY(PRIO_SLAB)
 Slab_cache Ec::cache(sizeof (Ec), 32);
-mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx;
+mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx, Ec::io_addr = 0, Ec::io_attr = 0;
+Paddr Ec::io_phys = 0;
 bool Ec::ec_debug = false, Ec::glb_debug = false, Ec::hardening_started = false, Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false, Ec::jump_ex = false, Ec::no_further_check = false, Ec::first_run_advanced = false;
 uint64 Ec::exc_counter = 0, Ec::gsi_counter1 = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::lvt_counter1 = 0, Ec::msi_counter1 = 0, Ec::ipi_counter1 = 0, Ec::gsi_counter2 = 0,
         Ec::lvt_counter2 = 0, Ec::msi_counter2 = 0, Ec::ipi_counter2 = 0, Ec::counter1 = 0, Ec::counter2 = 0, Ec::debug_compteur = 0, Ec::count_je = 0, Ec::nbInstr_to_execute = 0,
@@ -47,7 +48,7 @@ uint64 Ec::exc_counter = 0, Ec::gsi_counter1 = 0, Ec::exc_counter1 = 0, Ec::exc_
         Ec::double_interrupt_counter = 0, Ec::double_interrupt_counter1 = 0, Ec::double_interrupt_counter2 = 0, Ec::ipi_counter = 0, Ec::msi_counter = 0, Ec::gsi_counter = 0, Ec::pf_counter = 0,
         Ec::exc_no_pf_counter = 0, Ec::pf_counter1 = 0, Ec::pf_counter2 = 0, Ec::lvt_counter = 0, Ec::exc_no_pf_counter1 = 0, Ec::exc_no_pf_counter2 = 0, Ec::rep_counter = 0, Ec::rep_counter1 = 0, Ec::rep_counter2 = 0,
         Ec::hlt_counter = 0, Ec::hlt_counter1 = 0, Ec::hlt_counter2 = 0, Ec::distance_instruction = 0;
-uint8 Ec::run_number = 0, Ec::launch_state = 0, Ec::step_reason = 0, Ec::debug_nb = 0;
+uint8 Ec::run_number = 0, Ec::launch_state = 0, Ec::step_reason = 0, Ec::debug_nb = 0, Ec::debug_type = 0, Ec::replaced_int3_instruction;
 const uint64 Ec::step_nb = 200;
 uint64 Ec::tsc1 = 0, Ec::tsc2 = 0;
 int Ec::prev_reason = 0, Ec::previous_ret = 0, Ec::nb_try = 0, Ec::reg_diff = 0;
@@ -331,9 +332,21 @@ void Ec::ret_user_iret() {
         current->save_state();
         launch_state = Ec::IRET;
     }
+//    if (str_equal(current->get_name(), "fb_drv")) {
+        //        debug_func("Ireting");
+//        mword *v = reinterpret_cast<mword*> (0x18028);
+//        Paddr physical_addr;
+//        mword attribut;
+//        size_t is_mapped = current->getPd()->loc[Cpu::id].lookup(0x18028, physical_addr, attribut);
+//        if (is_mapped && (*v != 0x8020)) {
+//            //            current->getPd()->loc[Cpu::id].update(current->getPd()->quota, reinterpret_cast<mword> (v), 0, physical_addr, attribut, Hpt::TYPE_UP, false);
+//            current->getPd()->loc[Cpu::id].flush(reinterpret_cast<mword> (v));
+//            Console::print("Rectifying in Iret PD: %s EC %s EIP %lx RCX %lx phys %lx 18028:%lx", Pd::current->get_name(), current->get_name(), current->regs.REG(ip), current->regs.REG(cx), physical_addr, *v);
+//        }
+        
+//    }
 
     debug_print("Ireting");
-
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR LOAD_SEG RET_USER_EXC) : : "m" (current->regs) : "memory");
 
     UNREACHED;
@@ -606,17 +619,63 @@ bool Ec::is_io_exc(mword eip) {
         case 0x6e: // OUTS DX, m8 || OUTSB
         case 0x6f: // OUTS DX, m16 || OUTS DX, m32 || OUTSW || OUTSD
             return true;
-        case 0x66:
-        case 0x67:
-            return is_io_exc(v + 1); // operand-size prefixe
+        case 0x66: // Operand-size override prefix 
+        case 0x67: // Address-size override prefix 
+            return is_io_exc(v + 1);
         default:
             return false;
     }
 }
 
+bool Ec::is_rep_prefix_io_exception(mword eip){
+    if(!eip) eip = current->regs.REG(ip);
+    uint8 *ptr = reinterpret_cast<uint8 *> (eip), *next_ptr = ptr + 1;
+    switch(*ptr){
+        case 0x66: // Operand-size override prefix 
+        case 0x67: // Address-size override prefix 
+            return is_rep_prefix_io_exception(eip+1);
+    }
+    if(*next_ptr == 0xf3 || *next_ptr == 0xf2){
+        Pd *current_pd = Pd::current;
+        replaced_int3_instruction = *(next_ptr + 1);
+        Paddr p; mword a;
+        Pd::current->Space_mem::loc[Cpu::id].lookup(eip & ~PAGE_MASK, p, a);
+        if(!(a & Hpt::HPT_W))
+            current_pd->Space_mem::loc[Cpu::id].replace_cow(Pd::current->quota, eip, p | a | Hpt::HPT_W);
+        *(next_ptr + 1) = 0xcc;
+        if(!(a & Hpt::HPT_W))
+            current_pd->Space_mem::loc[Cpu::id].replace_cow(Pd::current->quota, eip, p | a);                    
+        Pd::current->Space_mem::loc[Cpu::id].lookup(eip & ~PAGE_MASK, p, a);
+        return true;
+    } else {
+        return false;
+    }
+}
+
+void Ec::set_io_state(Step_reason sr, mword addr, Paddr phys, mword attr){
+    if(sr == SR_PIO){
+        step_reason = SR_PIO;                
+        reinterpret_cast<Space_pio*> (Pd::current->subspace(Crd::PIO))->enable_pio(Pd::current->quota);        
+    } else if(sr == SR_MMIO){
+        step_reason = SR_MMIO;    
+        io_addr = addr;
+        io_phys = phys;
+        io_attr = attr;
+        Pd::current->Space_mem::loc[Cpu::id].replace_cow(Pd::current->quota, addr, phys | attr | Hpt::HPT_P); // the old frame may have been released; so we have to retain it        
+    }    
+}
+
+void Ec::reset_io_state(){
+    if(step_reason == SR_PIO){
+        reinterpret_cast<Space_pio*> (Pd::current->subspace(Crd::PIO))->disable_pio(Pd::current->quota);
+    } else if(step_reason == SR_MMIO){
+        Pd::current->loc[Cpu::id].replace_cow(Pd::current->quota, io_addr, io_phys | (io_attr & ~Hpt::HPT_P));                
+    }
+    step_reason = SR_NIL;    
+}
+
 void Ec::resolve_PIO_execption() {
     //    Console::print("Read PIO");
-    reinterpret_cast<Space_pio*> (pd->subspace(Crd::PIO))->enable_pio(pd->quota);
     Ec::current->enable_step_debug(SR_PIO, SPC_LOCAL_IOP, 0, 0);
 }
 
@@ -631,11 +690,15 @@ void Ec::enable_step_debug(Step_reason reason, mword fault_addr, Paddr fault_phy
     step_reason = reason;
     switch (reason) {
         case SR_PIO:
+            launch_state = Launch_type::IRET; // to ensure that this will finished before any other thread is scheduled
+            reinterpret_cast<Space_pio*> (pd->subspace(Crd::PIO))->enable_pio(pd->quota);
+            break;
         case SR_MMIO:
             io_addr = fault_addr;
             io_phys = fault_phys;
             io_attr = fault_attr;
             launch_state = Launch_type::IRET; // to ensure that this will finished before any other thread is scheduled
+            Pd::current->Space_mem::loc[Cpu::id].replace_cow(Pd::current->quota, fault_addr, fault_phys | fault_attr | Hpt::HPT_P); // the old frame may have been released; so we have to retain it      
             break;
         case SR_RDTSC:
             set_cr4(get_cr4() & ~Cpu::CR4_TSD);
@@ -731,8 +794,8 @@ void Ec::saveRegs(Exc_regs *r) {
     last_rip = r->REG(ip);
     last_rcx = r->REG(cx);
     exc_counter++;
-    count_interrupt(r->vec);
-    current->take_snaphot();   
+//    count_interrupt(r->vec);
+//    current->take_snaphot();   
     return;
 }
 
@@ -741,8 +804,6 @@ void Ec::save_state() {
     Fpu::dwc_save();
     if (fpu)
         fpu->save_data();
-    if (regs.REG(ip) == 0x10052de)
-        Console::print("10052de");
 }
 
 void Ec::vmx_save_state() {
@@ -1175,20 +1236,23 @@ bool Ec::single_step_finished() {
 }
 
 void Ec::free_recorded_pe() {
+//    if(str_equal(current->get_name(), "fb_drv"))
+//        return;
     Pe *pe = nullptr;
     while (Queue<Pe>::dequeue(pe = Queue<Pe>::head())) {
         Pe::destroy(pe, Pd::kern.quota);
     }
 }
 
-void Ec::print_recorded_pe(){
-    Pe *pe = Queue<Pe>::head();
+void Ec::dump_pe(bool all){
+    Pe *pe = current->Queue<Pe>::head();
     if(!pe)
         return;
     do {
-        pe->print();
+        if(!all && pe->is_marked())
+            pe->print();
         pe = pe->get_next();
-    } while(pe != Queue<Pe>::head());
+    } while(pe != current->Queue<Pe>::head());
 }
 
 bool Ec::cmp_pe_to_tail(Pe* pe, Pe::Member_type member){
@@ -1206,12 +1270,12 @@ void Ec::mark_pe_tail(){
 }
 
 void Ec::take_snaphot(){
+    mword rip = current->regs.REG(ip);
     counter_userspace = Lapic::read_instCounter();    
-    Pe* pe = new(Pd::kern.quota) Pe(current->get_name(), current->getPd()->get_name(), last_rip);
+    Pe* pe = new(Pd::kern.quota) Pe(current->get_name(), current->getPd()->get_name(), rip);
     pe->add_counter(counter_userspace);
     Paddr p;
     mword a;
-//    Console::print("length %lx %lu", length, sizeof(mword));
     if (Ec::current->getPd()->Space_mem::loc[Cpu::id].lookup(last_rip, p, a)){
         mword length = PAGE_SIZE - (last_rip & PAGE_MASK);
         if(length < sizeof(mword)){ // cross two pages: rip = 0x...FF9
@@ -1235,25 +1299,10 @@ void Ec::take_snaphot(){
         }else{
             pe->add_instruction(*(reinterpret_cast<mword *> (last_rip)));
         }
-        uint8 *ptr = reinterpret_cast<uint8 *> (last_rip);
-        if (*ptr == 0xf3 || *ptr == 0xf2) { // rep prefix instruction
-            rep_counter++;
-    //            exc_counter--;
-        }
-        if (*ptr == 0xf4) { // halt instruction
-            hlt_counter++;
-    //            exc_counter--;
-        } else {
-            if (Ec::current->getPd()->Space_mem::loc[Cpu::id].lookup(last_rip - 1, p, a) &&
-                    *(ptr - 1) == 0xf4) {
-                hlt_counter++;
-    //                exc_counter--;
-            }
-        }
     }
-    if (current->cmp_pe_to_tail(pe, Pe::RETIREMENT_COUNTER)) {
-        double_interrupt_counter++;
-    }
+//    if (current->cmp_pe_to_tail(pe, Pe::RETIREMENT_COUNTER)) {
+//        double_interrupt_counter++;
+//    }
     Queue<Pe>::enqueue(pe);
 }
 
@@ -1280,6 +1329,25 @@ void Ec::count_interrupt(mword vector){
         case VEC_IPI ... VEC_MAX - 1:
             ipi_counter++;
             break;
+    }
+    Paddr p;
+    mword a;
+    if (Ec::current->getPd()->Space_mem::loc[Cpu::id].lookup(last_rip, p, a)){
+        uint8 *ptr = reinterpret_cast<uint8 *> (last_rip);
+        if (*ptr == 0xf3 || *ptr == 0xf2) { // rep prefix instruction
+            rep_counter++;
+    //            exc_counter--;
+        }
+        if (*ptr == 0xf4) { // halt instruction
+            hlt_counter++;
+    //            exc_counter--;
+        } else {
+            if (Ec::current->getPd()->Space_mem::loc[Cpu::id].lookup(last_rip - 1, p, a) &&
+                    *(ptr - 1) == 0xf4) {
+                hlt_counter++;
+    //                exc_counter--;
+            }
+        }
     }
 }
 /**
@@ -1322,5 +1390,5 @@ void Ec::check_instr_number_equals(int from){
         counter2, exc_counter2, pf_counter2, double_interrupt_counter2, rep_counter2, hlt_counter2, nb_inst_single_step, 
         ipi_counter1, msi_counter1, gsi_counter1, lvt_counter1, exc_no_pf_counter1, ipi_counter2, msi_counter2, gsi_counter2, lvt_counter2, exc_no_pf_counter2);
     }
-    current->print_recorded_pe();
+    current->dump_pe();
 }

@@ -30,7 +30,7 @@
 
 class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, public Space_obj {
 private:
-    char name[str_max_length];
+    char name[MAX_STR_LENGTH];
     bool to_be_cowed = false;
     static Slab_cache cache;
     static const char *names[];

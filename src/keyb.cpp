@@ -24,6 +24,7 @@
 #include "gsi.hpp"
 #include "keyb.hpp"
 #include "stdio.hpp"
+#include "ec.hpp"
 
 unsigned Keyb::gsi = ~0u;
 
@@ -60,6 +61,9 @@ void Keyb::interrupt()
             case 0x1:               // esc
                 Acpi::reset();
                 Io::out<uint8>(0xcf9, 0x6);
+                break;
+            case 0x20:              // d
+                Ec::dump_pe(true);
                 break;
             case 0x2e:              // c
                 Counter::dump();

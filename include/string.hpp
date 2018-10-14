@@ -20,7 +20,8 @@
 
 #include "compiler.hpp"
 #include "types.hpp"
-#include "console.hpp"
+#include "config.hpp"
+#include "util.hpp"
 
 extern "C" NONNULL
 inline void *memcpy(void *dst, const void *src, size_t n) {
@@ -54,7 +55,7 @@ inline void *memcpy(void *dst, const void *src, size_t n) {
 extern "C" NONNULL
 inline void copy_string(char *target, const char *source) {
     uint32 length = 1;
-    while (*source && length < str_max_length) {
+    while (*source) {
         *target = *source;
         source++;
         target++;
@@ -118,20 +119,27 @@ inline int memcmp(const void *s1, const void *s2, size_t len) {
     return diff;
 }
 
-extern "C" NONNULL
 /*
- It does not work
+ * Normalizes an instruction printing in hexadecimal format so that it may be given as input to 
+ * disassembler (in https://defuse.ca/online-x86-assembler.htm#disassembly2)  
+ * Eg of input  : 8348eb7530483948 as mword
+ * Eg of output : 4839483075eb4883 as char*
  */
-inline void order_instruction(mword instr, char *buffer ) {
+extern "C" NONNULL
+
+inline void instruction_in_hex(mword instr, char *buffer ) {
+    uint8* u = reinterpret_cast<uint8*>(&instr);
     int size = sizeof(mword);
-    Console::sprint(buffer, "%lx ", instr); 
-    char *p1 = buffer, *p2 = buffer + size -1;
-    while(p1 < p2){
-        char tmp = *p1;
-        *p1++ = *p2;
-        *p2-- = tmp;
+    char buff[3]; // 2 (each uint8 (byte) is two characters long) + 1 ('\0')
+    char *p_buffer = buffer, *p_buff ;
+    for(int i = 0; i<size; i++){
+        to_string(*(u+i), buff);
+        p_buff = buff;
+        while(*p_buff){
+            *p_buffer++ = *p_buff++;
+        }
     }
-    
+    *p_buffer = '\0';
 }
 
 extern "C" NONNULL

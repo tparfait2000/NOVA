@@ -42,3 +42,4 @@
 #define SPN_GSI         (SPN_IPI + NUM_IPI)
 
 #define MAX_INSTRUCTION 0x100000
+#define MAX_STR_LENGTH  80

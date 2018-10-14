@@ -74,6 +74,7 @@ public:
     {
         EXC_DB          = 1,
         EXC_NMI         = 2,
+        EXC_BP          = 3,
         EXC_NM          = 7,
         EXC_TS          = 10,
         EXC_GP          = 13,

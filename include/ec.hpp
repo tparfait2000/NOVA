@@ -69,7 +69,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
         static Msr_area *host_msr_area0, *guest_msr_area0, *host_msr_area1, *guest_msr_area1, *host_msr_area2, *guest_msr_area2;
         static Virtual_apic_page *virtual_apic_page0, *virtual_apic_page1, *virtual_apic_page2; 
 
-        char name[str_max_length];
+        char name[MAX_STR_LENGTH];
 
         unsigned const evt;
         Timeout_hypercall timeout;
@@ -229,8 +229,8 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
 
         static Fpu *fpu_0, *fpu_1, *fpu_2;
         int previous_reason = 0, nb_extint = 0;
-        mword io_addr = {}, io_attr = {};
-        Paddr io_phys = {};
+        static mword io_addr, io_attr;
+        static Paddr io_phys;
 
         mword debug = 0;         
         enum Debug_scope{
@@ -250,14 +250,14 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
         };
 
         enum Step_reason {
-            SR_NIL = 0,
-            SR_MMIO = 1,
-            SR_PIO = 2,
-            SR_RDTSC = 3,
-            SR_PMI = 4,
-            SR_GP = 5,
-            SR_DBG = 6,
-            SR_EQU = 7,
+            SR_NIL          = 0,
+            SR_MMIO         = 1,
+            SR_PIO          = 2,
+            SR_RDTSC        = 3,
+            SR_PMI          = 4,
+            SR_GP           = 5,
+            SR_DBG          = 6,
+            SR_EQU          = 7,
         };
 
         enum PE_stopby {
@@ -278,6 +278,12 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
             PES_MSI             = 14,
             PES_LVT             = 15,
         };
+        
+        enum Debug_type {
+            DT_NULL             = 0,
+            CMP_TWO_RUN         = 1, 
+            STORE_RUN_STATE     = 2,
+        };
         static const uint64 step_nb;
         static mword prev_rip, last_rip, last_rcx, last_rsp, end_rip, end_rcx, instruction_value, outpout_table0[][2], outpout_table1[][2];
         static uint64 counter1, counter2, exc_counter, exc_counter1, exc_counter2, gsi_counter1, lvt_counter1, msi_counter1, ipi_counter1, gsi_counter2, lvt_counter2, msi_counter2, 
@@ -285,7 +291,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
         counter_userspace, double_interrupt_counter, double_interrupt_counter1, double_interrupt_counter2, ipi_counter, msi_counter, gsi_counter, lvt_counter, exc_no_pf_counter,
         exc_no_pf_counter1, exc_no_pf_counter2, pf_counter, pf_counter1, pf_counter2, rep_counter, rep_counter1, rep_counter2, hlt_counter, hlt_counter1, hlt_counter2, shadow_counter, shadow_counter1,
         shadow_counter2, distance_instruction;
-        static uint8 run_number, launch_state, step_reason, debug_nb;
+        static uint8 run_number, launch_state, step_reason, debug_nb, debug_type, replaced_int3_instruction;
         static bool ec_debug, glb_debug, hardening_started, in_rep_instruction, not_nul_cowlist, jump_ex, fpu_saved, no_further_check, first_run_advanced;
         static int prev_reason, previous_ret, nb_try, reg_diff;
         static const char* regs_name_table[];
@@ -562,7 +568,10 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
 
         bool is_temporal_exc();
         bool is_io_exc(mword = 0);
-
+        static bool is_rep_prefix_io_exception(mword = 0);
+        static void set_io_state(Step_reason, mword = 0, Paddr = 0, mword = 0);
+        static void reset_io_state();
+        
         void resolve_PIO_execption();
 
         void enable_step_debug(Step_reason raison = SR_NIL, mword fault_addr = 0, Paddr fault_phys = 0, mword fault_attr = 0); 
@@ -646,11 +655,14 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
         int compare_regs_mute();
         bool single_step_finished();
         void free_recorded_pe();
-        void print_recorded_pe();
+        static void dump_pe(bool = false);
         bool cmp_pe_to_head(Pe*, Pe::Member_type);
         bool cmp_pe_to_tail(Pe*, Pe::Member_type);
         void mark_pe_tail();
         void take_snaphot();
         static void count_interrupt(mword);
         static void check_instr_number_equals(int);
+        void start_debugging(Debug_type);
+        static void  debug_record_info();
+
 };

@@ -24,8 +24,8 @@ class Pe {
         
     
     static size_t number;
-    char ec[str_max_length];
-    char pd[str_max_length];
+    char ec[MAX_STR_LENGTH];
+    char pd[MAX_STR_LENGTH];
     mword rip;
     Pe* prev;
     Pe* next;
@@ -86,14 +86,13 @@ public:
     };
     
     void print(){
-        if(marked){
-            char num_to_str[20];
-            if(retirement_counter < MAX_INSTRUCTION)
-                Console::sprint(num_to_str, "%llu", retirement_counter);
-            else
-                Console::sprint(num_to_str, "%llx", retirement_counter);
-            Console::print("Pe_state %s %s %lu %lx %s %lx", ec, pd, numero, rip, num_to_str, instruction);
-        }
+        char num_to_str[20];
+        if(retirement_counter < MAX_INSTRUCTION)
+            Console::sprint(num_to_str, "%llu", retirement_counter);
+        else
+            Console::sprint(num_to_str, "%llx", retirement_counter);
+        Console::print("Pe_state %s %s %lu %lx %s %lx", ec, pd, numero, rip, num_to_str, instruction);
+        
     }
 
     void add_counter(uint64);
@@ -105,4 +104,6 @@ public:
     bool cmp_to(Member_type, Pe*);
     
     void mark();
+    
+    bool is_marked() { return marked; }
 };

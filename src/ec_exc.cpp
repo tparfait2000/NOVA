@@ -143,17 +143,26 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
             ec->enable_step_debug(SR_RDTSC);
             return true;
         } else if (ec->is_io_exc()) {
-            ec->resolve_PIO_execption();
+            if(is_rep_prefix_io_exception(eip)){
+//                Console::print("REP IN PIO");                
+                set_io_state(SR_PIO);
+            } else {
+                ec->resolve_PIO_execption();                
+            }
             return true;
         }
     }
-    Console::print("GP Here: Ec: %s  Pd: %s  err: %08lx  addr: %08lx  eip: %08lx  val: %lx Lapic::counter %llx", 
-            ec->get_name(), ec->getPd()->get_name(), r->err, r->cr2, eip, *(reinterpret_cast<mword *> (eip)), Lapic::read_instCounter());
-
-    if(ec->utcb){
-        Console::print("eip0: %lx  rcx0: %lx  r11_0: %lx  rdi_0: %lx", regs_0.REG(ip), regs_0.REG(cx), regs_0.r11, regs_0.REG(di));
-        Console::print("eip1: %lx  rcx1: %lx  r11_1: %lx  rdi_1: %lx", regs_1.REG(ip), regs_1.REG(cx), regs_1.r11, regs_1.REG(di));
-    }else{
+   
+    Console::print("eip0: %lx(%#lx)  r11_0: %lx", regs_0.REG(ip), regs_0.REG(cx), regs_0.r11);
+    Console::print("eip1: %lx(%#lx)  r11_1: %lx", regs_1.REG(ip), regs_1.REG(cx), regs_1.r11);
+    Console::print("eip2: %lx(%#lx)  r11_2: %lx", regs_2.REG(ip), regs_2.REG(cx), regs_2.r11);
+    char buff[MAX_STR_LENGTH];
+    instruction_in_hex(*(reinterpret_cast<mword *> (eip)), buff);
+    Console::print("GP Here: Ec: %s  Pd: %s ip %lx(%#lx) val: %s Lapic::counter %llx user %s", 
+        ec->get_name(), ec->getPd()->get_name(), eip, r->ARG_IP, buff, Lapic::read_instCounter(), r->user() ? "true" : "false");
+    Counter::dump();
+    ec->start_debugging(Debug_type::STORE_RUN_STATE);
+    if(!ec->utcb){
         mword inst_addr = Vmcs::read(Vmcs::GUEST_RIP);
         mword inst_off = inst_addr & PAGE_MASK;
         uint64 entry = 0;
@@ -284,24 +293,7 @@ void Ec::handle_exc(Exc_regs *r) {
                     case SR_DBG:
                         if (nbInstr_to_execute > 0) {
                             current->regs.REG(fl) |= Cpu::EFL_TF;
-                            switch (run_number){
-                                case 0:
-//                                  Console::print("EIP %lx  %s: %lx", current->regs.REG(ip), regs_name_table[reg_diff], current->get_reg(reg_diff));
-                                    outpout_table0[single_step_number][0] = current->regs.REG(ip);
-                                    outpout_table0[single_step_number][1] = current->get_reg(reg_diff);
-                                    break;
-                                case 1:
-//                                  Console::print("EIP %lx  %s: %lx", current->regs.REG(ip), regs_name_table[reg_diff], current->get_reg(reg_diff));
-                                    outpout_table1[single_step_number][0] = current->regs.REG(ip);
-                                    outpout_table1[single_step_number][1] = current->get_reg(reg_diff);
-                                    if(outpout_table0[single_step_number][0] != outpout_table1[single_step_number][0] ||
-                                            outpout_table0[single_step_number][1] != outpout_table1[single_step_number][1])
-                                        Console::print("Single_step_number %llu RIP %lx %lx %s %lx %lx", single_step_number, outpout_table0[single_step_number][0], 
-                                                outpout_table1[single_step_number][0], regs_name_table[reg_diff], outpout_table0[single_step_number][1], outpout_table1[single_step_number][1]);
-                                    break;
-                                default:
-                                    Console::panic("run_number odd");  
-                            }
+                            debug_record_info();
                             nbInstr_to_execute --;
                             single_step_number ++;
                             return;
@@ -362,13 +354,26 @@ void Ec::handle_exc(Exc_regs *r) {
                 Console::print("Debug in kernel Step Reason %d  nbInstr_to_execute %llu  debug_compteur %llu  end_rip %lx  end_rcx %lx", step_reason, nbInstr_to_execute, debug_compteur, end_rip, end_rcx);
                 break;
             }
+        
         case Cpu::EXC_NMI:
 //            Console::print("PMI occured on NMI counter %llx reg %x", Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), 
 //                   Lapic::read_perf_reg());
 //            Lapic::program_pmi();
 //            Console::print("reg %x", Lapic::read_perf_reg());
             return;
-            
+        case Cpu::EXC_BP:{
+            current->regs.REG(ip)--; // adjust EIP to EIP -   after the trap;
+            mword eip = current->regs.REG(ip);
+            Paddr p; mword a;
+            current->pd->Space_mem::loc[Cpu::id].lookup(eip & ~PAGE_MASK, p, a);
+            if(!(a & Hpt::HPT_W))
+                current->pd->Space_mem::loc[Cpu::id].replace_cow(Pd::current->quota, eip, p | a | Hpt::HPT_W);
+            *(reinterpret_cast<uint8*>(eip)) = replaced_int3_instruction;
+            if(!(a & Hpt::HPT_W))
+                Pd::current->Space_mem::loc[Cpu::id].replace_cow(Pd::current->quota, eip, p | a);
+            reset_io_state();
+            current->pd->Space_mem::loc[Cpu::id].lookup(eip & ~PAGE_MASK, p, a);
+            return;}
         case Cpu::EXC_NM:
             if (r->user())
                 check_memory(PES_DEV_NOT_AVAIL);
@@ -491,12 +496,10 @@ void Ec::check_memory(PE_stopby from) {
                 }
             }
             {
+                ec->regs_2 = ec->regs;
                 reg_diff = ec->compare_regs(from);
                 if (reg_diff || pd->compare_and_commit()) {
                     Console::print("Checking failed : Ec %s  Pd: %s From: %d launch_state: %d", ec->get_name(), pd->get_name(), from, launch_state);
-                    if(from == PES_SINGLE_STEP){
-                        Console::print("nb_inst_single_step %llu Total1 %llu Total2 %llu", nb_inst_single_step, first_run_instr_number, second_run_instr_number + nb_inst_single_step);
-                    }
                     ec->rollback();
     //                ec->reset_all();
     //                check_exit();
@@ -510,7 +513,6 @@ void Ec::check_memory(PE_stopby from) {
                 } else {
                     launch_state = UNLAUNCHED;
                     reset_all();
-                    Pending_int::exec_pending_interrupt();
                     return;
                 }
             }
@@ -534,7 +536,7 @@ void Ec::check_exit() {
             ret_user_vmrun();
             break;
         case UNLAUNCHED:
-            Console::panic("Bad Run");
+            Console::panic("Bad Run launch_state %u", launch_state);
     }
 }
 
@@ -554,5 +556,48 @@ void Ec::reset_all() {
     reset_counter();
     prev_reason = 0;
     no_further_check = false;
+    Pending_int::exec_pending_interrupt();
     current->free_recorded_pe();
+}
+
+void Ec::start_debugging(Debug_type dt){
+    debug_type = dt;
+    rollback();
+//                ec->reset_all();
+//                check_exit();
+    pd->cow_list = nullptr;
+    run_number = 0;
+    nbInstr_to_execute = first_run_instr_number;
+    save_state();
+    launch_state = Ec::IRET;
+    enable_step_debug(SR_DBG);
+    check_exit();
+}
+
+void Ec::debug_record_info(){
+    switch(debug_type){
+        case CMP_TWO_RUN:
+            switch (run_number){
+                case 0:
+                    outpout_table0[single_step_number][0] = current->regs.REG(ip);
+                    outpout_table0[single_step_number][1] = current->get_reg(reg_diff);
+                    break;
+                case 1:
+                    outpout_table1[single_step_number][0] = current->regs.REG(ip);
+                    outpout_table1[single_step_number][1] = current->get_reg(reg_diff);
+                    if(outpout_table0[single_step_number][0] != outpout_table1[single_step_number][0] ||
+                            outpout_table0[single_step_number][1] != outpout_table1[single_step_number][1])
+                        Console::print("Single_step_number %llu RIP %lx %lx %s %lx %lx", single_step_number, outpout_table0[single_step_number][0], 
+                                outpout_table1[single_step_number][0], regs_name_table[reg_diff], outpout_table0[single_step_number][1], outpout_table1[single_step_number][1]);
+                    break;
+                default:
+                    Console::panic("run_number odd");  
+            }
+            break;
+        case STORE_RUN_STATE:
+            current->take_snaphot();
+            break;
+        default:
+            Console::panic("Undefined debug type %u", debug_type);
+    }
 }
