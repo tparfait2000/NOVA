@@ -39,8 +39,7 @@
 
 INIT_PRIORITY(PRIO_SLAB)
 Slab_cache Ec::cache(sizeof (Ec), 32);
-mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx, Ec::io_addr = 0, Ec::io_attr = 0;
-Paddr Ec::io_phys = 0;
+mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx;
 bool Ec::ec_debug = false, Ec::glb_debug = false, Ec::hardening_started = false, Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false, Ec::jump_ex = false, Ec::no_further_check = false, Ec::first_run_advanced = false;
 uint64 Ec::exc_counter = 0, Ec::gsi_counter1 = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::lvt_counter1 = 0, Ec::msi_counter1 = 0, Ec::ipi_counter1 = 0, Ec::gsi_counter2 = 0,
         Ec::lvt_counter2 = 0, Ec::msi_counter2 = 0, Ec::ipi_counter2 = 0, Ec::counter1 = 0, Ec::counter2 = 0, Ec::debug_compteur = 0, Ec::count_je = 0, Ec::nbInstr_to_execute = 0,
@@ -48,7 +47,7 @@ uint64 Ec::exc_counter = 0, Ec::gsi_counter1 = 0, Ec::exc_counter1 = 0, Ec::exc_
         Ec::double_interrupt_counter = 0, Ec::double_interrupt_counter1 = 0, Ec::double_interrupt_counter2 = 0, Ec::ipi_counter = 0, Ec::msi_counter = 0, Ec::gsi_counter = 0, Ec::pf_counter = 0,
         Ec::exc_no_pf_counter = 0, Ec::pf_counter1 = 0, Ec::pf_counter2 = 0, Ec::lvt_counter = 0, Ec::exc_no_pf_counter1 = 0, Ec::exc_no_pf_counter2 = 0, Ec::rep_counter = 0, Ec::rep_counter1 = 0, Ec::rep_counter2 = 0,
         Ec::hlt_counter = 0, Ec::hlt_counter1 = 0, Ec::hlt_counter2 = 0, Ec::distance_instruction = 0;
-uint8 Ec::run_number = 0, Ec::launch_state = 0, Ec::step_reason = 0, Ec::debug_nb = 0, Ec::debug_type = 0, Ec::replaced_int3_instruction;
+uint8 Ec::run_number = 0, Ec::launch_state = 0, Ec::step_reason = 0, Ec::debug_nb = 0, Ec::debug_type = 0;
 const uint64 Ec::step_nb = 200;
 uint64 Ec::tsc1 = 0, Ec::tsc2 = 0;
 int Ec::prev_reason = 0, Ec::previous_ret = 0, Ec::nb_try = 0, Ec::reg_diff = 0;
@@ -619,63 +618,17 @@ bool Ec::is_io_exc(mword eip) {
         case 0x6e: // OUTS DX, m8 || OUTSB
         case 0x6f: // OUTS DX, m16 || OUTS DX, m32 || OUTSW || OUTSD
             return true;
-        case 0x66: // Operand-size override prefix 
-        case 0x67: // Address-size override prefix 
-            return is_io_exc(v + 1);
+        case 0x66:
+        case 0x67:
+            return is_io_exc(v + 1); // operand-size prefixe
         default:
             return false;
     }
 }
 
-bool Ec::is_rep_prefix_io_exception(mword eip){
-    if(!eip) eip = current->regs.REG(ip);
-    uint8 *ptr = reinterpret_cast<uint8 *> (eip), *next_ptr = ptr + 1;
-    switch(*ptr){
-        case 0x66: // Operand-size override prefix 
-        case 0x67: // Address-size override prefix 
-            return is_rep_prefix_io_exception(eip+1);
-    }
-    if(*next_ptr == 0xf3 || *next_ptr == 0xf2){
-        Pd *current_pd = Pd::current;
-        replaced_int3_instruction = *(next_ptr + 1);
-        Paddr p; mword a;
-        Pd::current->Space_mem::loc[Cpu::id].lookup(eip & ~PAGE_MASK, p, a);
-        if(!(a & Hpt::HPT_W))
-            current_pd->Space_mem::loc[Cpu::id].replace_cow(Pd::current->quota, eip, p | a | Hpt::HPT_W);
-        *(next_ptr + 1) = 0xcc;
-        if(!(a & Hpt::HPT_W))
-            current_pd->Space_mem::loc[Cpu::id].replace_cow(Pd::current->quota, eip, p | a);                    
-        Pd::current->Space_mem::loc[Cpu::id].lookup(eip & ~PAGE_MASK, p, a);
-        return true;
-    } else {
-        return false;
-    }
-}
-
-void Ec::set_io_state(Step_reason sr, mword addr, Paddr phys, mword attr){
-    if(sr == SR_PIO){
-        step_reason = SR_PIO;                
-        reinterpret_cast<Space_pio*> (Pd::current->subspace(Crd::PIO))->enable_pio(Pd::current->quota);        
-    } else if(sr == SR_MMIO){
-        step_reason = SR_MMIO;    
-        io_addr = addr;
-        io_phys = phys;
-        io_attr = attr;
-        Pd::current->Space_mem::loc[Cpu::id].replace_cow(Pd::current->quota, addr, phys | attr | Hpt::HPT_P); // the old frame may have been released; so we have to retain it        
-    }    
-}
-
-void Ec::reset_io_state(){
-    if(step_reason == SR_PIO){
-        reinterpret_cast<Space_pio*> (Pd::current->subspace(Crd::PIO))->disable_pio(Pd::current->quota);
-    } else if(step_reason == SR_MMIO){
-        Pd::current->loc[Cpu::id].replace_cow(Pd::current->quota, io_addr, io_phys | (io_attr & ~Hpt::HPT_P));                
-    }
-    step_reason = SR_NIL;    
-}
-
 void Ec::resolve_PIO_execption() {
     //    Console::print("Read PIO");
+    reinterpret_cast<Space_pio*> (pd->subspace(Crd::PIO))->enable_pio(pd->quota);
     Ec::current->enable_step_debug(SR_PIO, SPC_LOCAL_IOP, 0, 0);
 }
 
@@ -690,15 +643,11 @@ void Ec::enable_step_debug(Step_reason reason, mword fault_addr, Paddr fault_phy
     step_reason = reason;
     switch (reason) {
         case SR_PIO:
-            launch_state = Launch_type::IRET; // to ensure that this will finished before any other thread is scheduled
-            reinterpret_cast<Space_pio*> (pd->subspace(Crd::PIO))->enable_pio(pd->quota);
-            break;
         case SR_MMIO:
             io_addr = fault_addr;
             io_phys = fault_phys;
             io_attr = fault_attr;
             launch_state = Launch_type::IRET; // to ensure that this will finished before any other thread is scheduled
-            Pd::current->Space_mem::loc[Cpu::id].replace_cow(Pd::current->quota, fault_addr, fault_phys | fault_attr | Hpt::HPT_P); // the old frame may have been released; so we have to retain it      
             break;
         case SR_RDTSC:
             set_cr4(get_cr4() & ~Cpu::CR4_TSD);

@@ -143,12 +143,7 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
             ec->enable_step_debug(SR_RDTSC);
             return true;
         } else if (ec->is_io_exc()) {
-            if(is_rep_prefix_io_exception(eip)){
-//                Console::print("REP IN PIO");                
-                set_io_state(SR_PIO);
-            } else {
-                ec->resolve_PIO_execption();                
-            }
+            ec->resolve_PIO_execption();
             return true;
         }
     }
@@ -354,26 +349,13 @@ void Ec::handle_exc(Exc_regs *r) {
                 Console::print("Debug in kernel Step Reason %d  nbInstr_to_execute %llu  debug_compteur %llu  end_rip %lx  end_rcx %lx", step_reason, nbInstr_to_execute, debug_compteur, end_rip, end_rcx);
                 break;
             }
-        
         case Cpu::EXC_NMI:
 //            Console::print("PMI occured on NMI counter %llx reg %x", Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), 
 //                   Lapic::read_perf_reg());
 //            Lapic::program_pmi();
 //            Console::print("reg %x", Lapic::read_perf_reg());
             return;
-        case Cpu::EXC_BP:{
-            current->regs.REG(ip)--; // adjust EIP to EIP -   after the trap;
-            mword eip = current->regs.REG(ip);
-            Paddr p; mword a;
-            current->pd->Space_mem::loc[Cpu::id].lookup(eip & ~PAGE_MASK, p, a);
-            if(!(a & Hpt::HPT_W))
-                current->pd->Space_mem::loc[Cpu::id].replace_cow(Pd::current->quota, eip, p | a | Hpt::HPT_W);
-            *(reinterpret_cast<uint8*>(eip)) = replaced_int3_instruction;
-            if(!(a & Hpt::HPT_W))
-                Pd::current->Space_mem::loc[Cpu::id].replace_cow(Pd::current->quota, eip, p | a);
-            reset_io_state();
-            current->pd->Space_mem::loc[Cpu::id].lookup(eip & ~PAGE_MASK, p, a);
-            return;}
+            
         case Cpu::EXC_NM:
             if (r->user())
                 check_memory(PES_DEV_NOT_AVAIL);
