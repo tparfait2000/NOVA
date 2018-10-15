@@ -143,6 +143,8 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
             ec->enable_step_debug(SR_RDTSC);
             return true;
         } else if (ec->is_io_exc()) {
+            ++Counter::pio;
+            ++Counter::io;
             if(is_rep_prefix_io_exception(eip)){
 //                Console::print("REP IN PIO");                
                 set_io_state(SR_PIO);
@@ -254,6 +256,7 @@ void Ec::handle_exc(Exc_regs *r) {
                         reset_all();
                         return;
                     case SR_PMI:{
+                        ++Counter::pmi_ss;
                         nb_inst_single_step++;
                         if (nbInstr_to_execute > 0)
                             nbInstr_to_execute--;
@@ -310,6 +313,7 @@ void Ec::handle_exc(Exc_regs *r) {
                         }
                         break;
                     case SR_EQU:
+                        ++Counter::pmi_ss;                        
                         nb_inst_single_step++;
                         if (nbInstr_to_execute > 0)
                             nbInstr_to_execute--;
@@ -362,13 +366,14 @@ void Ec::handle_exc(Exc_regs *r) {
 //            Console::print("reg %x", Lapic::read_perf_reg());
             return;
         case Cpu::EXC_BP:{
-            current->regs.REG(ip)--; // adjust EIP to EIP -   after the trap;
+            current->regs.REG(ip)-= 2; // adjust EIP to EIP -   after the trap;
             mword eip = current->regs.REG(ip);
             Paddr p; mword a;
             current->pd->Space_mem::loc[Cpu::id].lookup(eip & ~PAGE_MASK, p, a);
             if(!(a & Hpt::HPT_W))
                 current->pd->Space_mem::loc[Cpu::id].replace_cow(Pd::current->quota, eip, p | a | Hpt::HPT_W);
             *(reinterpret_cast<uint8*>(eip)) = replaced_int3_instruction;
+            *(reinterpret_cast<uint8*>(eip + 1)) = replaced_int3_instruction2;
             if(!(a & Hpt::HPT_W))
                 Pd::current->Space_mem::loc[Cpu::id].replace_cow(Pd::current->quota, eip, p | a);
             reset_io_state();
@@ -511,6 +516,7 @@ void Ec::check_memory(PE_stopby from) {
                     current->enable_step_debug(SR_DBG);
                     check_exit();
                 } else {
+                    ++Counter::nb_pe;
                     launch_state = UNLAUNCHED;
                     reset_all();
                     return;

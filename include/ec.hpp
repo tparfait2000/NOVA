@@ -291,7 +291,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
         counter_userspace, double_interrupt_counter, double_interrupt_counter1, double_interrupt_counter2, ipi_counter, msi_counter, gsi_counter, lvt_counter, exc_no_pf_counter,
         exc_no_pf_counter1, exc_no_pf_counter2, pf_counter, pf_counter1, pf_counter2, rep_counter, rep_counter1, rep_counter2, hlt_counter, hlt_counter1, hlt_counter2, shadow_counter, shadow_counter1,
         shadow_counter2, distance_instruction;
-        static uint8 run_number, launch_state, step_reason, debug_nb, debug_type, replaced_int3_instruction;
+        static uint8 run_number, launch_state, step_reason, debug_nb, debug_type, replaced_int3_instruction, replaced_int3_instruction2;
         static bool ec_debug, glb_debug, hardening_started, in_rep_instruction, not_nul_cowlist, jump_ex, fpu_saved, no_further_check, first_run_advanced;
         static int prev_reason, previous_ret, nb_try, reg_diff;
         static const char* regs_name_table[];

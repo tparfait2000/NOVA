@@ -38,6 +38,13 @@ class Counter
         static unsigned vtlb_flush      CPULOCAL;
         static unsigned schedule        CPULOCAL;
         static unsigned helping         CPULOCAL;
+        static unsigned rep_io          CPULOCAL;
+        static unsigned simple_io       CPULOCAL;
+        static unsigned io              CPULOCAL;
+        static unsigned pmi_ss          CPULOCAL;
+        static unsigned nb_pe           CPULOCAL;
+        static unsigned pio             CPULOCAL;
+        static unsigned mmio            CPULOCAL;
         static uint64   cycles_idle     CPULOCAL;
 
         static void dump();

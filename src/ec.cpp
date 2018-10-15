@@ -48,7 +48,7 @@ uint64 Ec::exc_counter = 0, Ec::gsi_counter1 = 0, Ec::exc_counter1 = 0, Ec::exc_
         Ec::double_interrupt_counter = 0, Ec::double_interrupt_counter1 = 0, Ec::double_interrupt_counter2 = 0, Ec::ipi_counter = 0, Ec::msi_counter = 0, Ec::gsi_counter = 0, Ec::pf_counter = 0,
         Ec::exc_no_pf_counter = 0, Ec::pf_counter1 = 0, Ec::pf_counter2 = 0, Ec::lvt_counter = 0, Ec::exc_no_pf_counter1 = 0, Ec::exc_no_pf_counter2 = 0, Ec::rep_counter = 0, Ec::rep_counter1 = 0, Ec::rep_counter2 = 0,
         Ec::hlt_counter = 0, Ec::hlt_counter1 = 0, Ec::hlt_counter2 = 0, Ec::distance_instruction = 0;
-uint8 Ec::run_number = 0, Ec::launch_state = 0, Ec::step_reason = 0, Ec::debug_nb = 0, Ec::debug_type = 0, Ec::replaced_int3_instruction;
+uint8 Ec::run_number = 0, Ec::launch_state = 0, Ec::step_reason = 0, Ec::debug_nb = 0, Ec::debug_type = 0, Ec::replaced_int3_instruction, Ec::replaced_int3_instruction2;
 const uint64 Ec::step_nb = 200;
 uint64 Ec::tsc1 = 0, Ec::tsc2 = 0;
 int Ec::prev_reason = 0, Ec::previous_ret = 0, Ec::nb_try = 0, Ec::reg_diff = 0;
@@ -638,11 +638,14 @@ bool Ec::is_rep_prefix_io_exception(mword eip){
     if(*next_ptr == 0xf3 || *next_ptr == 0xf2){
         Pd *current_pd = Pd::current;
         replaced_int3_instruction = *(next_ptr + 1);
+        replaced_int3_instruction2 = *(next_ptr + 2);
         Paddr p; mword a;
         Pd::current->Space_mem::loc[Cpu::id].lookup(eip & ~PAGE_MASK, p, a);
         if(!(a & Hpt::HPT_W))
             current_pd->Space_mem::loc[Cpu::id].replace_cow(Pd::current->quota, eip, p | a | Hpt::HPT_W);
-        *(next_ptr + 1) = 0xcc;
+        *(next_ptr + 1) = 0x90; 
+        *(next_ptr + 2) = 0xcc;
+        ++Counter::rep_io;
         if(!(a & Hpt::HPT_W))
             current_pd->Space_mem::loc[Cpu::id].replace_cow(Pd::current->quota, eip, p | a);                    
         Pd::current->Space_mem::loc[Cpu::id].lookup(eip & ~PAGE_MASK, p, a);
@@ -690,10 +693,12 @@ void Ec::enable_step_debug(Step_reason reason, mword fault_addr, Paddr fault_phy
     step_reason = reason;
     switch (reason) {
         case SR_PIO:
+            ++Counter::simple_io;
             launch_state = Launch_type::IRET; // to ensure that this will finished before any other thread is scheduled
             reinterpret_cast<Space_pio*> (pd->subspace(Crd::PIO))->enable_pio(pd->quota);
             break;
         case SR_MMIO:
+            ++Counter::simple_io;
             io_addr = fault_addr;
             io_phys = fault_phys;
             io_attr = fault_attr;

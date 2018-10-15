@@ -125,6 +125,8 @@ bool Hpt::is_cow_fault(Quota &quota, mword v, mword err) {
 //          Ec::current->ec_debug = false;
 //      }
             ec->check_memory(Ec::PES_MMIO);
+            ++Counter::mmio;
+            ++Counter::io;
             if(Ec::is_rep_prefix_io_exception()){
                 Console::print("COW IN REP MMIO");
                 Ec::set_io_state(Ec::SR_MMIO, v, phys, a);

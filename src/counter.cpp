@@ -33,6 +33,13 @@ unsigned    Counter::vtlb_fill;
 unsigned    Counter::vtlb_flush;
 unsigned    Counter::schedule;
 unsigned    Counter::helping;
+unsigned    Counter::rep_io;
+unsigned    Counter::simple_io;
+unsigned    Counter::io;
+unsigned    Counter::pmi_ss;
+unsigned    Counter::nb_pe;
+unsigned    Counter::pio;
+unsigned    Counter::mmio;
 uint64      Counter::cycles_idle;
 
 void Counter::dump()
@@ -45,8 +52,16 @@ void Counter::dump()
     trace (0, "VFLU: %16u", Counter::vtlb_flush);
     trace (0, "SCHD: %16u", Counter::schedule);
     trace (0, "HELP: %16u", Counter::helping);
-
-    Counter::vtlb_gpf = Counter::vtlb_hpf = Counter::vtlb_fill = Counter::vtlb_flush = Counter::schedule = Counter::helping = 0;
+    trace (0, "REP_IO: %14u", Counter::rep_io);
+    trace (0, "SIMPLE_IO: %11u", Counter::simple_io);
+    trace (0, "PIO: %17u", Counter::pio);
+    trace (0, "MMIO: %16u", Counter::mmio);
+    trace (0, "T_IO: %16u", Counter::io);
+    trace (0, "PMI_SS: %14u", Counter::pmi_ss);
+    trace (0, "NB_PE: %15u", Counter::nb_pe);
+    
+    Counter::vtlb_gpf = Counter::vtlb_hpf = Counter::vtlb_fill = Counter::vtlb_flush = Counter::schedule = Counter::helping = Counter::rep_io = 
+    Counter::io = Counter::simple_io = Counter::pmi_ss = Counter::nb_pe = Counter::pio = Counter::mmio = 0;
 
     for (unsigned i = 0; i < sizeof (Counter::ipi) / sizeof (*Counter::ipi); i++)
         if (Counter::ipi[i]) {
