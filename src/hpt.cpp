@@ -127,13 +127,10 @@ bool Hpt::is_cow_fault(Quota &quota, mword v, mword err) {
             ec->check_memory(Ec::PES_MMIO);
             ++Counter::mmio;
             ++Counter::io;
-            if(Ec::is_rep_prefix_io_exception()){
-                Console::print("COW IN REP MMIO");
-                Ec::set_io_state(Ec::SR_MMIO, v, phys, a);
-            }else{
-//                Console::print("COW IN MMIO");                
+            replace_cow(quota, v, phys | a | Hpt::HPT_P); // the old frame may have been released; so we have to retain it
+//            cow_flush(v);
+            //            Console::print("Read MMIO");
                 ec->enable_step_debug(Ec::SR_MMIO, v, phys, a);
-            }
             return true;
         } else if ((err & Hpt::ERR_W) && !(a & Hpt::HPT_W)) {
             //            if (Ec::current->ec_debug) {

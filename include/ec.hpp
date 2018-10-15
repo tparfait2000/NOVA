@@ -229,8 +229,8 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
 
         static Fpu *fpu_0, *fpu_1, *fpu_2;
         int previous_reason = 0, nb_extint = 0;
-        static mword io_addr, io_attr;
-        static Paddr io_phys;
+        mword io_addr = {}, io_attr = {};
+        Paddr io_phys = {};
 
         mword debug = 0;         
         enum Debug_scope{
@@ -250,14 +250,14 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
         };
 
         enum Step_reason {
-            SR_NIL          = 0,
-            SR_MMIO         = 1,
-            SR_PIO          = 2,
-            SR_RDTSC        = 3,
-            SR_PMI          = 4,
-            SR_GP           = 5,
-            SR_DBG          = 6,
-            SR_EQU          = 7,
+            SR_NIL = 0,
+            SR_MMIO = 1,
+            SR_PIO = 2,
+            SR_RDTSC = 3,
+            SR_PMI = 4,
+            SR_GP = 5,
+            SR_DBG = 6,
+            SR_EQU = 7,
         };
 
         enum PE_stopby {
@@ -568,10 +568,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
 
         bool is_temporal_exc();
         bool is_io_exc(mword = 0);
-        static bool is_rep_prefix_io_exception(mword = 0);
-        static void set_io_state(Step_reason, mword = 0, Paddr = 0, mword = 0);
-        static void reset_io_state();
-        
+
         void resolve_PIO_execption();
 
         void enable_step_debug(Step_reason raison = SR_NIL, mword fault_addr = 0, Paddr fault_phys = 0, mword fault_attr = 0); 
