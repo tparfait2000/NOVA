@@ -22,74 +22,73 @@
 #include "stdio.hpp"
 #include "x86.hpp"
 
-unsigned    Counter::ipi[NUM_IPI];
-unsigned    Counter::lvt[NUM_LVT];
-unsigned    Counter::gsi[NUM_GSI];
-unsigned    Counter::exc[NUM_EXC];
-unsigned    Counter::vmi[NUM_VMI];
-unsigned    Counter::vtlb_gpf;
-unsigned    Counter::vtlb_hpf;
-unsigned    Counter::vtlb_fill;
-unsigned    Counter::vtlb_flush;
-unsigned    Counter::schedule;
-unsigned    Counter::helping;
-unsigned    Counter::rep_io;
-unsigned    Counter::simple_io;
-unsigned    Counter::io;
-unsigned    Counter::pmi_ss;
-unsigned    Counter::nb_pe;
-unsigned    Counter::pio;
-unsigned    Counter::mmio;
-uint64      Counter::cycles_idle;
+unsigned Counter::ipi[NUM_IPI];
+unsigned Counter::lvt[NUM_LVT];
+unsigned Counter::gsi[NUM_GSI];
+unsigned Counter::exc[NUM_EXC];
+unsigned Counter::vmi[NUM_VMI];
+unsigned Counter::vtlb_gpf;
+unsigned Counter::vtlb_hpf;
+unsigned Counter::vtlb_fill;
+unsigned Counter::vtlb_flush;
+unsigned Counter::schedule;
+unsigned Counter::helping;
+unsigned Counter::rep_io;
+unsigned Counter::simple_io;
+unsigned Counter::io;
+unsigned Counter::pmi_ss;
+unsigned Counter::nb_pe;
+unsigned Counter::pio;
+unsigned Counter::mmio;
+uint64 Counter::cycles_idle;
 
-void Counter::dump()
-{
-    trace (0, "TIME: %16llu", rdtsc());
-    trace (0, "IDLE: %16llu", Counter::cycles_idle);
-    trace (0, "VGPF: %16u", Counter::vtlb_gpf);
-    trace (0, "VHPF: %16u", Counter::vtlb_hpf);
-    trace (0, "VFIL: %16u", Counter::vtlb_fill);
-    trace (0, "VFLU: %16u", Counter::vtlb_flush);
-    trace (0, "SCHD: %16u", Counter::schedule);
-    trace (0, "HELP: %16u", Counter::helping);
-    trace (0, "REP_IO: %14u", Counter::rep_io);
-    trace (0, "SIMPLE_IO: %11u", Counter::simple_io);
-    trace (0, "PIO: %17u", Counter::pio);
-    trace (0, "MMIO: %16u", Counter::mmio);
-    trace (0, "T_IO: %16u", Counter::io);
-    trace (0, "PMI_SS: %14u", Counter::pmi_ss);
-    trace (0, "NB_PE: %15u", Counter::nb_pe);
-    
-    Counter::vtlb_gpf = Counter::vtlb_hpf = Counter::vtlb_fill = Counter::vtlb_flush = Counter::schedule = Counter::helping = Counter::rep_io = 
-    Counter::io = Counter::simple_io = Counter::pmi_ss = Counter::nb_pe = Counter::pio = Counter::mmio = 0;
+void Counter::dump() {
+    trace(0, "TIME: %16llu", rdtsc());
+    trace(0, "IDLE: %16llu", cycles_idle);
+    trace(0, "VGPF: %16u", vtlb_gpf);
+    trace(0, "VHPF: %16u", vtlb_hpf);
+    trace(0, "VFIL: %16u", vtlb_fill);
+    trace(0, "VFLU: %16u", vtlb_flush);
+    trace(0, "SCHD: %16u", schedule);
+    trace(0, "HELP: %16u", helping);
+    trace(0, "REP_IO: %14u", rep_io);
+    trace(0, "SIMPLE_IO: %11u", simple_io);
+    trace(0, "PIO: %17u", pio);
+    trace(0, "MMIO: %16u", mmio);
+    trace(0, "T_IO: %16u", io);
+    trace(0, "PMI_SS: %14u", pmi_ss);
+    trace(0, "NB_PE: %15u", nb_pe);
 
-    for (unsigned i = 0; i < sizeof (Counter::ipi) / sizeof (*Counter::ipi); i++)
-        if (Counter::ipi[i]) {
-            trace (0, "IPI %#4x: %12u", i, Counter::ipi[i]);
-            Counter::ipi[i] = 0;
+    vtlb_gpf = vtlb_hpf = vtlb_fill = vtlb_flush = schedule = helping = rep_io =
+    io = simple_io = pmi_ss = nb_pe = pio = mmio = 0;
+
+    for (unsigned i = 0; i < sizeof (ipi) / sizeof (*ipi); i++)
+        if (ipi[i]) {
+            trace(0, "IPI %#4x: %12u", i, ipi[i]);
+            ipi[i] = 0;
         }
 
-    for (unsigned i = 0; i < sizeof (Counter::lvt) / sizeof (*Counter::lvt); i++)
-        if (Counter::lvt[i]) {
-            trace (0, "LVT %#4x: %12u", i, Counter::lvt[i]);
-            Counter::lvt[i] = 0;
+    for (unsigned i = 0; i < sizeof (lvt) / sizeof (*lvt); i++)
+        if (lvt[i]) {
+            trace(0, "LVT %#4x: %12u", i, lvt[i]);
+            lvt[i] = 0;
         }
 
-    for (unsigned i = 0; i < sizeof (Counter::gsi) / sizeof (*Counter::gsi); i++)
-        if (Counter::gsi[i]) {
-            trace (0, "GSI %#4x: %12u", i, Counter::gsi[i]);
-            Counter::gsi[i] = 0;
+    for (unsigned i = 0; i < sizeof (gsi) / sizeof (*gsi); i++)
+        if (gsi[i]) {
+            trace(0, "GSI %#4x: %12u", i, gsi[i]);
+            gsi[i] = 0;
         }
 
-    for (unsigned i = 0; i < sizeof (Counter::exc) / sizeof (*Counter::exc); i++)
-        if (Counter::exc[i]) {
-            trace (0, "EXC %#4x: %12u", i, Counter::exc[i]);
-            Counter::exc[i] = 0;
+    for (unsigned i = 0; i < sizeof (exc) / sizeof (*exc); i++)
+        if (exc[i]) {
+            trace(0, "EXC %#4x: %12u", i, exc[i]);
+            exc[i] = 0;
         }
 
-    for (unsigned i = 0; i < sizeof (Counter::vmi) / sizeof (*Counter::vmi); i++)
-        if (Counter::vmi[i]) {
-            trace (0, "VMI %#4x: %12u", i, Counter::vmi[i]);
-            Counter::vmi[i] = 0;
+    for (unsigned i = 0; i < sizeof (vmi) / sizeof (*vmi); i++)
+        if (vmi[i]) {
+            trace(0, "VMI %#4x: %12u", i, vmi[i]);
+            vmi[i] = 0;
         }
 }
