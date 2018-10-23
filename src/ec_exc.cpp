@@ -28,7 +28,7 @@
 #include "lapic.hpp"
 #include "vmx.hpp"
 #include "gsi.hpp"
-#include "Pending_int.hpp"
+#include "pending_int.hpp"
 
 void Ec::load_fpu()
 {
@@ -124,6 +124,16 @@ bool Ec::handle_exc_ts(Exc_regs *r) {
 
 bool Ec::handle_exc_gp(Exc_regs *r) {
     mword eip = r->REG(ip);
+//    if(r->user() && !fixup (r->REG(ip)) && !current->is_temporal_exc() && !current->is_io_exc()){
+//        if(step_reason == SR_NIL){
+//            Console::print("GP_DB End %lx %lx", eip, r->REG(ax));
+//            step_reason = SR_GP;
+//            current->regs.REG(fl) |= Cpu::EFL_TF;
+//        }else{
+//            step_reason = SR_NIL;
+//            current->regs.REG(fl) &= ~Cpu::EFL_TF;            
+//        }
+//    }
     if (r->user())
         check_memory(PES_GP_FAULT);
     if (Cpu::hazard & HZD_TR) {
@@ -150,14 +160,15 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
         }
     }
    
-    Console::print("eip0: %lx(%#lx)  r11_0: %lx", regs_0.REG(ip), regs_0.REG(cx), regs_0.r11);
-    Console::print("eip1: %lx(%#lx)  r11_1: %lx", regs_1.REG(ip), regs_1.REG(cx), regs_1.r11);
-    Console::print("eip2: %lx(%#lx)  r11_2: %lx", regs_2.REG(ip), regs_2.REG(cx), regs_2.r11);
+    Console::print("eip0: %lx(%#lx)  rax_0: %lx", regs_0.REG(ip), regs_0.REG(cx), regs_0.REG(ax));
+    Console::print("eip1: %lx(%#lx)  rax_1: %lx", regs_1.REG(ip), regs_1.REG(cx), regs_1.REG(ax));
+    Console::print("eip2: %lx(%#lx)  rax_2: %lx", regs_2.REG(ip), regs_2.REG(cx), regs_2.REG(ax));
     char buff[MAX_STR_LENGTH];
     instruction_in_hex(*(reinterpret_cast<mword *> (eip)), buff);
     Console::print("GP Here: Ec: %s  Pd: %s ip %lx(%#lx) val: %s Lapic::counter %llx user %s", 
         ec->get_name(), ec->getPd()->get_name(), eip, r->ARG_IP, buff, Lapic::read_instCounter(), r->user() ? "true" : "false");
     Counter::dump();
+    Pe::dump(true);
     ec->start_debugging(Debug_type::STORE_RUN_STATE);
     if(!ec->utcb){
         mword inst_addr = Vmcs::read(Vmcs::GUEST_RIP);
@@ -346,11 +357,10 @@ void Ec::handle_exc(Exc_regs *r) {
                         }
                         break;
                     default:
-                        Console::print("No step Reason");
-                        die("No step Reason");
+                        Console::panic("No step Reason");
                 }
             } else {
-                Console::print("Debug in kernel Step Reason %d  nbInstr_to_execute %llu  debug_compteur %llu  end_rip %lx  end_rcx %lx", step_reason, nbInstr_to_execute, debug_compteur, end_rip, end_rcx);
+                die("Debug in kernel");
                 break;
             }
         case Cpu::EXC_NMI:
@@ -429,6 +439,14 @@ void Ec::check_memory(PE_stopby from) {
                 hlt_counter1 = hlt_counter;
                 counter1 = Lapic::read_instCounter();
                 first_run_instr_number = MAX_INSTRUCTION + counter1 - exc_counter1;
+                uint8 *ptr = reinterpret_cast<uint8 *> (end_rip);
+                if (*ptr == 0xf3 || *ptr == 0xf2) {
+                    char buff[MAX_STR_LENGTH];
+                    instruction_in_hex(*(reinterpret_cast<mword *> (end_rip)), buff);
+                    Console::print("Rep prefix in Run1 %lx: %s rcx %lx", end_rip, buff, end_rcx);
+                    in_rep_instruction = true;
+                    Cpu::disable_fast_string();
+                }
                 Lapic::program_pmi(MAX_INSTRUCTION);
             } else {
                 Lapic::cancel_pmi();
@@ -544,7 +562,7 @@ void Ec::reset_all() {
     prev_reason = 0;
     no_further_check = false;
     Pending_int::exec_pending_interrupt();
-    current->free_recorded_pe();
+//    current->free_recorded_pe();
 }
 
 void Ec::start_debugging(Debug_type dt){

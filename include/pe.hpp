@@ -21,6 +21,7 @@
 class Pe {
     friend class Queue<Pe>;
     static Slab_cache cache;    
+    static Queue<Pe> pe_states;
         
     
     static size_t number;
@@ -33,6 +34,8 @@ class Pe {
     bool marked = false;
     uint64 retirement_counter = 0;
     mword instruction = 0;
+    mword attr = 0; 
+    
 public:
     /**
      * 
@@ -45,8 +48,13 @@ public:
     Pe &operator = (Pe const &);
 
     enum Member_type{
-        RETIREMENT_COUNTER = 0,
-        REGISTER_RIP,
+        RETIREMENT_COUNTER  = 0,
+        REGISTER_RIP        = 1,
+    };
+    
+    enum {
+        RUN_NUMBER_1        = 1UL << 0,
+        RET_STATE_SYS       = 1UL << 1,
     };
     
     ALWAYS_INLINE
@@ -85,14 +93,18 @@ public:
         return next;
     };
     
+    Pe* get_previous(){
+        return prev;
+    };
+    
     void print(){
-        char num_to_str[20];
-        if(retirement_counter < MAX_INSTRUCTION)
-            Console::sprint(num_to_str, "%llu", retirement_counter);
-        else
-            Console::sprint(num_to_str, "%llx", retirement_counter);
-        Console::print("Pe_state %s %s %lu %lx %s %lx", ec, pd, numero, rip, num_to_str, instruction);
-        
+//        char num_to_str[20];
+//        if(retirement_counter < MAX_INSTRUCTION)
+//            Console::sprint(num_to_str, "%llu", retirement_counter);
+//        else
+//            Console::sprint(num_to_str, "%llx", retirement_counter);
+//        Console::print("Pe_state %s %s %lu %lx %s %lx", ec, pd, numero, rip, num_to_str, instruction);
+        Console::print("%s %s %lx %lx", ec, pd, rip, attr);
     }
 
     void add_counter(uint64);
@@ -106,4 +118,17 @@ public:
     void mark();
     
     bool is_marked() { return marked; }
+    
+    static size_t get_number(){
+        return number;
+    }
+    
+    static void add_pe_state(const char*, const char*, mword, mword = 0);
+    
+    static void add_pe_state(Pe*);
+    
+    static void free_recorded_pe();
+    
+    static void dump(bool = false);
+    
 };

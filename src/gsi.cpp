@@ -27,7 +27,7 @@
 #include "lapic.hpp"
 #include "sm.hpp"
 #include "vectors.hpp"
-#include "Pending_int.hpp"
+#include "pending_int.hpp"
 
 Gsi         Gsi::gsi_table[NUM_GSI];
 unsigned    Gsi::irq_table[NUM_IRQ];

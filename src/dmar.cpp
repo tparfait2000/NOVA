@@ -26,7 +26,7 @@
 #include "stdio.hpp"
 #include "vectors.hpp"
 #include "ec.hpp"
-#include "Pending_int.hpp"
+#include "pending_int.hpp"
 
 INIT_PRIORITY (PRIO_SLAB)
 Slab_cache  Dmar::cache (sizeof (Dmar), 8);

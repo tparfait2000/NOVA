@@ -313,6 +313,13 @@ void Ec::ret_user_sysexit() {
     }
 
     debug_print("Sysreting");
+//    mword attrib = Pe::RET_STATE_SYS | (run_number ? Pe::RUN_NUMBER_1 : 0);
+    if((str_equal(Pd::current->get_name(), "init -> fb_drv") || str_equal(Pd::current->get_name(), "init")) &&
+            run_number == 0)
+        Pe::add_pe_state(current->get_name(), Pd::current->get_name(), current->regs.REG(cx), Pe::RET_STATE_SYS);   
+    if(step_reason == SR_GP){
+        Console::print("rip %lx rax %lx", current->regs.REG(cx), current->regs.REG(ax));
+    }
     if (step_reason == SR_NIL) {
         asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : "memory");
     } else {
@@ -344,7 +351,12 @@ void Ec::ret_user_iret() {
 //        }
         
 //    }
-
+//    if(str_equal(current->get_name(), "ep") && str_equal(Pd::current->get_name(), "init") &&
+//        run_number)
+//        Pe::add_pe_state(current->get_name(), Pd::current->get_name(), current->regs.REG(ip));   
+    if(step_reason == SR_GP){
+        Console::print("rip %lx rax %lx", current->regs.REG(ip), current->regs.REG(ax));
+    }
     debug_print("Ireting");
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR LOAD_SEG RET_USER_EXC) : : "m" (current->regs) : "memory");
 
@@ -544,11 +556,11 @@ void Ec::die(char const *reason, Exc_regs *r) {
 
     if (current->utcb || show) {
         if (show || !strmatch(reason, "PT not found", 12))
-            trace(0, "Killed EC:%p SC:%p V:%#lx CS:%#lx IP:%#lx(%#lx) CR2:%#lx ERR:%#lx (%s) %s",
-                current, Sc::current, r->vec, r->cs, r->REG(ip), r->ARG_IP, r->cr2, r->err, reason, current->pd == &Pd::root ? "Pd::root" : current->pd == &Pd::kern ? "Pd::kern" : "");
+            trace(0, "Killed EC:%s SC:%p V:%#lx CS:%#lx IP:%#lx(%#lx) CR2:%#lx ERR:%#lx (%s) %s",
+                current->name, Sc::current, r->vec, r->cs, r->REG(ip), r->ARG_IP, r->cr2, r->err, reason, current->pd == &Pd::root ? "Pd::root" : current->pd == &Pd::kern ? "Pd::kern" : "");
     } else
-        trace(0, "Killed EC:%p SC:%p V:%#lx CR0:%#lx CR3:%#lx CR4:%#lx (%s) Pd: %s Ec: %s",
-            current, Sc::current, r->vec, r->cr0_shadow, r->cr3_shadow, r->cr4_shadow, reason, Pd::current->get_name(), Ec::current->get_name());
+        trace(0, "Killed EC:%s SC:%p V:%#lx CR0:%#lx CR3:%#lx CR4:%#lx (%s) Pd: %s Ec: %s",
+            current->name, Sc::current, r->vec, r->cr0_shadow, r->cr3_shadow, r->cr4_shadow, reason, Pd::current->get_name(), Ec::current->get_name());
 
     Ec *ec = current->rcap;
 
@@ -659,7 +671,7 @@ void Ec::enable_step_debug(Step_reason reason, mword fault_addr, Paddr fault_phy
         {
             uint8 *ptr = reinterpret_cast<uint8 *> (end_rip);
             if (*ptr == 0xf3 || *ptr == 0xf2) {
-                Console::print("Rep prefix detected");
+                Console::print("Rep prefix detected %lx: rcx %lx", fault_addr, current->regs.REG(cx));
                 in_rep_instruction = true;
                 Cpu::disable_fast_string();
             }
@@ -693,7 +705,7 @@ void Ec::disable_step_debug() {
         case SR_PMI:
         case SR_EQU:            
             if (in_rep_instruction) {
-                Cpu::enable_fast_string();
+                Cpu::disable_fast_string();
                 in_rep_instruction = false;
             }
             nbInstr_to_execute = 0;
@@ -1199,7 +1211,7 @@ void Ec::dump_pe(bool all){
     if(!pe)
         return;
     do {
-        if(!all && pe->is_marked())
+        if(all || pe->is_marked())
             pe->print();
         pe = pe->get_next();
     } while(pe != current->Queue<Pe>::head());
@@ -1341,4 +1353,9 @@ void Ec::check_instr_number_equals(int from){
         ipi_counter1, msi_counter1, gsi_counter1, lvt_counter1, exc_no_pf_counter1, ipi_counter2, msi_counter2, gsi_counter2, lvt_counter2, exc_no_pf_counter2);
     }
     current->dump_pe();
+}
+
+void Ec::step_debug(){
+    step_reason = SR_GP;
+    current->regs.REG(fl) |= Cpu::EFL_TF;
 }

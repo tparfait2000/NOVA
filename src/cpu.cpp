@@ -238,7 +238,8 @@ void Cpu::init()
         cr4 |= Cpu::CR4_SMAP;
     if (cr4 != get_cr4())
         set_cr4 (cr4);
-
+    disable_fast_string();
+    
     Vmcs::init();
     Vmcb::init();
 

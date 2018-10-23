@@ -661,5 +661,6 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
         static void check_instr_number_equals(int);
         void start_debugging(Debug_type);
         static void  debug_record_info();
+        static void step_debug();
 
 };

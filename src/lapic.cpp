@@ -29,7 +29,7 @@
 #include "timeout.hpp"
 #include "vectors.hpp"
 #include "vmx.hpp"
-#include "Pending_int.hpp"
+#include "pending_int.hpp"
 
 unsigned    Lapic::freq_tsc;
 unsigned    Lapic::freq_bus;

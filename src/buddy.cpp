@@ -26,6 +26,7 @@
 #include "stdio.hpp"
 #include "string.hpp"
 #include "pd.hpp"
+#include "pe.hpp"
 
 extern char _mempool_p, _mempool_l, _mempool_f, _mempool_e;
 
@@ -120,7 +121,7 @@ void *Buddy::alloc (unsigned short ord, Quota &quota, Fill fill)
 
     quota.dump(Pd::current);
 
-    Console::panic ("Out of memory");
+    Console::panic ("Out of memory %lu", Pe::get_number());
 }
 
 /*

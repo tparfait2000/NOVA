@@ -226,13 +226,13 @@ public:
     ALWAYS_INLINE
     static inline void disable_fast_string() {
         if (EXPECT_TRUE(feature(FEAT_FAST_STRING)))
-            Msr::write(Msr::IA32_MISC_ENABLE, Msr::read<uint64>(Msr::IA32_MISC_ENABLE) & ~0ull << 1);
+            Msr::write(Msr::IA32_MISC_ENABLE, Msr::read<uint64>(Msr::IA32_MISC_ENABLE) & ~(0ull << 1));
     }
 
     ALWAYS_INLINE
     static inline void enable_fast_string() {
         if (EXPECT_TRUE(feature(FEAT_FAST_STRING)))
-            Msr::write(Msr::IA32_MISC_ENABLE, Msr::read<uint64>(Msr::IA32_MISC_ENABLE) | 1u);
+            Msr::write(Msr::IA32_MISC_ENABLE, Msr::read<uint64>(Msr::IA32_MISC_ENABLE) | (0ull << 1));
     }
     
     ALWAYS_INLINE

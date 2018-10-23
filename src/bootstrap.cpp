@@ -53,6 +53,6 @@ void bootstrap()
     }
 
     Lapic::activate_pmi();
-   
+//    Ec::step_debug();
     Sc::schedule();
 }
