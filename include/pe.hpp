@@ -22,7 +22,6 @@ class Pe {
     friend class Queue<Pe>;
     static Slab_cache cache;    
     static Queue<Pe> pe_states;
-        
     
     static size_t number;
     char ec[MAX_STR_LENGTH];
@@ -37,6 +36,26 @@ class Pe {
     mword attr = 0; 
     
 public:
+    static unsigned ipi[2][NUM_IPI];
+    static unsigned msi[2][NUM_MSI];
+    static unsigned lvt[2][NUM_LVT];
+    static unsigned gsi[2][NUM_GSI];
+    static unsigned exc[2][NUM_EXC];
+    static unsigned vmi[2][NUM_VMI];
+    static unsigned vtlb_gpf[2];
+    static unsigned vtlb_hpf[2];
+    static unsigned vtlb_fill[2];
+    static unsigned vtlb_flush[2];
+    static unsigned rep_io[2];
+    static unsigned simple_io[2];
+    static unsigned io[2];
+    static unsigned pmi_ss[2];
+    static unsigned pio[2];
+    static unsigned mmio[2];
+    static unsigned rep_prefix[2];
+    static unsigned hlt_instr[2];
+    static uint64 nb_pe;
+    
     /**
      * 
      * @param ec
@@ -130,5 +149,9 @@ public:
     static void free_recorded_pe();
     
     static void dump(bool = false);
+    
+    static void reset_counter();
+    
+    static void counter(char*);
     
 };

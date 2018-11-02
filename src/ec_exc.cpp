@@ -273,7 +273,7 @@ void Ec::handle_exc(Exc_regs *r) {
                             // current->regs.REG(ip), prev_rip, Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), *reinterpret_cast<mword *>(current->regs.REG(ip)));
                             // It may happen that this is the final instruction
                             if (!current->compare_regs_mute()) {
-//                                check_instr_number_equals(1);
+                                check_instr_number_equals(1);
                                 current->disable_step_debug();
                                 check_memory(PES_SINGLE_STEP);
                                 return;
@@ -286,7 +286,7 @@ void Ec::handle_exc(Exc_regs *r) {
                             return;
                         }
                         if (!current->compare_regs_mute()) {
-//                            check_instr_number_equals(2);
+                            check_instr_number_equals(2);
                             current->disable_step_debug();
                             check_memory(PES_SINGLE_STEP);
                             return;
@@ -330,7 +330,7 @@ void Ec::handle_exc(Exc_regs *r) {
                             // current->regs.REG(ip), prev_rip, Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), *reinterpret_cast<mword *>(current->regs.REG(ip)));
                             // It may happen that this is the final instruction
                             if (!current->compare_regs_mute()) {
-//                                check_instr_number_equals(3);
+                                check_instr_number_equals(3);
                                 current->disable_step_debug();
                                 check_memory(PES_SINGLE_STEP);
                                 return;
@@ -338,7 +338,7 @@ void Ec::handle_exc(Exc_regs *r) {
                         }
                         //here, single stepping 2nd run should be ok
                         if (!current->compare_regs_mute()) {// if ok?
-//                            check_instr_number_equals(4);
+                            check_instr_number_equals(4);
                             current->disable_step_debug();
                             check_memory(PES_SINGLE_STEP);
                             return;
@@ -428,15 +428,6 @@ void Ec::check_memory(PE_stopby from) {
                 end_rip = last_rip;
                 end_rcx = last_rcx;
                 exc_counter1 = exc_counter;
-                double_interrupt_counter1 = double_interrupt_counter;
-                msi_counter1 = msi_counter;
-                gsi_counter1 = gsi_counter;
-                lvt_counter1 = lvt_counter;
-                pf_counter1 = pf_counter;
-                exc_no_pf_counter1 = exc_no_pf_counter;
-                ipi_counter1 = ipi_counter;
-                rep_counter1 = rep_counter;
-                hlt_counter1 = hlt_counter;
                 counter1 = Lapic::read_instCounter();
                 first_run_instr_number = MAX_INSTRUCTION + counter1 - exc_counter1;
                 uint8 *ptr = reinterpret_cast<uint8 *> (end_rip);
@@ -453,7 +444,6 @@ void Ec::check_memory(PE_stopby from) {
             }
             run_number++;
             exc_counter = 0;
-            double_interrupt_counter = msi_counter = gsi_counter = lvt_counter = pf_counter = exc_no_pf_counter = ipi_counter = rep_counter = hlt_counter = 0;
             check_exit();
             break;
         case 1:
@@ -465,15 +455,6 @@ void Ec::check_memory(PE_stopby from) {
                     check_exit();
                 }
                 exc_counter2 = exc_counter;
-                double_interrupt_counter2 = double_interrupt_counter;
-                msi_counter2 = msi_counter;
-                gsi_counter2 = gsi_counter;
-                lvt_counter2 = lvt_counter;
-                pf_counter2 = pf_counter;
-                exc_no_pf_counter2 = exc_no_pf_counter;
-                ipi_counter2 = ipi_counter;
-                rep_counter2 = rep_counter;
-                hlt_counter2 = hlt_counter;
                 counter2 = Lapic::read_instCounter();
                 second_run_instr_number = MAX_INSTRUCTION + counter2 - exc_counter2;
                 distance_instruction = distance(first_run_instr_number, second_run_instr_number);
@@ -484,7 +465,7 @@ void Ec::check_memory(PE_stopby from) {
                         ec->enable_step_debug(SR_EQU);
                         ret_user_iret();   
                     }else{
-//                        check_instr_number_equals(5);                        
+                        check_instr_number_equals(5);                        
                     }
                 } else if (first_run_instr_number > second_run_instr_number) {
                     nbInstr_to_execute = first_run_instr_number - second_run_instr_number;
@@ -546,12 +527,9 @@ void Ec::check_exit() {
 }
 
 void Ec::reset_counter() {
-    exc_counter = counter1 = counter2 = exc_counter1 = exc_counter2 = double_interrupt_counter = counter_userspace = 0;
-    gsi_counter1 = lvt_counter1 = msi_counter1 = ipi_counter1 = gsi_counter2 = 
-            lvt_counter2 = msi_counter2 = ipi_counter2 = nb_inst_single_step = 0 ; 
-    ipi_counter = msi_counter = gsi_counter = lvt_counter = exc_no_pf_counter = exc_no_pf_counter1 = 
-    exc_no_pf_counter2 = pf_counter = pf_counter1 = pf_counter2 = rep_counter1 = rep_counter = rep_counter2 =
-    hlt_counter = hlt_counter1 = hlt_counter2 = distance_instruction = 0;
+    exc_counter = counter1 = counter2 = exc_counter1 = exc_counter2 = nb_inst_single_step = 0 ; 
+    distance_instruction = 0;
+    Pe::reset_counter();
     Lapic::program_pmi();
 }
 

@@ -340,7 +340,7 @@ void Console::vsprintf (char const *format, va_list args, void *ptr)
     }
 }
    
-void Console::sprint(char *buffer, const char *fmt, ...)   
+unsigned Console::sprint(char *buffer, const char *fmt, ...)   
 {   
     Lock_guard <Spinlock> guard (lock);
     
@@ -350,8 +350,9 @@ void Console::sprint(char *buffer, const char *fmt, ...)
         c->vsprintf(fmt, args, reinterpret_cast<void*>(buffer));   
         va_end(args);
     }
-//    buffer[count] = '\0';
+    unsigned n = count/2;
     count = 0;
+    return n;
 }
 
 void Console::panic (char const *format, ...)

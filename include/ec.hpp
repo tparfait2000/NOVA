@@ -286,13 +286,9 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
         };
         static const uint64 step_nb;
         static mword prev_rip, last_rip, last_rcx, last_rsp, end_rip, end_rcx, instruction_value, outpout_table0[][2], outpout_table1[][2];
-        static uint64 counter1, counter2, exc_counter, exc_counter1, exc_counter2, gsi_counter1, lvt_counter1, msi_counter1, ipi_counter1, gsi_counter2, lvt_counter2, msi_counter2, 
-        ipi_counter2, debug_compteur, count_je, nbInstr_to_execute, tsc1, tsc2, nb_inst_single_step, second_run_instr_number, first_run_instr_number, single_step_number, 
-        counter_userspace, double_interrupt_counter, double_interrupt_counter1, double_interrupt_counter2, ipi_counter, msi_counter, gsi_counter, lvt_counter, exc_no_pf_counter,
-        exc_no_pf_counter1, exc_no_pf_counter2, pf_counter, pf_counter1, pf_counter2, rep_counter, rep_counter1, rep_counter2, hlt_counter, hlt_counter1, hlt_counter2, shadow_counter, shadow_counter1,
-        shadow_counter2, distance_instruction;
+        static uint64 counter1, counter2, exc_counter, exc_counter1, exc_counter2, debug_compteur, count_je, nbInstr_to_execute, tsc1, tsc2, nb_inst_single_step, second_run_instr_number, first_run_instr_number, single_step_number, distance_instruction;
         static uint8 run_number, launch_state, step_reason, debug_nb, debug_type, replaced_int3_instruction, replaced_int3_instruction2;
-        static bool ec_debug, glb_debug, hardening_started, in_rep_instruction, not_nul_cowlist, jump_ex, fpu_saved, no_further_check, first_run_advanced;
+        static bool ec_debug, glb_debug, hardening_started, in_rep_instruction, not_nul_cowlist, no_further_check, first_run_advanced;
         static int prev_reason, previous_ret, nb_try, reg_diff;
         static const char* regs_name_table[];
         

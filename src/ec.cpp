@@ -40,13 +40,10 @@
 INIT_PRIORITY(PRIO_SLAB)
 Slab_cache Ec::cache(sizeof (Ec), 32);
 mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx;
-bool Ec::ec_debug = false, Ec::glb_debug = false, Ec::hardening_started = false, Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false, Ec::jump_ex = false, Ec::no_further_check = false, Ec::first_run_advanced = false;
-uint64 Ec::exc_counter = 0, Ec::gsi_counter1 = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::lvt_counter1 = 0, Ec::msi_counter1 = 0, Ec::ipi_counter1 = 0, Ec::gsi_counter2 = 0,
-        Ec::lvt_counter2 = 0, Ec::msi_counter2 = 0, Ec::ipi_counter2 = 0, Ec::counter1 = 0, Ec::counter2 = 0, Ec::debug_compteur = 0, Ec::count_je = 0, Ec::nbInstr_to_execute = 0,
-        Ec::nb_inst_single_step = 0, Ec::second_run_instr_number = 0, Ec::first_run_instr_number = 0, Ec::single_step_number = 0, Ec::counter_userspace = 0,
-        Ec::double_interrupt_counter = 0, Ec::double_interrupt_counter1 = 0, Ec::double_interrupt_counter2 = 0, Ec::ipi_counter = 0, Ec::msi_counter = 0, Ec::gsi_counter = 0, Ec::pf_counter = 0,
-        Ec::exc_no_pf_counter = 0, Ec::pf_counter1 = 0, Ec::pf_counter2 = 0, Ec::lvt_counter = 0, Ec::exc_no_pf_counter1 = 0, Ec::exc_no_pf_counter2 = 0, Ec::rep_counter = 0, Ec::rep_counter1 = 0, Ec::rep_counter2 = 0,
-        Ec::hlt_counter = 0, Ec::hlt_counter1 = 0, Ec::hlt_counter2 = 0, Ec::distance_instruction = 0;
+bool Ec::ec_debug = false, Ec::glb_debug = false, Ec::hardening_started = false, Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false, Ec::no_further_check = false, Ec::first_run_advanced = false;
+uint64 Ec::exc_counter = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::counter1 = 0, Ec::counter2 = 0, Ec::debug_compteur = 0, Ec::count_je = 0, Ec::nbInstr_to_execute = 0,
+        Ec::nb_inst_single_step = 0, Ec::second_run_instr_number = 0, Ec::first_run_instr_number = 0, Ec::single_step_number = 0, Ec::distance_instruction = 0;
+       
 uint8 Ec::run_number = 0, Ec::launch_state = 0, Ec::step_reason = 0, Ec::debug_nb = 0, Ec::debug_type = 0, Ec::replaced_int3_instruction, Ec::replaced_int3_instruction2;
 const uint64 Ec::step_nb = 200;
 uint64 Ec::tsc1 = 0, Ec::tsc2 = 0;
@@ -313,13 +310,6 @@ void Ec::ret_user_sysexit() {
     }
 
     debug_print("Sysreting");
-//    mword attrib = Pe::RET_STATE_SYS | (run_number ? Pe::RUN_NUMBER_1 : 0);
-    if((str_equal(Pd::current->get_name(), "init -> fb_drv") || str_equal(Pd::current->get_name(), "init")) &&
-            run_number == 0)
-        Pe::add_pe_state(current->get_name(), Pd::current->get_name(), current->regs.REG(cx), Pe::RET_STATE_SYS);   
-    if(step_reason == SR_GP){
-        Console::print("rip %lx rax %lx", current->regs.REG(cx), current->regs.REG(ax));
-    }
     if (step_reason == SR_NIL) {
         asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : "memory");
     } else {
@@ -337,25 +327,6 @@ void Ec::ret_user_iret() {
 
         current->save_state();
         launch_state = Ec::IRET;
-    }
-//    if (str_equal(current->get_name(), "fb_drv")) {
-        //        debug_func("Ireting");
-//        mword *v = reinterpret_cast<mword*> (0x18028);
-//        Paddr physical_addr;
-//        mword attribut;
-//        size_t is_mapped = current->getPd()->loc[Cpu::id].lookup(0x18028, physical_addr, attribut);
-//        if (is_mapped && (*v != 0x8020)) {
-//            //            current->getPd()->loc[Cpu::id].update(current->getPd()->quota, reinterpret_cast<mword> (v), 0, physical_addr, attribut, Hpt::TYPE_UP, false);
-//            current->getPd()->loc[Cpu::id].flush(reinterpret_cast<mword> (v));
-//            Console::print("Rectifying in Iret PD: %s EC %s EIP %lx RCX %lx phys %lx 18028:%lx", Pd::current->get_name(), current->get_name(), current->regs.REG(ip), current->regs.REG(cx), physical_addr, *v);
-//        }
-        
-//    }
-//    if(str_equal(current->get_name(), "ep") && str_equal(Pd::current->get_name(), "init") &&
-//        run_number)
-//        Pe::add_pe_state(current->get_name(), Pd::current->get_name(), current->regs.REG(ip));   
-    if(step_reason == SR_GP){
-        Console::print("rip %lx rax %lx", current->regs.REG(ip), current->regs.REG(ax));
     }
     debug_print("Ireting");
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR LOAD_SEG RET_USER_EXC) : : "m" (current->regs) : "memory");
@@ -756,7 +727,7 @@ void Ec::saveRegs(Exc_regs *r) {
     last_rip = r->REG(ip);
     last_rcx = r->REG(cx);
     exc_counter++;
-//    count_interrupt(r->vec);
+    count_interrupt(r->vec);
 //    current->take_snaphot();   
     return;
 }
@@ -1233,9 +1204,8 @@ void Ec::mark_pe_tail(){
 
 void Ec::take_snaphot(){
     mword rip = current->regs.REG(ip);
-    counter_userspace = Lapic::read_instCounter();    
     Pe* pe = new(Pd::kern.quota) Pe(current->get_name(), current->getPd()->get_name(), rip);
-    pe->add_counter(counter_userspace);
+    pe->add_counter(Lapic::read_instCounter());
     Paddr p;
     mword a;
     if (Ec::current->getPd()->Space_mem::loc[Cpu::id].lookup(last_rip, p, a)){
@@ -1270,26 +1240,20 @@ void Ec::take_snaphot(){
 
 void Ec::count_interrupt(mword vector){
     switch (vector) {
-        case 0 ... Cpu::EXC_PF - 1:
-            exc_no_pf_counter++;
-            break;
-        case Cpu::EXC_PF:
-            pf_counter++;
-            break;
-        case Cpu::EXC_PF + 1 ... VEC_GSI - 1:
-            exc_no_pf_counter++;
+        case 0 ... VEC_GSI - 1:
+            Pe::exc[run_number][vector]++;
             break;
         case VEC_GSI ... VEC_LVT - 1:
-            gsi_counter++;
+            Pe::gsi[run_number][vector - VEC_GSI]++;
             break;
         case VEC_LVT ... VEC_MSI - 1:
-            lvt_counter++;
+            Pe::lvt[run_number][vector - VEC_LVT]++;
             break;
         case VEC_MSI ... VEC_IPI - 1:
-            msi_counter++;
+            Pe::msi[run_number][vector - VEC_MSI]++;
             break;
         case VEC_IPI ... VEC_MAX - 1:
-            ipi_counter++;
+            Pe::ipi[run_number][vector - VEC_IPI]++;
             break;
     }
     Paddr p;
@@ -1297,16 +1261,16 @@ void Ec::count_interrupt(mword vector){
     if (Ec::current->getPd()->Space_mem::loc[Cpu::id].lookup(last_rip, p, a)){
         uint8 *ptr = reinterpret_cast<uint8 *> (last_rip);
         if (*ptr == 0xf3 || *ptr == 0xf2) { // rep prefix instruction
-            rep_counter++;
+            Pe::rep_prefix[run_number]++;
     //            exc_counter--;
         }
         if (*ptr == 0xf4) { // halt instruction
-            hlt_counter++;
+            Pe::hlt_instr[run_number]++;
     //            exc_counter--;
         } else {
             if (Ec::current->getPd()->Space_mem::loc[Cpu::id].lookup(last_rip - 1, p, a) &&
                     *(ptr - 1) == 0xf4) {
-                hlt_counter++;
+                Pe::hlt_instr[run_number]++;
     //                exc_counter--;
             }
         }
@@ -1336,21 +1300,15 @@ void Ec::check_instr_number_equals(int from){
         nb_run1 = first_run_instr_number + nb_inst_single_step; nb_run2 = second_run_instr_number;        
         copy_string(instr_number_comp, "Sup");
     }
+    char to_print[200];
+    Pe::counter(to_print);
     long nb_run_diff = nb_run1 < nb_run2 ? nb_run2 - nb_run1 : -(nb_run1 - nb_run2);
     if(nb_run_diff != 0){
-        Console::print("%s %d: ec %s pd %s nb_run1 %llu nb_run2 %llu nb_run_diff %ld counter1 %llu exc1 %llu pf1 %llu dic1 %llu rep1 %llu hlt1 %llu "
-        "counter2 %llu exc2 %llu pf2 %llu dic2 %llu rep2 %llu hlt2 %llu ss %llu "
-        "ipi1 %llu msi1 %llu gsi1 %llu lvt1 %llu exc_no_pf1 %llu ipi2 %llu msi2 %llu gsi2 %llu lvt2 %llu exc_no_pf2 %llu", 
-        instr_number_comp, from, current->get_name(), current->getPd()->get_name(), nb_run1, nb_run2,  nb_run_diff, counter1, exc_counter1, pf_counter1, double_interrupt_counter1, rep_counter1, hlt_counter1, 
-        counter2, exc_counter2, pf_counter2, double_interrupt_counter2, rep_counter2, hlt_counter2, nb_inst_single_step, 
-        ipi_counter1, msi_counter1, gsi_counter1, lvt_counter1, exc_no_pf_counter1, ipi_counter2, msi_counter2, gsi_counter2, lvt_counter2, exc_no_pf_counter2);
+        Console::print("%s %d: ec %s pd %s nb_run1 %llu nb_run2 %llu nb_run_diff %ld counter1 %llu counter2 %llu %s ss %llu ",
+        instr_number_comp, from, current->get_name(), current->getPd()->get_name(), nb_run1, nb_run2,  nb_run_diff, counter1, counter2, to_print, nb_inst_single_step);
     }else{
-        Console::print("%s %d: ec %s pd %s counter1 %llu exc1 %llu pf1 %llu dic1 %llu rep1 %llu hlt1 %llu "
-        "counter2 %llu exc2 %llu pf2 %llu dic2 %llu rep2 %llu hlt2 %llu ss %llu "
-        "ipi1 %llu msi1 %llu gsi1 %llu lvt1 %llu exc_no_pf1 %llu ipi2 %llu msi2 %llu gsi2 %llu lvt2 %llu exc_no_pf2 %llu", 
-        instr_number_comp, from, current->get_name(), current->getPd()->get_name(), counter1, exc_counter1, pf_counter1, double_interrupt_counter1, rep_counter1, hlt_counter1, 
-        counter2, exc_counter2, pf_counter2, double_interrupt_counter2, rep_counter2, hlt_counter2, nb_inst_single_step, 
-        ipi_counter1, msi_counter1, gsi_counter1, lvt_counter1, exc_no_pf_counter1, ipi_counter2, msi_counter2, gsi_counter2, lvt_counter2, exc_no_pf_counter2);
+        Console::print("%s %d: ec %s pd %s counter1 %llu counter2 %llu %s ss %llu ",
+        instr_number_comp, from, current->get_name(), current->getPd()->get_name(), counter1, counter2, to_print, nb_inst_single_step);
     }
     current->dump_pe();
 }

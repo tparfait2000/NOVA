@@ -68,7 +68,7 @@ class Console
         static void print (char const *, ...);
 
         FORMAT (2,3)
-        static void sprint (char *, char const *, ...);
+        static unsigned sprint (char *, char const *, ...);
 
         FORMAT (1,2) NORETURN
         static void panic (char const *, ...);
