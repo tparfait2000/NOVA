@@ -42,7 +42,7 @@ Sc::Sc (Pd *own, mword sel, Ec *e) : Kobject (SC, static_cast<Space_obj *>(own),
     trace (TRACE_SYSCALL, "SC:%p created (PD:%p Kernel)", this, own);
 }
 
-Sc::Sc (Pd *own, mword sel, Ec *e, unsigned c, unsigned p, unsigned q) : Kobject (SC, static_cast<Space_obj *>(own), sel, 0x1, free), ec (e), cpu (c), prio (p), budget (Lapic::freq_tsc / 1000 * q), left (0)
+Sc::Sc (Pd *own, mword sel, Ec *e, unsigned c, unsigned p, unsigned q) : Kobject (SC, static_cast<Space_obj *>(own), sel, 0x1, free, pre_free), ec (e), cpu (c), prio (static_cast<uint16>(p)), budget (Lapic::freq_tsc / 1000 * q), left (0)
 {
     trace (TRACE_SYSCALL, "SC:%p created (EC:%p CPU:%#x P:%#x Q:%#x)", this, e, c, p, q);
 }
@@ -113,35 +113,41 @@ void Sc::ready_dequeue (uint64 t)
 
 void Sc::schedule (bool suspend, bool use_left)
 {
-    Counter::print<1,16> (++Counter::schedule, Console_vga::COLOR_LIGHT_CYAN, SPN_SCH);
+    do {
+        Counter::print<1,16> (++Counter::schedule, Console_vga::COLOR_LIGHT_CYAN, SPN_SCH);
 
-    assert (current);
-    assert (suspend || !current->prev);
+        assert (current);
+        assert (suspend || !current->prev);
 
-    uint64 t = rdtsc();
-    uint64 d = Timeout_budget::budget.dequeue();
+        uint64 t = rdtsc();
+        uint64 d = Timeout_budget::budget.dequeue();
 
-    current->time += t - current->tsc;
-    current->left = d > t ? d - t : 0;
+        current->time += t - current->tsc;
+        current->left = d > t ? d - t : 0;
 
-    Cpu::hazard &= ~HZD_SCHED;
+        Cpu::hazard &= ~HZD_SCHED;
 
-    if (EXPECT_TRUE (!suspend))
-        current->ready_enqueue (t, false, use_left);
-    else
-        if (current->del_rcu())
-            Rcu::call (current);
+        if (EXPECT_FALSE(current->disable) && current->ec == Ec::current)
+            suspend = true;
 
-    Sc *sc = list[prio_top];
-    assert (sc);
+        if (EXPECT_TRUE (!suspend))
+            current->ready_enqueue (t, false, use_left);
+        else
+            if (current->del_rcu())
+                Rcu::call (current);
 
-    Timeout_budget::budget.enqueue (t + sc->left);
+        Sc *sc = list[prio_top];
+        assert (sc);
 
-    ctr_loop = 0;
+        Timeout_budget::budget.enqueue (t + sc->left);
 
-    current = sc;
-    sc->ready_dequeue (t);
-    sc->ec->activate();
+        ctr_loop = 0;
+
+        current = sc;
+        current->ready_dequeue (t);
+    } while (EXPECT_FALSE(current->disable) && current->ec == Ec::current);
+
+    current->ec->activate();
 }
 
 void Sc::remote_enqueue(bool inc_ref)
@@ -195,6 +201,9 @@ void Sc::rrq_handler()
 
 void Sc::rke_handler()
 {
+    if (Sc::current->disable)
+        Cpu::hazard |= HZD_SCHED;
+
     if (Pd::current->Space_mem::htlb.chk (Cpu::id))
         Cpu::hazard |= HZD_SCHED;
 }
@@ -203,4 +212,16 @@ void Sc::operator delete (void *ptr)
 {
     Pd * pd = static_cast<Sc *>(ptr)->ec->pd;
     pd->sm_cache.free (ptr, pd->quota);
+}
+
+void Sc::pre_free(Rcu_elem * a)
+{
+    Sc * s = static_cast<Sc *>(a);
+    s->disable = true;
+
+    if (Sc::current == s)
+        Cpu::hazard |= HZD_SCHED;
+
+    if (s->cpu != Sc::current->cpu)
+        Lapic::send_ipi (s->cpu, VEC_IPI_RKE);
 }

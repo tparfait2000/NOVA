@@ -33,7 +33,8 @@ class Sc : public Kobject, public Refcount
     public:
         Refptr<Ec> const ec;
         unsigned const cpu;
-        unsigned const prio;
+        uint16   const prio;
+        uint16         disable { 0 };
         uint64 const budget;
         uint64 time { 0 };
 
@@ -78,6 +79,8 @@ class Sc : public Kobject, public Refcount
 
             delete s;
         }
+
+        static void pre_free(Rcu_elem *);
 
         Sc(const Sc&);
         Sc &operator = (Sc const &);
