@@ -24,7 +24,12 @@
 
 unsigned Counter::ipi[NUM_IPI];
 unsigned Counter::lvt[NUM_LVT];
+unsigned Counter::delayed_lvt[NUM_LVT];
+uint64 Counter::lag_lvt[NUM_LVT];
 unsigned Counter::gsi[NUM_GSI];
+unsigned Counter::delayed_gsi[NUM_GSI];
+uint64 Counter::lag_gsi[NUM_GSI];
+uint64 Counter::lag_msi[NUM_GSI];
 unsigned Counter::exc[NUM_EXC];
 unsigned Counter::vmi[NUM_VMI];
 unsigned Counter::vtlb_gpf;
@@ -70,14 +75,20 @@ void Counter::dump() {
 
     for (unsigned i = 0; i < sizeof (lvt) / sizeof (*lvt); i++)
         if (lvt[i]) {
-            trace(0, "LVT %#4x: %12u", i, lvt[i]);
+            uint64 mean = lag_lvt[i]/(delayed_lvt[i]?delayed_lvt[i]:lvt[i]);
+            trace(0, "LVT %#4x: %12u %12u lag %12llu %12llu", i, lvt[i], delayed_lvt[i], lag_lvt[i], mean);
             lvt[i] = 0;
+            delayed_lvt[i] = 0;
+            lag_lvt[i] = 0;
         }
 
     for (unsigned i = 0; i < sizeof (gsi) / sizeof (*gsi); i++)
         if (gsi[i]) {
-            trace(0, "GSI %#4x: %12u", i, gsi[i]);
+            uint64 mean = lag_gsi[i]/(delayed_gsi[i]?delayed_gsi[i]:gsi[i]);
+            trace(0, "GSI %#4x: %12u %12u lag %12llu %12llu", i, gsi[i], delayed_gsi[i], lag_gsi[i], mean);
             gsi[i] = 0;
+            delayed_gsi[i] = 0;
+            lag_gsi[i] = 0;            
         }
 
     for (unsigned i = 0; i < sizeof (exc) / sizeof (*exc); i++)

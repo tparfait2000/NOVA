@@ -29,7 +29,12 @@ class Counter
     public:
         static unsigned ipi[NUM_IPI]    CPULOCAL;
         static unsigned lvt[NUM_LVT]    CPULOCAL;
+        static unsigned delayed_lvt[NUM_LVT]    ;
+        static uint64 lag_lvt[NUM_LVT]    ;
         static unsigned gsi[NUM_GSI]    CPULOCAL;
+        static unsigned delayed_gsi[NUM_GSI]    ;
+        static uint64 lag_gsi[NUM_GSI]    ;
+        static uint64 lag_msi[NUM_GSI]    ;
         static unsigned exc[NUM_EXC]    CPULOCAL;
         static unsigned vmi[NUM_VMI]    CPULOCAL;
         static unsigned vtlb_gpf        CPULOCAL;

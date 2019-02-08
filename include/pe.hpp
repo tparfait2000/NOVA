@@ -36,6 +36,9 @@ class Pe {
     mword attr = 0; 
     
 public:
+    /**
+     These static variables are for statistics
+     */
     static unsigned ipi[2][NUM_IPI];
     static unsigned msi[2][NUM_MSI];
     static unsigned lvt[2][NUM_LVT];
@@ -55,7 +58,8 @@ public:
     static unsigned rep_prefix[2];
     static unsigned hlt_instr[2];
     static uint64 nb_pe;
-    
+    //----------------------------------------------
+        
     /**
      * 
      * @param ec

@@ -40,8 +40,7 @@ const uint32 Lapic::max_info = 100000;
 uint64 Lapic::perf_compteur[max_info][2];
 mword Lapic::info[max_info][4];
 
-void Lapic::init(bool invariant_tsc)
-{
+void Lapic::init(bool invariant_tsc){
     Paddr apic_base = Msr::read<Paddr>(Msr::IA32_APIC_BASE);
 
     Pd::kern.Space_mem::delreg (Pd::kern.quota, apic_base & ~PAGE_MASK);
@@ -142,8 +141,7 @@ void Lapic::init(bool invariant_tsc)
     trace (TRACE_APIC, "APIC:%#lx ID:%#x VER:%#x LVT:%#x (%s Mode)", apic_base & ~PAGE_MASK, id(), version(), lvt_max(), freq_bus ? "OS" : "DL");
 }
 
-void Lapic::send_ipi (unsigned cpu, unsigned vector, Delivery_mode dlv, Shorthand dsh)
-{
+void Lapic::send_ipi (unsigned cpu, unsigned vector, Delivery_mode dlv, Shorthand dsh){
     while (EXPECT_FALSE (read (LAPIC_ICR_LO) & 1U << 12))
         pause();
 
@@ -157,17 +155,15 @@ void Lapic::therm_handler() {
 
 void Lapic::perfm_handler() {
     eoi(); 
-    Ec::current->is_virutalcpu() ? Ec::vm_check_memory(Ec::PES_PMI): Ec::check_memory(Ec::PES_PMI);
+    Ec::check_memory(Ec::PES_PMI);
 }
 
-void Lapic::error_handler()
-{
+void Lapic::error_handler(){
     write (LAPIC_ESR, 0);
     write (LAPIC_ESR, 0);
 }
 
-void Lapic::timer_handler()
-{
+void Lapic::timer_handler(){
     bool expired = (freq_bus ? read (LAPIC_TMR_CCR) : Msr::read<uint64>(Msr::IA32_TSC_DEADLINE)) == 0;
     if (expired)
        Timeout::check(); 
@@ -202,8 +198,7 @@ void Lapic::exec_lvt(unsigned vector, bool pending){
     Counter::print<1,16> (++Counter::lvt[lvt], Console_vga::COLOR_LIGHT_BLUE, lvt + SPN_LVT);    
 }
 
-void Lapic::ipi_vector (unsigned vector)
-{
+void Lapic::ipi_vector (unsigned vector){
     unsigned ipi = vector - VEC_IPI;
 
     switch (vector) {

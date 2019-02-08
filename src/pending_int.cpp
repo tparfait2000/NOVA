@@ -15,6 +15,8 @@
 #include "pd.hpp"
 #include "gsi.hpp"
 #include "lapic.hpp"
+#include "counter.hpp"
+#include "vectors.hpp"
 
 Slab_cache Pending_int::cache(sizeof (Pending_int), 32);
 Queue<Pending_int> Pending_int::pendings;
@@ -22,6 +24,7 @@ size_t Pending_int::number = 0;
 
 Pending_int::Pending_int(Int_type t, unsigned v): type(t), vector(v), prev(nullptr), next(nullptr) {
     number++;
+    time_stampt = rdtsc();
 }
 
 Pending_int::~Pending_int() {
@@ -42,14 +45,20 @@ void Pending_int::free_recorded_interrupt() {
 void Pending_int::exec_pending_interrupt(){
     Pending_int *pi = nullptr;
     while (pendings.dequeue(pi = pendings.head())) {
+        uint64 lag = rdtsc() - pi->time_stampt;
         switch(pi->type){
             case INT_GSI:
+                Counter::delayed_gsi[pi->vector - VEC_GSI]++;
+                Counter::lag_gsi[pi->vector - VEC_GSI] += lag;
                 Gsi::exec_gsi(pi->vector, true);
                 break;
             case INT_LAPIC:
+                Counter::delayed_lvt[pi->vector - VEC_LVT]++;
+                Counter::lag_lvt[pi->vector - VEC_LVT] += lag;
                 Lapic::exec_lvt(pi->vector, true);
                 break;
             case INT_MSI:
+                Counter::lag_msi[pi->vector - VEC_MSI] += lag;
                 Dmar::exec_msi(pi->vector, true);
                 break;
             default:

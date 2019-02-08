@@ -25,6 +25,7 @@
 #include "slab.hpp"
 #include "x86.hpp"
 #include "string.hpp"
+#include "stdio.hpp"
 
 class Fpu
 {
@@ -106,19 +107,26 @@ class Fpu
             fpu_2->save();
             save_state(statedata_2);
             load_state(statedata_2);
-            mword ret = memcmp(fpu_1->data, fpu_2->data, data_size)+memcmp(statedata_1, statedata_2, state_size);
+            mword d1 = memcmp(fpu_1->data, fpu_2->data, data_size);
+            mword s1 = memcmp(statedata_1, statedata_2, state_size);
+            mword ret = d1 + s1;
             if(ret){
-                mword d1 = memcmp(fpu_1->data, fpu_2->data, data_size),
-                s1 = memcmp(statedata_1, statedata_2, state_size);
-                mword state_index = (state_size / 4 - s1 - 1)*4;
-                mword vals1 = *reinterpret_cast<mword*> (statedata_1 + state_index);
-                mword vals2 = *reinterpret_cast<mword*> (statedata_2 + state_index);
-                mword fpu_index = (data_size / 4 - d1 - 1)*4;
-                mword vald1 = *reinterpret_cast<mword*> (fpu_1->data + fpu_index);
-                mword vald2 = *reinterpret_cast<mword*> (fpu_2->data + fpu_index);
-                Console::print("s1 %lx d1 %lx statedata_1 %p statedata_2 %p fpu_d1 %p fpu_d2 %p vals1 %lx vals2 %lx vald1 %lx vald2 %lx", 
-                    s1, d1, statedata_1+state_index, statedata_2+state_index, fpu_1->data+fpu_index, fpu_2->data+fpu_index, vals1, vals2, vald1, vald2);
-            }else
+                if(d1){
+                    mword fpu_index = (data_size / 4 - d1 - 1)*4;
+                    mword vald1 = *reinterpret_cast<mword*> (fpu_1->data + fpu_index),
+                            vald2 = *reinterpret_cast<mword*> (fpu_2->data + fpu_index);
+                    Console::print("d1 %lx fpu_d1 %p fpu_d2 %p vald1 %lx vald2 %lx", 
+                             d1, fpu_1->data+fpu_index, fpu_2->data+fpu_index, vald1, vald2);
+                }
+                if(s1){
+                    mword state_index = (state_size / 4 - s1 - 1)*4;
+                    mword vals1 = *reinterpret_cast<mword*> (statedata_1 + state_index),
+                            vals2 = *reinterpret_cast<mword*> (statedata_2 + state_index);
+                    Console::print("s1 %lx statedata_1 %p statedata_2 %p vals1 %lx vals2 %lx",
+                            s1, statedata_1+state_index, statedata_2+state_index, vals1, vals2);
+                }
+                
+         }else
                 is_saved = false;                
             return ret;
         }

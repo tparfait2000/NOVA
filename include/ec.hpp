@@ -284,8 +284,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
             CMP_TWO_RUN         = 1, 
             STORE_RUN_STATE     = 2,
         };
-        static const uint64 step_nb;
-        static mword prev_rip, last_rip, last_rcx, last_rsp, end_rip, end_rcx, instruction_value, outpout_table0[][2], outpout_table1[][2];
+        static mword prev_rip, last_rip, last_rcx, last_rsp, end_rip, end_rcx, instruction_value;
         static uint64 counter1, counter2, exc_counter, exc_counter1, exc_counter2, debug_compteur, count_je, nbInstr_to_execute, tsc1, tsc2, nb_inst_single_step, second_run_instr_number, first_run_instr_number, single_step_number, distance_instruction;
         static uint8 run_number, launch_state, step_reason, debug_nb, debug_type, replaced_int3_instruction, replaced_int3_instruction2;
         static bool ec_debug, glb_debug, hardening_started, in_rep_instruction, not_nul_cowlist, no_further_check, first_run_advanced;
@@ -577,7 +576,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
         void vmx_restore_state1();
 
         void run2_pmi_check(int);
-        void run1_ext_int_check(int);
+        void run1_ext_int_check();
 
         bool two_run_ok() {
             return run_number == 2;

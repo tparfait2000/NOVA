@@ -273,7 +273,7 @@ void Ec::handle_exc(Exc_regs *r) {
                             // current->regs.REG(ip), prev_rip, Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), *reinterpret_cast<mword *>(current->regs.REG(ip)));
                             // It may happen that this is the final instruction
                             if (!current->compare_regs_mute()) {
-                                check_instr_number_equals(1);
+//                                check_instr_number_equals(1);
                                 current->disable_step_debug();
                                 check_memory(PES_SINGLE_STEP);
                                 return;
@@ -286,7 +286,7 @@ void Ec::handle_exc(Exc_regs *r) {
                             return;
                         }
                         if (!current->compare_regs_mute()) {
-                            check_instr_number_equals(2);
+//                            check_instr_number_equals(2);
                             current->disable_step_debug();
                             check_memory(PES_SINGLE_STEP);
                             return;
@@ -330,7 +330,7 @@ void Ec::handle_exc(Exc_regs *r) {
                             // current->regs.REG(ip), prev_rip, Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), *reinterpret_cast<mword *>(current->regs.REG(ip)));
                             // It may happen that this is the final instruction
                             if (!current->compare_regs_mute()) {
-                                check_instr_number_equals(3);
+//                                check_instr_number_equals(3);
                                 current->disable_step_debug();
                                 check_memory(PES_SINGLE_STEP);
                                 return;
@@ -338,7 +338,7 @@ void Ec::handle_exc(Exc_regs *r) {
                         }
                         //here, single stepping 2nd run should be ok
                         if (!current->compare_regs_mute()) {// if ok?
-                            check_instr_number_equals(4);
+//                            check_instr_number_equals(4);
                             current->disable_step_debug();
                             check_memory(PES_SINGLE_STEP);
                             return;
@@ -407,7 +407,10 @@ void Ec::handle_exc(Exc_regs *r) {
 
     die("EXC", r);
 }
-
+/**
+ * This function is called at the end of every processing element
+ * @param from : where it is called from
+ */
 void Ec::check_memory(PE_stopby from) {
     Ec *ec = current;
     Pd *pd = ec->getPd();
@@ -465,7 +468,7 @@ void Ec::check_memory(PE_stopby from) {
                         ec->enable_step_debug(SR_EQU);
                         ret_user_iret();   
                     }else{
-                        check_instr_number_equals(5);                        
+//                        check_instr_number_equals(5);                        
                     }
                 } else if (first_run_instr_number > second_run_instr_number) {
                     nbInstr_to_execute = first_run_instr_number - second_run_instr_number;
@@ -486,14 +489,14 @@ void Ec::check_memory(PE_stopby from) {
                 if (reg_diff || pd->compare_and_commit()) {
                     Console::print("Checking failed : Ec %s  Pd: %s From: %d launch_state: %d", ec->get_name(), pd->get_name(), from, launch_state);
                     ec->rollback();
-    //                ec->reset_all();
-    //                check_exit();
-                    current->pd->cow_list = nullptr;
-                    run_number = 0;
-                    nbInstr_to_execute = first_run_instr_number;
-                    current->save_state();
-                    launch_state = Ec::IRET;
-                    current->enable_step_debug(SR_DBG);
+                    ec->reset_all();
+                    ec->save_state(); 
+//                    current->pd->cow_list = nullptr;
+//                    run_number = 0;
+//                    nbInstr_to_execute = first_run_instr_number;
+//                    current->save_state();
+//                    launch_state = Ec::IRET;
+//                    current->enable_step_debug(SR_DBG);
                     check_exit();
                 } else {
                     ++Counter::nb_pe;
@@ -560,22 +563,7 @@ void Ec::start_debugging(Debug_type dt){
 void Ec::debug_record_info(){
     switch(debug_type){
         case CMP_TWO_RUN:
-            switch (run_number){
-                case 0:
-                    outpout_table0[single_step_number][0] = current->regs.REG(ip);
-                    outpout_table0[single_step_number][1] = current->get_reg(reg_diff);
-                    break;
-                case 1:
-                    outpout_table1[single_step_number][0] = current->regs.REG(ip);
-                    outpout_table1[single_step_number][1] = current->get_reg(reg_diff);
-                    if(outpout_table0[single_step_number][0] != outpout_table1[single_step_number][0] ||
-                            outpout_table0[single_step_number][1] != outpout_table1[single_step_number][1])
-                        Console::print("Single_step_number %llu RIP %lx %lx %s %lx %lx", single_step_number, outpout_table0[single_step_number][0], 
-                                outpout_table1[single_step_number][0], regs_name_table[reg_diff], outpout_table0[single_step_number][1], outpout_table1[single_step_number][1]);
-                    break;
-                default:
-                    Console::panic("run_number odd");  
-            }
+            
             break;
         case STORE_RUN_STATE:
             current->take_snaphot();

@@ -24,6 +24,7 @@
 #include "console.hpp"
 #include "cpu.hpp"
 #include "memory.hpp"
+#define DEBUG  1
 
 #define trace(T,format,...)                                         \
 do {                                                                \
@@ -45,6 +46,8 @@ enum {
     TRACE_KEYB      = 1UL << 3,
     TRACE_VMX       = 1UL << 4,
     TRACE_SVM       = 1UL << 5,
+    TRACE_HARDEN    = 1UL << 6,
+    NO_TRACE        = 1UL << 7,
     TRACE_ACPI      = 1UL << 8,
     TRACE_MEMORY    = 1UL << 13,
     TRACE_PCI       = 1UL << 14,
@@ -71,6 +74,7 @@ unsigned const trace_mask =
 //                            TRACE_KEYB      |
                             TRACE_VMX       |
                             TRACE_SVM       |
+                            TRACE_HARDEN    |
 //                            TRACE_ACPI      |
 //                            TRACE_MEMORY    |
 //                            TRACE_PCI       |

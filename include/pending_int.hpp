@@ -57,6 +57,7 @@ public:
 private:
     Int_type type;
     unsigned vector = 0;
+    uint64 time_stampt = 0;
     Pending_int* prev;
     Pending_int* next; 
     static size_t number;

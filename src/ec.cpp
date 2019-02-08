@@ -45,12 +45,9 @@ uint64 Ec::exc_counter = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::coun
         Ec::nb_inst_single_step = 0, Ec::second_run_instr_number = 0, Ec::first_run_instr_number = 0, Ec::single_step_number = 0, Ec::distance_instruction = 0;
        
 uint8 Ec::run_number = 0, Ec::launch_state = 0, Ec::step_reason = 0, Ec::debug_nb = 0, Ec::debug_type = 0, Ec::replaced_int3_instruction, Ec::replaced_int3_instruction2;
-const uint64 Ec::step_nb = 200;
 uint64 Ec::tsc1 = 0, Ec::tsc2 = 0;
 int Ec::prev_reason = 0, Ec::previous_ret = 0, Ec::nb_try = 0, Ec::reg_diff = 0;
 const char* Ec::regs_name_table[19] = {"N/A", "RAX", "RDX", "RCX", "RBX", "RBP", "RSI", "RDI", "R8", "R9", "R10", "R11", "R12", "R13", "R14", "R15", "RIP", "RFLAG", "RSP"};
-mword Ec::outpout_table0[MAX_INSTRUCTION + step_nb][2];
-mword Ec::outpout_table1[MAX_INSTRUCTION + step_nb][2];
 Ec *Ec::current, *Ec::fpowner;
 // Constructors
 
@@ -430,6 +427,7 @@ void Ec::idle() {
         asm volatile ("sti; hlt; cli" : : : "memory");
         uint64 t2 = rdtsc();
 
+        Counter::dump();
         Counter::cycles_idle += t2 - t1;
     }
 }
