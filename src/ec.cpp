@@ -377,6 +377,13 @@ void Ec::idle()
 
 void Ec::root_invoke()
 {
+    /* transfer memory from second allocator */
+    Quota tmp;
+    bool ok = Quota::init.transfer_to(tmp, Quota::init.limit());
+    assert(ok);
+    ok = tmp.transfer_to(Pd::root.quota, tmp.limit());
+    assert(ok);
+
     Eh *e = static_cast<Eh *>(Hpt::remap (Pd::kern.quota, Hip::root_addr));
     if (!Hip::root_addr || e->ei_magic != 0x464c457f || e->ei_class != ELF_CLASS || e->ei_data != 1 || e->type != 2 || e->machine != ELF_MACHINE)
         die ("No ELF");
@@ -446,13 +453,6 @@ void Ec::root_invoke()
         Ec::current->transfer_fpu(Ec::current);
         Cpu::hazard &= ~HZD_FPU;
     }
-
-    /* transfer memory from second allocator */
-    Quota tmp;
-    res = Quota::init.transfer_to(tmp, Quota::init.limit());
-    assert(res);
-    res = tmp.transfer_to(Pd::root.quota, tmp.limit());
-    assert(res);
 
     ret_user_sysexit();
 }
