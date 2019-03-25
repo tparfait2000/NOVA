@@ -62,8 +62,12 @@ size_t Space_obj::lookup (mword idx, Capability &cap)
     return 1;
 }
 
-bool Space_obj::update (Quota &quota, Mdb *mdb, mword r)
+bool Space_obj::update (Quota &quota, Mdb *mdb, mword r, bool set_cow)
 {
+    if(set_cow)
+        useless_var = true;
+    else
+        useless_var = false;
     assert (this == mdb->space && this != &Pd::kern);
     Lock_guard <Spinlock> guard (mdb->node_lock);
     return update (quota, mdb->node_base, Capability (reinterpret_cast<Kobject *>(mdb->node_phys), mdb->node_attr & ~r));

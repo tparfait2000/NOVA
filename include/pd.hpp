@@ -26,27 +26,29 @@
 #include "space_mem.hpp"
 #include "space_obj.hpp"
 #include "space_pio.hpp"
+#include "cow.hpp"
 
-class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, public Space_obj
-{
-    private:
-        static Slab_cache cache;
+class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, public Space_obj {
+private:
+    char name[MAX_STR_LENGTH];
+    bool to_be_cowed = false;
+    static Slab_cache cache;
+    static const char *names[];
 
-        WARN_UNUSED_RESULT
-        mword clamp (mword,   mword &, mword, mword);
+    WARN_UNUSED_RESULT
+    mword clamp(mword, mword &, mword, mword);
 
-        WARN_UNUSED_RESULT
-        mword clamp (mword &, mword &, mword, mword, mword);
+    WARN_UNUSED_RESULT
+    mword clamp(mword &, mword &, mword, mword, mword);
 
-        static void pre_free (Rcu_elem * a)
-        {
-            Pd * pd = static_cast <Pd *>(a);
+    static void pre_free(Rcu_elem * a) {
+        Pd * pd = static_cast<Pd *> (a);
 
-            Crd crd(Crd::MEM);
-            pd->revoke<Space_mem>(crd.base(), crd.order(), crd.attr(), true, false);
+        Crd crd(Crd::MEM);
+        pd->revoke<Space_mem>(crd.base(), crd.order(), crd.attr(), true, false);
 
-            crd = Crd(Crd::PIO);
-            pd->revoke<Space_pio>(crd.base(), crd.order(), crd.attr(), true, false);
+        crd = Crd(Crd::PIO);
+        pd->revoke<Space_pio>(crd.base(), crd.order(), crd.attr(), true, false);
 
             crd = Crd(Crd::OBJ);
             pd->revoke<Space_obj>(crd.base(), crd.order(), crd.attr(), true, false);
@@ -73,112 +75,133 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
                 if (free_up)
                     Dmar::release(rid, pd);
             }
-        }
+    }
 
         static void free (Rcu_elem * a) {
             Pd * pd = static_cast <Pd *>(a);
 
-            if (pd->del_ref()) {
+        if (pd->del_ref()) {
                 assert (pd != Pd::current);
-                delete pd;
-            }
+            delete pd;
+        }
+    }
+
+    uint16 rids[7];
+    uint16 rids_u  { 0 };
+
+    static_assert (sizeof(rids_u) * 8 >= sizeof(rids) / sizeof(rids[0]), "rids_u too small");
+
+public:
+    static Pd *current CPULOCAL_HOT;
+    static Pd kern, root;
+    bool pd_debug = false;
+    Quota quota { };
+    
+    Slab_cache pt_cache;
+    Slab_cache mdb_cache;
+    Slab_cache sm_cache;
+    Slab_cache sc_cache;
+    Slab_cache ec_cache;
+    Slab_cache fpu_cache;
+
+    INIT
+    Pd (Pd *);
+    ~Pd();
+
+    /*--------Copy on write treatement--------*/
+    Cow::cow_elt *cow_list = {nullptr};
+    Spinlock cow_lock { };
+
+    Pd(const Pd&);
+    Pd &operator=(Pd const &);
+
+    Pd(Pd *own, mword sel, mword a, char* const s = const_cast<char* const> ("Unknown"));
+
+    ALWAYS_INLINE HOT
+    inline void make_current() {
+        mword pcid = did;
+
+        if (EXPECT_FALSE (htlb.chk (Cpu::id)))
+            htlb.clr (Cpu::id);
+
+        else {
+
+            if (EXPECT_TRUE (current == this))
+                return;
+
+            if (pcid != NO_PCID)
+                pcid |= static_cast<mword>(1ULL << 63);
         }
 
-        uint16 rids[7];
-        uint16 rids_u  { 0 };
+        if (current->del_rcu())
+            Rcu::call (current);
 
-        static_assert (sizeof(rids_u) * 8 >= sizeof(rids) / sizeof(rids[0]), "rids_u too small");
+        current = this;
 
-    public:
-        static Pd *current CPULOCAL_HOT;
-        static Pd kern, root;
+        bool ok = current->add_ref();
+        assert (ok);
 
-        Quota quota { };
+        loc[Cpu::id].make_current (Cpu::feature (Cpu::FEAT_PCID) ? pcid : 0);
+    }
 
-        Slab_cache pt_cache;
-        Slab_cache mdb_cache;
-        Slab_cache sm_cache;
-        Slab_cache sc_cache;
-        Slab_cache ec_cache;
-        Slab_cache fpu_cache;
+    ALWAYS_INLINE
+    static inline Pd *remote (unsigned c)
+    {
+        return *reinterpret_cast<volatile typeof current *>(reinterpret_cast<mword>(&current) - CPU_LOCAL_DATA + HV_GLOBAL_CPUS + c * PAGE_SIZE);
+    }
 
-        INIT
-        Pd (Pd *);
-        ~Pd();
-
-        Pd (Pd *own, mword sel, mword a);
-
-        ALWAYS_INLINE HOT
-        inline void make_current()
-        {
-            mword pcid = did;
-
-            if (EXPECT_FALSE (htlb.chk (Cpu::id)))
-                htlb.clr (Cpu::id);
-
-            else {
-
-                if (EXPECT_TRUE (current == this))
-                    return;
-
-                if (pcid != NO_PCID)
-                    pcid |= static_cast<mword>(1ULL << 63);
-            }
-
-            if (current->del_rcu())
-                Rcu::call (current);
-
-            current = this;
-
-            bool ok = current->add_ref();
-            assert (ok);
-
-            loc[Cpu::id].make_current (Cpu::feature (Cpu::FEAT_PCID) ? pcid : 0);
+    ALWAYS_INLINE
+    inline Space *subspace (Crd::Type t)
+    {
+        switch (t) {
+            case Crd::MEM:  return static_cast<Space_mem *>(this);
+            case Crd::PIO:  return static_cast<Space_pio *>(this);
+            case Crd::OBJ:  return static_cast<Space_obj *>(this);
         }
 
-        ALWAYS_INLINE
-        static inline Pd *remote (unsigned c)
-        {
-            return *reinterpret_cast<volatile typeof current *>(reinterpret_cast<mword>(&current) - CPU_LOCAL_DATA + HV_GLOBAL_CPUS + c * PAGE_SIZE);
-        }
+        return nullptr;
+    }
 
-        ALWAYS_INLINE
-        inline Space *subspace (Crd::Type t)
-        {
-            switch (t) {
-                case Crd::MEM:  return static_cast<Space_mem *>(this);
-                case Crd::PIO:  return static_cast<Space_pio *>(this);
-                case Crd::OBJ:  return static_cast<Space_obj *>(this);
-            }
+    template <typename>
+    bool delegate (Pd *, mword, mword, mword, mword, mword = 0, char const * = nullptr);
 
-            return nullptr;
-        }
+    template <typename>
+    void revoke (mword, mword, mword, bool, bool);
 
-        template <typename>
-        bool delegate (Pd *, mword, mword, mword, mword, mword = 0, char const * = nullptr);
+    void xfer_items(Pd *, Crd, Crd, Xfer *, Xfer *, unsigned long);
 
-        template <typename>
-        void revoke (mword, mword, mword, bool, bool);
+    void xlt_crd(Pd *, Crd, Crd &);
+    void del_crd(Pd *, Crd, Crd &, mword = 0, mword = 0);
+    void rev_crd(Crd, bool, bool, bool);
 
-        void xfer_items (Pd *, Crd, Crd, Xfer *, Xfer *, unsigned long);
+    void assign_rid(uint16 r);
 
-        void xlt_crd (Pd *, Crd, Crd &);
-        void del_crd (Pd *, Crd, Crd &, mword = 0, mword = 0);
-        void rev_crd (Crd, bool, bool, bool);
+    ALWAYS_INLINE
+    static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
 
-        void assign_rid(uint16 r);
+    ALWAYS_INLINE
+    static inline void operator delete (void *ptr) {
+        Pd *pd_del = static_cast<Pd *> (ptr);
+        Pd *pd_to = static_cast<Pd *> (static_cast<Space_obj *> (pd_del->space));
 
-        ALWAYS_INLINE
-        static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
+        pd_del->quota.free_up(pd_to->quota);
 
-        ALWAYS_INLINE
-        static inline void operator delete (void *ptr)
-        {
-            Pd *pd_del = static_cast<Pd *>(ptr);
-            Pd *pd_to  = static_cast<Pd *>(static_cast<Space_obj *>(pd_del->space));
-
-            pd_del->quota.free_up(pd_to->quota);
-
-            cache.free (ptr, pd_to->quota);
-        }
+        cache.free (ptr, pd_to->quota);
+    }
+    
+    char *get_name() {return name;}  
+    Cow::cow_elt* find_cow_elt(mword gpa);
+    bool is_mapped_elsewhere(Paddr phys, Cow::cow_elt* cow);
+    void add_cow(Cow::cow_elt *ce);
+    Cow::cow_elt* cowlist_contains(mword, Paddr);
+    bool compare_and_commit();
+    bool vtlb_compare_and_commit();
+    void restore_state(bool = false);
+    void restore_state1(bool = false);
+    void rollback(bool = false);
+    void set_to_be_cowed();
+    bool get_to_be_cowed(){
+        return to_be_cowed;
+    }
+    bool compare_memory_mute();
 };

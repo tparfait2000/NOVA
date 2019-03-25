@@ -68,6 +68,7 @@ uint32      Cpu::name[12];
 uint32      Cpu::features[6];
 bool        Cpu::bsp;
 bool        Cpu::preemption;
+uint32      Cpu::perf_bit_size;
 
 bool invariant_tsc()
 {
@@ -160,6 +161,10 @@ void Cpu::check_features()
         Msr::write<uint32>(Msr::IA32_CR_PAT, cr_pat);
     } else
         trace (0, "warning: no PAT support");
+    
+    cpuid (0xa, eax, ebx, ecx, edx);
+    perf_bit_size = (edx>>5) & 0xff;
+
 }
 
 void Cpu::setup_thermal()
@@ -228,14 +233,15 @@ void Cpu::init()
 
     setup_pcid();
 
-    mword cr4 = get_cr4();
+    mword cr4 = get_cr4() | Cpu::CR4_TSD;
     if (EXPECT_TRUE (feature (FEAT_SMEP)))
         cr4 |= Cpu::CR4_SMEP;
     if (EXPECT_TRUE (feature (FEAT_SMAP)))
         cr4 |= Cpu::CR4_SMAP;
     if (cr4 != get_cr4())
         set_cr4 (cr4);
-
+    disable_fast_string();
+    
     Vmcs::init();
     Vmcb::init();
 

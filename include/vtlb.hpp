@@ -28,67 +28,104 @@ class Exc_regs;
 #ifdef __i386__
 class Vtlb : public Pte<Vtlb, uint32, 2, 10, false>
 #else
-class Vtlb : public Pte<Vtlb, uint64, 3,  9, false>
+
+class Vtlb : public Pte<Vtlb, uint64, 3, 9, false>
 #endif
 {
-    private:
-        ALWAYS_INLINE
-        inline bool mark() const { return val & TLB_M; }
+private:
+    ALWAYS_INLINE
+    inline bool mark() const {
+        return val & TLB_M;
+    }
 
-        ALWAYS_INLINE
-        inline bool frag() const { return val & TLB_F; }
+    ALWAYS_INLINE
+    inline bool frag() const {
+        return val & TLB_F;
+    }
 
-        ALWAYS_INLINE
-        static inline bool mark_pte (uint32 *pte, uint32 old, uint32 bits)
-        {
-            return EXPECT_TRUE ((old & bits) == bits) || User::cmp_swap (pte, old, old | bits) == ~0UL;
-        }
+    ALWAYS_INLINE
+    static inline bool mark_pte(uint32 *pte, uint32 old, uint32 bits) {
+        return EXPECT_TRUE((old & bits) == bits) || User::cmp_swap(pte, old, old | bits) == ~0UL;
+    }
 
         void flush_ptab (bool);
 
-    public:
-        static size_t gwalk (Exc_regs *, mword, mword &, mword &, mword &);
-        static size_t hwalk (mword, mword &, mword &, mword &);
+public:
+    static size_t gwalk(Exc_regs *, mword, mword &, mword &, mword &);
+    static size_t hwalk(mword, mword &, mword &, mword &);
+    static Vtlb *vtlb0, *vtlb1, *vtlb2;
+    enum {
+        TLB_P = 1UL << 0,
+        TLB_W = 1UL << 1,
+        TLB_U = 1UL << 2,
+        TLB_UC = 1UL << 4,
+        TLB_A = 1UL << 5,
+        TLB_D = 1UL << 6,
+        TLB_S = 1UL << 7,
+        TLB_G = 1UL << 8,
+        TLB_F = 1UL << 9,
+        TLB_M = 1UL << 10,
 
-        enum
-        {
-            TLB_P   = 1UL << 0,
-            TLB_W   = 1UL << 1,
-            TLB_U   = 1UL << 2,
-            TLB_UC  = 1UL << 4,
-            TLB_A   = 1UL << 5,
-            TLB_D   = 1UL << 6,
-            TLB_S   = 1UL << 7,
-            TLB_G   = 1UL << 8,
-            TLB_F   = 1UL << 9,
-            TLB_M   = 1UL << 10,
+        TLB_COW = 1ULL << 11,
 
-            PTE_P   = TLB_P,
-            PTE_S   = TLB_S,
-        };
+        PTE_P = TLB_P,
+        PTE_S = TLB_S,
+        PTE_N = TLB_A | TLB_U | TLB_W | TLB_P,
+    };
+    
+    enum {
+        PTE_COW = TLB_COW,
+        PTE_W = TLB_W,
+        PTE_U = TLB_U,
+        PTE_COW_IO = 1UL << 63,
+        TLB_COW_IO = PTE_COW_IO,
+    };
 
-        enum Reason
-        {
-            SUCCESS,
-            GLA_GPA,
-            GPA_HPA
-        };
+    enum Reason
+    {
+        SUCCESS,
+        GLA_GPA,
+        GPA_HPA
+    };
 
-        ALWAYS_INLINE
-        inline Vtlb()
-        {
-            for (unsigned i = 0; i < 1UL << bpl(); i++)
-                this[i].val = TLB_S;
+    ALWAYS_INLINE
+    inline Vtlb() {
+        for (unsigned i = 0; i < 1UL << bpl(); i++)
+            this[i].val = TLB_S;
+    }
+
+    void flush(mword);
+    void flush(bool);
+
+    static Reason miss(Exc_regs *, mword, mword &);
+    bool is_cow_pf(uint64 &, mword , mword);
+    void restore_vtlb();
+    void restore_vtlb1();
+    static void set_cow_fault(Vtlb*, mword, uint64);
+    uint64* vtlb_lookup(mword);
+
+    void set_val(uint64 new_val){
+        val = new_val;
+    }
+    
+    ALWAYS_INLINE
+    static inline void *operator new (size_t, Quota &quota) {
+        return Buddy::allocator.alloc(0, quota, Buddy::NOFILL);
+    }
+
+    ALWAYS_INLINE
+    static inline void destroy(Vtlb *obj, Quota &quota) {
+        obj->~Vtlb();
+        Buddy::allocator.free(reinterpret_cast<mword> (obj), quota);
+    }
+    
+    #ifdef __i386__
+        static void print(char* s, uint32 v);
+        static void set_cow_page(uint32 virt, uint32 &entry) {
+            Console::print("set_cow_page in Vtlb %lx %lx", virt, entry);
         }
-
-        void flush (mword);
-        void flush (bool);
-
-        static Reason miss (Exc_regs *, mword, mword &);
-
-        ALWAYS_INLINE
-        static inline void *operator new (size_t, Quota &quota) { return Buddy::allocator.alloc (0, quota, Buddy::NOFILL); }
-
-        ALWAYS_INLINE
-        static inline void destroy(Vtlb *obj, Quota &quota) { obj->~Vtlb(); Buddy::allocator.free (reinterpret_cast<mword>(obj), quota); }
+    #else
+        static void print(char const *s, uint64 v);
+        static void set_cow_page(uint64 virt, uint64 &entry);
+    #endif
 };

@@ -41,7 +41,7 @@ void Ec::sys_finish()
 
     current->regs.set_status (S);
 
-    if (current->xcpu_sm)
+    if (current->xcpu_sm && is_idle())
         xcpu_return();
 
     if (Pd::current->quota.hit_limit() && S != Sys_regs::QUO_OOM)
@@ -121,10 +121,51 @@ void Ec::send_msg()
     die ("IPC Timeout");
 }
 
+void Ec::debug_call(mword r9){
+    if(current->debug){
+        if(current->debug != r9)
+            die("r9 not equal to current.debug");
+        switch(current->debug){
+            case global_debug:
+                Console::print("Deactivating debuging for all system threads requested by %s", current->get_name());
+                glb_debug = false;
+                break;
+            case pd_debug:
+                Console::print("Deactivating debuging for all PD %s 's threads requested by %s", current->getPd()->get_name(), current->get_name());
+                current->getPd()->pd_debug = false;
+                break;
+            case private_debug:
+                Console::print("Deactivating debuging for ec %s", current->get_name());
+                break;
+        }
+        current->debug = 0;
+    }else{
+        switch(r9){
+            case global_debug:
+                Console::print("Activating debuging for all system threads requested by %s", current->get_name());
+                glb_debug = true;
+                break;
+            case pd_debug:
+                Console::print("Activating debuging for all PD %s 's threads requested by %s", current->getPd()->get_name(), current->get_name());
+                current->getPd()->pd_debug  = true;
+                break;
+            case private_debug:
+                Console::print("Activating debuging for ec %s", current->get_name());
+                break;
+        }
+        current->debug = r9;
+    }
+}
+
 void Ec::sys_call()
 {
     Sys_call *s = static_cast<Sys_call *>(current->sys_regs());
 
+    if(s->r9){
+        debug_call(s->r9);
+        sys_finish<Sys_regs::COM_TIM>();
+    }
+    
     Kobject *obj = Space_obj::lookup (s->pt()).obj();
     if (EXPECT_FALSE (obj->type() != Kobject::PT))
         sys_finish<Sys_regs::BAD_CAP>();
@@ -139,6 +180,7 @@ void Ec::sys_call()
 
         if (current->xcpu_sm) {
             current->regs.set_status (Sys_regs::QUO_OOM, false);
+            if(is_idle())
             xcpu_return();
         }
 
@@ -150,7 +192,7 @@ void Ec::sys_call()
         Ec::sys_xcpu_call();
 
     if (EXPECT_TRUE (!ec->cont)) {
-        current->cont = current->xcpu_sm ? xcpu_return : ret_user_sysexit;
+        current->cont = current->xcpu_sm ? is_idle() ? ret_user_sysexit : xcpu_return : ret_user_sysexit;
         current->set_partner (ec);
         ec->cont = recv_user;
         ec->regs.set_pt (pt->id);
@@ -202,7 +244,7 @@ void Ec::reply (void (*c)(), Sm * sm)
 {
     current->cont = c;
 
-    if (EXPECT_FALSE (current->glb))
+    if (EXPECT_FALSE (current->glb) && is_idle())
         Sc::schedule (true);
 
     Ec *ec = current->rcap;
@@ -320,7 +362,7 @@ void Ec::sys_create_pd()
         sys_finish<Sys_regs::QUO_OOM>();
     }
 
-    Pd *pd = new (Pd::current->quota) Pd (Pd::current, r->sel(), cap.prm());
+    Pd *pd = new (Pd::current->quota) Pd (Pd::current, r->sel(), cap.prm(), r->name());
 
     if (!pd->quota.set_limit(r->limit_lower(), r->limit_upper(), pd_src->quota)) {
         trace (0, "Insufficient kernel memory for creating new PD");
@@ -337,6 +379,7 @@ void Ec::sys_create_pd()
     Crd crd = r->crd();
     pd->del_crd (Pd::current, Crd (Crd::OBJ), crd);
 
+//    Console::print("EC:%p SYS_CREATE PD: %p name: %s", current, pd, pd->get_name());
     sys_finish<Sys_regs::SUCCESS>();
 }
 
@@ -378,13 +421,14 @@ void Ec::sys_create_ec()
     Capability cap_pt = Space_obj::lookup (r->sel() + 1);
     Pt *pt = cap_pt.obj()->type() == Kobject::PT ? static_cast<Pt *>(cap_pt.obj()) : nullptr;
 
-    Ec *ec = new (*pd) Ec (Pd::current, r->sel(), pd, r->flags() & 1 ? static_cast<void (*)()>(send_msg<ret_user_iret>) : nullptr, r->cpu(), r->evt(), r->utcb(), r->esp(), pt);
+    Ec *ec = new (*pd) Ec (Pd::current, r->sel(), pd, r->flags() & 1 ? static_cast<void (*)()>(send_msg<ret_user_iret>) : nullptr, r->cpu(), r->evt(), r->utcb(), r->esp(), pt, r->name() ? r->name() : const_cast<char* const>("Unknown"));
 
     if (!Space_obj::insert_root (pd->quota, ec)) {
         trace (TRACE_ERROR, "%s: Non-NULL CAP (%#lx)", __func__, r->sel());
         Ec::destroy (ec, *ec->pd);
         sys_finish<Sys_regs::BAD_CAP>();
     }
+//    Console::print("EC:%p SYS_CREATE EC: %p name: %s bound to Pd: %s", current, ec, ec->get_name(), ec->getPd()->get_name());
 
     sys_finish<Sys_regs::SUCCESS>();
 }
@@ -703,7 +747,8 @@ void Ec::sys_ec_ctrl()
 
         case 1: /* yield */
             current->cont = sys_finish<Sys_regs::SUCCESS>;
-            Sc::schedule (false, false);
+            if(is_idle())
+                Sc::schedule (false, false);
             break;
 
         case 2: /* helping */
@@ -729,7 +774,8 @@ void Ec::sys_ec_ctrl()
 
         case 3: /* re-schedule */
             current->cont = sys_finish<Sys_regs::SUCCESS>;
-            Sc::schedule (false, true);
+            if(is_idle())
+                Sc::schedule (false, true);
             break;
 
         default:
@@ -847,7 +893,7 @@ void Ec::sys_pd_ctrl()
     Pd *dst = static_cast<Pd *>(cap_pd.obj());
 
     if (!src->quota.transfer_to(dst->quota, r->tra())) {
-        trace (TRACE_ERROR, "%s: PD %p has insufficient kernel memory quota", __func__, src);
+        trace (TRACE_ERROR, "%s: PD %s has insufficient kernel memory quota for %s", __func__, src->get_name(), dst->get_name());
         sys_finish<Sys_regs::BAD_PAR>();
     }
 

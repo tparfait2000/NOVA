@@ -106,3 +106,11 @@ static inline void set_cr4 (mword cr4)
 {
     asm volatile ("mov %0, %%cr4" : : "r" (cr4));
 }
+
+ALWAYS_INLINE
+static inline mword get_dr6()
+{
+    mword dr6;
+    asm volatile ("mov %%dr6, %0" : "=r" (dr6));
+    return dr6;
+}

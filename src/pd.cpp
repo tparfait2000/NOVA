@@ -27,17 +27,19 @@
 #include "pt.hpp"
 #include "sm.hpp"
 
-INIT_PRIORITY (PRIO_SLAB)
-Slab_cache Pd::cache (sizeof (Pd), 32);
+INIT_PRIORITY(PRIO_SLAB)
+Slab_cache Pd::cache(sizeof (Pd), 32);
 
 Pd *Pd::current;
 
-INIT_PRIORITY (PRIO_BUDDY)
-ALIGNED(32) Pd Pd::kern (&Pd::kern);
-ALIGNED(32) Pd Pd::root (&Pd::root, NUM_EXC, 0x1f);
+INIT_PRIORITY(PRIO_BUDDY)
+ALIGNED(32) Pd Pd::kern(&Pd::kern);
+ALIGNED(32) Pd Pd::root(&Pd::root, NUM_EXC, 0x1f);
 
-Pd::Pd (Pd *own) : Kobject (PD, static_cast<Space_obj *>(own)), pt_cache (sizeof (Pt), 32), mdb_cache (sizeof (Mdb), 16), sm_cache (sizeof (Sm), 32), sc_cache (sizeof (Sc), 32), ec_cache (sizeof (Ec), 32), fpu_cache (sizeof (Fpu), 16)
-{
+const char *Pd::names[] = {nullptr};
+
+Pd::Pd (Pd *own) : Kobject (PD, static_cast<Space_obj *>(own)), pt_cache (sizeof (Pt), 32), mdb_cache (sizeof (Mdb), 16), sm_cache (sizeof (Sm), 32), sc_cache (sizeof (Sc), 32), ec_cache (sizeof (Ec), 32), fpu_cache (sizeof (Fpu), 16){
+    copy_string(name, const_cast<char* const> ("kern_pd"));
     hpt = Hptp (reinterpret_cast<mword>(&PDBR));
 
     Mtrr::init();
@@ -52,12 +54,15 @@ Pd::Pd (Pd *own) : Kobject (PD, static_cast<Space_obj *>(own)), pt_cache (sizeof
     Space_pio::addreg (own->quota, own->mdb_cache, 0, 1UL << 16, 7);
 }
 
-Pd::Pd (Pd *own, mword sel, mword a) : Kobject (PD, static_cast<Space_obj *>(own), sel, a, free, pre_free), pt_cache (sizeof (Pt), 32) , mdb_cache (sizeof (Mdb), 16), sm_cache (sizeof (Sm), 32), sc_cache (sizeof (Sc), 32), ec_cache (sizeof (Ec), 32), fpu_cache (sizeof (Fpu), 16)
-{
+Pd::Pd(Pd *own, mword sel, mword a, char* const s) : Kobject (PD, static_cast<Space_obj *>(own), sel, a, free, pre_free), pt_cache (sizeof (Pt), 32) , mdb_cache (sizeof (Mdb), 16), sm_cache (sizeof (Sm), 32), sc_cache (sizeof (Sc), 32), ec_cache (sizeof (Ec), 32), fpu_cache (sizeof (Fpu), 16){
     if (this == &Pd::root) {
+        copy_string(name, const_cast<char* const> ("root"));
         bool res = Quota::init.transfer_to(quota, Quota::init.limit());
         assert(res);
+    } else {
+        copy_string(name, s);
     }
+    set_to_be_cowed();
 }
 
 template <typename S>
@@ -71,17 +76,16 @@ static void free_mdb(Rcu_elem * e)
 }
 
 template <typename S>
-bool Pd::delegate (Pd *snd, mword const snd_base, mword const rcv_base, mword const ord, mword const attr, mword const sub, char const * deltype)
-{
+bool Pd::delegate(Pd *snd, mword const snd_base, mword const rcv_base, mword const ord, mword const attr, mword const sub, char const * deltype) {
     bool s = false;
 
     Quota_guard qg(this->quota);
 
     Mdb *mdb;
-    for (mword addr = snd_base; (mdb = snd->S::tree_lookup (addr, true)); addr = mdb->node_base + (1UL << mdb->node_order)) {
+    for (mword addr = snd_base; (mdb = snd->S::tree_lookup(addr, true)); addr = mdb->node_base + (1UL << mdb->node_order)) {
 
         mword o, b = snd_base;
-        if ((o = clamp (mdb->node_base, b, mdb->node_order, ord)) == ~0UL)
+        if ((o = clamp(mdb->node_base, b, mdb->node_order, ord)) == ~0UL)
             break;
 
         if (quota.hit_limit(1)) {
@@ -111,11 +115,10 @@ bool Pd::delegate (Pd *snd, mword const snd_base, mword const rcv_base, mword co
             trace (0, "overmap attempt %s - node - PD:%p->%p SB:%#010lx RB:%#010lx O:%#04lx A:%#lx SUB:%lx", deltype, snd, this, snd_base, rcv_base, ord, attr, sub);
             continue;
         }
-
-        s |= S::update (qg, node);
+        s |= S::update(qg, node, 0, to_be_cowed);
 
         if (Cpu::hazard & HZD_OOM) {
-            s |= S::update (qg, node, attr);
+            s |= S::update (qg, node, attr, to_be_cowed);
             node->demote_node (attr);
             if (node->remove_node() && S::tree_remove (node))
                 Rcu::call (node);
@@ -130,21 +133,20 @@ bool Pd::delegate (Pd *snd, mword const snd_base, mword const rcv_base, mword co
 }
 
 template <typename S>
-void Pd::revoke (mword const base, mword const ord, mword const attr, bool self, bool kim)
-{
+void Pd::revoke(mword const base, mword const ord, mword const attr, bool self, bool kim) {
     Mdb *mdb;
-    for (mword addr = base; (mdb = S::tree_lookup (addr, true)); addr = mdb->node_base + (1UL << mdb->node_order)) {
+    for (mword addr = base; (mdb = S::tree_lookup(addr, true)); addr = mdb->node_base + (1UL << mdb->node_order)) {
 
         mword o, p, b = base;
-        if ((o = clamp (mdb->node_base, b, mdb->node_order, ord)) == ~0UL)
+        if ((o = clamp(mdb->node_base, b, mdb->node_order, ord)) == ~0UL)
             break;
 
         /* keep in mapping database if requested and at least one child node exists */
         if (kim && (ACCESS_ONCE(mdb->next)->dpth > mdb->dpth)) {
             Quota_guard qg(this->quota);
             if (mdb->node_attr & 0x1f) {
-                static_cast<S *>(mdb->space)->update (qg, mdb, 0x1f);
-                mdb->demote_node (0x1f);
+                static_cast<S *> (mdb->space)->update(qg, mdb, 0x1f);
+                mdb->demote_node(0x1f);
             }
 
             bool preempt = Cpu::preemption;
@@ -162,7 +164,8 @@ void Pd::revoke (mword const base, mword const ord, mword const attr, bool self,
 
         Mdb *node = mdb;
 
-        unsigned d = node->dpth; bool demote = false;
+        unsigned d = node->dpth;
+        bool demote = false;
 
         if (self)
             demote = clamp (node->node_phys, p = b - mdb->node_base + mdb->node_phys, node->node_order, o) != ~0UL;
@@ -171,11 +174,11 @@ void Pd::revoke (mword const base, mword const ord, mword const attr, bool self,
 
             if (demote && node->node_attr & attr) {
                 Quota_guard qg(this->quota);
-                static_cast<S *>(node->space)->update (qg, node, attr);
-                node->demote_node (attr);
+                static_cast<S *> (node->space)->update(qg, node, attr);
+                node->demote_node(attr);
             }
 
-            ptr = ACCESS_ONCE (node->next);
+            ptr = ACCESS_ONCE(node->next);
 
             if (ptr->dpth <= d)
                 break;
@@ -197,36 +200,34 @@ void Pd::revoke (mword const base, mword const ord, mword const attr, bool self,
             if (preempt)
                 Cpu::preempt_disable();
 
-            if (node->remove_node() && static_cast<S *>(node->space)->tree_remove (node))
-                Rcu::call (node);
+            if (node->remove_node() && static_cast<S *> (node->space)->tree_remove(node))
+                Rcu::call(node);
 
             if (preempt)
                 Cpu::preempt_enable();
 
-            ptr = ACCESS_ONCE (node->prev);
+            ptr = ACCESS_ONCE(node->prev);
 
             if (node->dpth <= d)
                 break;
         }
 
-        assert (node == mdb);
+        assert(node == mdb);
     }
 }
 
-mword Pd::clamp (mword snd_base, mword &rcv_base, mword snd_ord, mword rcv_ord)
-{
-    if ((snd_base ^ rcv_base) >> max (snd_ord, rcv_ord))
+mword Pd::clamp(mword snd_base, mword &rcv_base, mword snd_ord, mword rcv_ord) {
+    if ((snd_base ^ rcv_base) >> max(snd_ord, rcv_ord))
         return ~0UL;
 
     rcv_base |= snd_base;
 
-    return min (snd_ord, rcv_ord);
+    return min(snd_ord, rcv_ord);
 }
 
-mword Pd::clamp (mword &snd_base, mword &rcv_base, mword snd_ord, mword rcv_ord, mword h)
-{
-    assert (snd_ord < sizeof (mword) * 8);
-    assert (rcv_ord < sizeof (mword) * 8);
+mword Pd::clamp(mword &snd_base, mword &rcv_base, mword snd_ord, mword rcv_ord, mword h) {
+    assert(snd_ord < sizeof (mword) * 8);
+    assert(rcv_ord < sizeof (mword) * 8);
 
     mword s = (1ul << snd_ord) - 1;
     mword r = (1ul << rcv_ord) - 1;
@@ -234,7 +235,7 @@ mword Pd::clamp (mword &snd_base, mword &rcv_base, mword snd_ord, mword rcv_ord,
     snd_base &= ~s;
     rcv_base &= ~r;
 
-    if (EXPECT_TRUE (s < r)) {
+    if (EXPECT_TRUE(s < r)) {
         rcv_base |= h & r & ~s;
         return snd_ord;
     } else {
@@ -243,13 +244,12 @@ mword Pd::clamp (mword &snd_base, mword &rcv_base, mword snd_ord, mword rcv_ord,
     }
 }
 
-void Pd::xlt_crd (Pd *pd, Crd xlt, Crd &crd)
-{
+void Pd::xlt_crd(Pd *pd, Crd xlt, Crd &crd) {
     Crd::Type t = xlt.type();
 
     if (t && t == crd.type()) {
 
-        Space *snd = pd->subspace (t), *rcv = subspace (t);
+        Space *snd = pd->subspace(t), *rcv = subspace(t);
         mword sb = crd.base(), so = crd.order(), rb = xlt.base(), ro = xlt.order();
         Mdb *mdb, *node;
 
@@ -263,40 +263,39 @@ void Pd::xlt_crd (Pd *pd, Crd xlt, Crd &crd)
              * If a translate of an item inside the same PD (receiver/sender in same PD)
              * are of no success, then return the very same item.
              */
-            Mdb *first = snd->tree_lookup (crd.base());
+            Mdb *first = snd->tree_lookup(crd.base());
             if (first && first->space == rcv && first == mdb) {
                 rb = xlt.base();
                 ro = xlt.order();
-                if ((ro = clamp (first->node_base, rb, first->node_order, ro)) != ~0UL)
+                if ((ro = clamp(first->node_base, rb, first->node_order, ro)) != ~0UL)
                     node = first;
-           }
+            }
         }
 
         if (node) {
 
-            so = clamp (mdb->node_base, sb, mdb->node_order, so);
+            so = clamp(mdb->node_base, sb, mdb->node_order, so);
             sb = (sb - mdb->node_base) + (mdb->node_phys - node->node_phys) + node->node_base;
 
-            if ((ro = clamp (sb, rb, so, ro)) != ~0UL) {
-                trace (TRACE_DEL, "XLT OBJ PD:%p->%p SB:%#010lx RB:%#010lx O:%#04lx", pd, this, crd.base(), rb, so);
-                crd = Crd (crd.type(), rb, ro, mdb->node_attr);
+            if ((ro = clamp(sb, rb, so, ro)) != ~0UL) {
+                trace(TRACE_DEL, "XLT OBJ PD:%p->%p SB:%#010lx RB:%#010lx O:%#04lx", pd, this, crd.base(), rb, so);
+                crd = Crd(crd.type(), rb, ro, mdb->node_attr);
                 return;
             }
         }
     }
 
-    crd = Crd (0);
+    crd = Crd(0);
 }
 
-void Pd::del_crd (Pd *pd, Crd del, Crd &crd, mword sub, mword hot)
-{
+void Pd::del_crd(Pd *pd, Crd del, Crd &crd, mword sub, mword hot) {
     Crd::Type st = crd.type(), rt = del.type();
     bool s = false;
 
     mword a = crd.attr() & del.attr(), sb = crd.base(), so = crd.order(), rb = del.base(), ro = del.order(), o = 0;
 
-    if (EXPECT_FALSE (st != rt || !a)) {
-        crd = Crd (0);
+    if (EXPECT_FALSE(st != rt || !a)) {
+        crd = Crd(0);
         return;
     }
 
@@ -309,8 +308,8 @@ void Pd::del_crd (Pd *pd, Crd del, Crd &crd, mword sub, mword hot)
             break;
 
         case Crd::PIO:
-            o = clamp (sb, rb, so, ro);
-            trace (TRACE_DEL, "DEL I/O PD:%p->%p SB:%#010lx RB:%#010lx O:%#04lx A:%#lx", pd, this, rb, rb, o, a);
+            o = clamp(sb, rb, so, ro);
+            trace(TRACE_DEL, "DEL I/O PD:%p->%p SB:%#010lx RB:%#010lx O:%#04lx A:%#lx", pd, this, rb, rb, o, a);
             delegate<Space_pio>(pd, rb, rb, o, a, sub, "PIO");
             break;
 
@@ -321,7 +320,7 @@ void Pd::del_crd (Pd *pd, Crd del, Crd &crd, mword sub, mword hot)
             break;
     }
 
-    crd = Crd (rt, rb, o, a);
+    crd = Crd(rt, rb, o, a);
 
     if (s && rt == Crd::OBJ)
         /* if FRAME_0 got replaced by real pages we have to tell all cpus, done below by shootdown */
@@ -331,25 +330,24 @@ void Pd::del_crd (Pd *pd, Crd del, Crd &crd, mword sub, mword hot)
         shootdown(this);
 }
 
-void Pd::rev_crd (Crd crd, bool self, bool preempt, bool kim)
-{
+void Pd::rev_crd(Crd crd, bool self, bool preempt, bool kim) {
     if (preempt)
         Cpu::preempt_enable();
 
     switch (crd.type()) {
 
         case Crd::MEM:
-            trace (TRACE_REV, "REV MEM PD:%p B:%#010lx O:%#04x A:%#04x %s", this, crd.base(), crd.order(), crd.attr(), self ? "+" : "-");
+            trace(TRACE_REV, "REV MEM PD:%p B:%#010lx O:%#04x A:%#04x %s", this, crd.base(), crd.order(), crd.attr(), self ? "+" : "-");
             revoke<Space_mem>(crd.base(), crd.order(), crd.attr(), self, kim);
             break;
 
         case Crd::PIO:
-            trace (TRACE_REV, "REV I/O PD:%p B:%#010lx O:%#04x A:%#04x %s", this, crd.base(), crd.order(), crd.attr(), self ? "+" : "-");
+            trace(TRACE_REV, "REV I/O PD:%p B:%#010lx O:%#04x A:%#04x %s", this, crd.base(), crd.order(), crd.attr(), self ? "+" : "-");
             revoke<Space_pio>(crd.base(), crd.order(), crd.attr(), self, kim);
             break;
 
         case Crd::OBJ:
-            trace (TRACE_REV, "REV OBJ PD:%p B:%#010lx O:%#04x A:%#04x %s", this, crd.base(), crd.order(), crd.attr(), self ? "+" : "-");
+            trace(TRACE_REV, "REV OBJ PD:%p B:%#010lx O:%#04x A:%#04x %s", this, crd.base(), crd.order(), crd.attr(), self ? "+" : "-");
             revoke<Space_obj>(crd.base(), crd.order(), crd.attr(), self, kim);
             break;
     }
@@ -361,8 +359,7 @@ void Pd::rev_crd (Crd crd, bool self, bool preempt, bool kim)
         shootdown(this);
 }
 
-void Pd::xfer_items (Pd *src, Crd xlt, Crd del, Xfer *s, Xfer *d, unsigned long ti)
-{
+void Pd::xfer_items(Pd *src, Crd xlt, Crd del, Xfer *s, Xfer *d, unsigned long ti) {
     mword set_as_del;
 
     for (Crd crd; ti--; s--) {
@@ -373,19 +370,20 @@ void Pd::xfer_items (Pd *src, Crd xlt, Crd del, Xfer *s, Xfer *d, unsigned long 
         switch (s->flags() & 3) {
 
             case 0:
-                xlt_crd (src, xlt, crd);
+                xlt_crd(src, xlt, crd);
                 break;
 
             case 2:
-                xlt_crd (src, xlt, crd);
+                xlt_crd(src, xlt, crd);
                 if (crd.type()) break;
 
                 crd = *s;
                 set_as_del = 1;
 
-            case 1: {
+            case 1:
+            {
                 bool r = src == &root && s->flags() & 0x800;
-                del_crd (r? &kern : src, del, crd, (s->flags() >> 8) & (r ? 7 : 3), s->hotspot());
+                del_crd(r ? &kern : src, del, crd, (s->flags() >> 8) & (r ? 7 : 3), s->hotspot());
                 if (Cpu::hazard & HZD_OOM)
                     return;
                 break;
@@ -396,7 +394,7 @@ void Pd::xfer_items (Pd *src, Crd xlt, Crd del, Xfer *s, Xfer *d, unsigned long 
         };
 
         if (d)
-            *d-- = Xfer (crd, s->flags() | set_as_del);
+            *d-- = Xfer(crd, s->flags() | set_as_del);
     }
 }
 
@@ -428,15 +426,207 @@ void Pd::assign_rid(uint16 const r)
     rids_u     |= static_cast<uint16>(1U << free);
 }
 
-Pd::~Pd()
-{
+void Pd::add_cow(Cow::cow_elt *ce) {
+    Lock_guard <Spinlock> guard(cow_lock);
+    Cow::cow_elt *tampon = cow_list;
+    cow_list = ce;
+    ce->next = tampon;
+}
+
+Cow::cow_elt* Pd::cowlist_contains(mword addr, Paddr phys) {
+    phys = phys & ~PAGE_MASK;
+    addr = addr & ~PAGE_MASK;
+    Lock_guard <Spinlock> guard(cow_lock);
+    Cow::cow_elt *c = cow_list;
+    while (c != nullptr) {
+        if (c->page_addr_or_gpa == addr && c->old_phys == phys)
+            return c;
+        c = c->next;
+    }
+    return nullptr;
+}
+
+bool Pd::is_mapped_elsewhere(Paddr phys, Cow::cow_elt* cow) {
+    Lock_guard <Spinlock> guard(cow_lock);
+    bool is_mapped = false;
+    Cow::cow_elt *c = cow_list;
+    while ((c != nullptr) && (c != cow)) {
+        if (c->old_phys == phys) {//frame already mapped elsewhere
+            cow->old_phys = phys;
+            cow->new_phys[0] = c->new_phys[0];
+            cow->new_phys[1] = c->new_phys[1];
+            is_mapped = true;
+        }
+        if (c->new_phys[0] && c->new_phys[0]->phys_addr == phys) {//mapping created before subtitute(v)
+            cow->old_phys = c->old_phys;
+            cow->new_phys[0] = c->new_phys[0];
+            cow->new_phys[1] = c->new_phys[1];
+            is_mapped = true;
+        }
+
+        c = c->next;
+    }
+    if (is_mapped)
+        return true;
+    else
+        return false;
+}
+
+Cow::cow_elt* Pd::find_cow_elt(mword gpa) {
+    int n = 0;
+    Lock_guard <Spinlock> guard(cow_lock);
+    Cow::cow_elt *c = cow_list, *result = nullptr;
+    while (c != nullptr) {
+        if (c->old_phys == (gpa & ~PAGE_MASK)) {
+            result = c;
+            n++;
+        }
+    }
+    if (n != 1) {
+        Ec::die("Cow elt not find");
+        Console::print("Cow elt not find");
+    }
+    return result;
+}
+
+void Pd::restore_state(bool is_vcpu) {
+    Lock_guard <Spinlock> guard(cow_lock);
+    Cow::cow_elt *cow = cow_list;
+    Quota q = this->quota;
+    while (cow != nullptr) {
+        mword v = cow->page_addr_or_gpa;
+        if(is_vcpu){
+            cow->vtlb_entry->set_val(cow->prev_tlb_val);
+        }else{
+            loc[Cpu::id].replace_cow(q, v, cow->new_phys[1]->phys_addr | (cow->attr | Hpt::HPT_W));
+        }
+        cow = cow->next;
+    }
+}
+
+void Pd::restore_state1(bool is_vcpu) {
+    Lock_guard <Spinlock> guard(cow_lock);
+    Cow::cow_elt *cow = cow_list;
+    Quota q = this->quota;
+    while (cow != nullptr) {
+        mword v = cow->page_addr_or_gpa;
+        if(is_vcpu){
+            cow->vtlb_entry->set_val(cow->new_phys[0]->phys_addr | (cow->attr | Vtlb::TLB_W));
+        }else{
+            loc[Cpu::id].replace_cow(q, v, cow->new_phys[0]->phys_addr | (cow->attr | Hpt::HPT_W));
+        }
+        cow = cow->next;
+    }
+}
+
+void Pd::rollback(bool is_vcpu) {
+    Lock_guard <Spinlock> guard(cow_lock);
+    Cow::cow_elt *cow = cow_list;
+    Quota q = this->quota;
+    while (cow != nullptr) {
+        Paddr old_phys = cow->old_phys;
+        mword v = cow->page_addr_or_gpa;
+        if(is_vcpu){
+            cow->vtlb_entry->set_val(cow->prev_tlb_val);
+        }else{
+            loc[Cpu::id].replace_cow(q, v, old_phys| (cow->attr & ~Hpt::HPT_W));
+        }
+        Cow::free_cow_elt(cow);
+        cow = cow->next;
+    }
+}
+
+void Pd::set_to_be_cowed(){   
+    int i = 0; 
+    while(names[i] != nullptr){
+        if(str_equal(name, names[i])){
+            to_be_cowed = false;
+            return;
+        }
+        i++;
+    }
+    to_be_cowed = true; 
+}
+
+bool Pd::compare_and_commit() {
+    Lock_guard <Spinlock> guard(cow_lock);
+    Cow::cow_elt *cow = cow_list;
+    Quota q = this->quota;
+    while (cow != nullptr) {
+        //        Console::print("Compare v: %p  phys: %p  ce: %p  phys1: %p  phys2: %p", cow->page_addr_or_gpa, cow->old_phys, cow, cow->new_phys[0]->phys_addr, cow->new_phys[1]->phys_addr);
+        mword *ptr1 = reinterpret_cast<mword*> (Hpt::remap_cow(q, cow->new_phys[0]->phys_addr)),
+                *ptr2 = reinterpret_cast<mword*> (cow->page_addr_or_gpa);
+        int missmatch_addr = memcmp(ptr1, ptr2, PAGE_SIZE);
+        if (missmatch_addr) {
+            mword index = PAGE_SIZE / 4 - missmatch_addr - 1;
+            mword val1 = *(ptr1 + index);
+            mword val2 = *(ptr2 + index);
+            Console::print("Pd: %p  phys1 %lx phys2 %lx ptr1: %p  ptr2: %p  val1: %lx  val2: %lx  missmatch_addr: %p",
+                    this, cow->new_phys[0]->phys_addr, cow->new_phys[1]->phys_addr, ptr1, ptr2, val1, val2, ptr2 + index);
+            return true;
+        }
+        Paddr old_phys = cow->old_phys;
+        mword v = cow->page_addr_or_gpa;
+        void *ptr = Hpt::remap_cow(q, old_phys);
+        memcpy(ptr, reinterpret_cast<const void*> (v), PAGE_SIZE);
+        loc[Cpu::id].replace_cow(q, v, old_phys | (cow->attr & ~Hpt::HPT_W)); 
+        Cow::free_cow_elt(cow);
+        cow = cow->next;
+    }
+    return false;
+}
+
+bool Pd::vtlb_compare_and_commit(){
+    Lock_guard <Spinlock> guard(cow_lock);
+    Cow::cow_elt *cow = cow_list;
+    Quota q = this->quota;
+    while (cow != nullptr) {
+        //        Console::print("Compare v: %p  phys: %p  ce: %p  phys1: %p  phys2: %p", cow->page_addr_or_gpa, cow->old_phys, cow, cow->new_phys[0]->phys_addr, cow->new_phys[1]->phys_addr);
+        mword *ptr1 = reinterpret_cast<mword*> (Hpt::remap_cow(q, cow->new_phys[0]->phys_addr)),
+                *ptr2 = reinterpret_cast<mword*> (Hpt::remap_cow(q, cow->new_phys[1]->phys_addr, PAGE_SIZE));
+        int missmatch_addr = memcmp(ptr1, ptr2, PAGE_SIZE);
+        if (missmatch_addr) {
+            mword index = PAGE_SIZE /sizeof(mword) - missmatch_addr * 4/sizeof(mword) - 1;
+            mword val1 = *(ptr1 + index);
+            mword val2 = *(ptr2 + index);
+            Console::print("addr: %lx  phys1 %lx phys2 %lx ptr1: %p  ptr2: %p  val1: %lx  val2: %lx  missmatch_addr: %p mword size %ld",
+                    cow->page_addr_or_gpa, cow->new_phys[0]->phys_addr, cow->new_phys[1]->phys_addr, ptr1, ptr2, val1, val2, ptr2 + index, sizeof(mword));
+            return true;
+        }
+        void *ptr = Hpt::remap_cow(q, cow->old_phys);
+        memcpy(ptr, ptr2, PAGE_SIZE);
+        cow->vtlb_entry->set_val(cow->old_phys | (cow->attr & ~Vtlb::TLB_W));
+        Cow::free_cow_elt(cow);
+        cow = cow->next;
+    }
+    return false;
+}
+
+
+bool Pd::compare_memory_mute() {
+    Cow::cow_elt *cow = cow_list;
+    Quota q = this->quota;
+    while (cow != nullptr) {
+        //        Console::print("Compare v: %p  phys: %p  ce: %p  phys1: %p  phys2: %p", cow->page_addr_or_gpa, cow->old_phys, cow, cow->new_phys[0]->phys_addr, cow->new_phys[1]->phys_addr);
+        mword *ptr1 = reinterpret_cast<mword*> (Hpt::remap_cow(q, cow->new_phys[0]->phys_addr)),
+                *ptr2 = reinterpret_cast<mword*> (cow->page_addr_or_gpa);
+        int missmatch_addr = memcmp(ptr1, ptr2, PAGE_SIZE);
+        if (missmatch_addr) {
+            return true;
+        }
+        cow = cow->next;
+    }
+    return false;
+}
+
+Pd::~Pd() {
     pre_free(this);
 
     Space_mem::hpt.clear(quota, Space_mem::hpt.dest_hpt, Space_mem::hpt.iter_hpt_lev);
     Space_mem::dpt.clear(quota);
     Space_mem::npt.clear(quota);
     for (unsigned cpu = 0; cpu < NUM_CPU; cpu++)
-        if (Hip::cpu_online (cpu))
+        if (Hip::cpu_online(cpu))
             Space_mem::loc[cpu].clear(quota, Space_mem::hpt.dest_loc, Space_mem::hpt.iter_loc_lev);
 
     pt_cache.free(quota);

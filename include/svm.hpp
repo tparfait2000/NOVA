@@ -24,12 +24,11 @@
 
 class Quota;
 
-class Vmcb
-{
-    public:
-        union {
-            char pad[1024];
-            struct {
+class Vmcb {
+public:
+    union {
+        char pad[1024];
+        struct {
                 uint32      intercept_cr;           // 0x0
                 uint32      intercept_dr;           // 0x4
                 uint32      intercept_exc;          // 0x8
@@ -51,8 +50,8 @@ class Vmcb
                 uint64      inj_control;            // 0xa8
                 uint64      npt_cr3;                // 0xb0
                 uint64      lbr;                    // 0xb8
-            };
         };
+    };
 
 union {
     char pad2[PAGE_SIZE - 1024];
@@ -72,85 +71,79 @@ union {
      };
 };
 
-        static Paddr        root        CPULOCAL;
-        static unsigned     asid_ctr    CPULOCAL;
-        static uint32       svm_version CPULOCAL;
-        static uint32       svm_feature CPULOCAL;
+    static Paddr root CPULOCAL;
+    static unsigned asid_ctr CPULOCAL;
+    static uint32 svm_version CPULOCAL;
+    static uint32 svm_feature CPULOCAL;
 
-        static mword const fix_cr0_set = 0;
-        static mword const fix_cr0_clr = 0;
-        static mword const fix_cr4_set = 0;
-        static mword const fix_cr4_clr = 0;
+    static mword const fix_cr0_set = 0;
+    static mword const fix_cr0_clr = 0;
+    static mword const fix_cr4_set = 0;
+    static mword const fix_cr4_clr = 0;
 
-        enum Ctrl0
-        {
-            CPU_INTR        = 1ul << 0,
-            CPU_NMI         = 1ul << 1,
-            CPU_INIT        = 1ul << 3,
-            CPU_VINTR       = 1ul << 4,
-            CPU_INVD        = 1ul << 22,
-            CPU_HLT         = 1ul << 24,
-            CPU_INVLPG      = 1ul << 25,
-            CPU_IO          = 1ul << 27,
-            CPU_MSR         = 1ul << 28,
-            CPU_SHUTDOWN    = 1ul << 31,
-        };
+    enum Ctrl0 {
+        CPU_INTR = 1ul << 0,
+        CPU_NMI = 1ul << 1,
+        CPU_INIT = 1ul << 3,
+        CPU_VINTR = 1ul << 4,
+        CPU_INVD = 1ul << 22,
+        CPU_HLT = 1ul << 24,
+        CPU_INVLPG = 1ul << 25,
+        CPU_IO = 1ul << 27,
+        CPU_MSR = 1ul << 28,
+        CPU_SHUTDOWN = 1ul << 31,
+    };
 
-        enum Ctrl1
-        {
-            CPU_VMLOAD      = 1ul << 2,
-            CPU_VMSAVE      = 1ul << 3,
-            CPU_CLGI        = 1ul << 5,
-            CPU_SKINIT      = 1ul << 6,
-        };
+    enum Ctrl1 {
+        CPU_VMLOAD = 1ul << 2,
+        CPU_VMSAVE = 1ul << 3,
+        CPU_CLGI = 1ul << 5,
+        CPU_SKINIT = 1ul << 6,
+    };
 
-        static mword const force_ctrl0 =    CPU_INTR    |
-                                            CPU_NMI     |
-                                            CPU_INIT    |
-                                            CPU_INVD    |
-                                            CPU_HLT     |
-                                            CPU_IO      |
-                                            CPU_MSR     |
-                                            CPU_SHUTDOWN;
+    static mword const force_ctrl0 = CPU_INTR |
+            CPU_NMI |
+            CPU_INIT |
+            CPU_INVD |
+            CPU_HLT |
+            CPU_IO |
+            CPU_MSR |
+            CPU_SHUTDOWN;
 
-        static mword const force_ctrl1 =    CPU_VMLOAD  |
-                                            CPU_VMSAVE  |
-                                            CPU_CLGI    |
-                                            CPU_SKINIT;
+    static mword const force_ctrl1 = CPU_VMLOAD |
+            CPU_VMSAVE |
+            CPU_CLGI |
+            CPU_SKINIT;
 
-        ALWAYS_INLINE
-        static inline void *operator new (size_t, Quota &quota)
-        {
-            return Buddy::allocator.alloc (0, quota, Buddy::FILL_0);
-        }
+    ALWAYS_INLINE
+    static inline void *operator new (size_t, Quota &quota) {
+        return Buddy::allocator.alloc(0, quota, Buddy::FILL_0);
+    }
 
-        ALWAYS_INLINE
-        static inline void destroy(Vmcb *obj, Quota &quota)
-        {
-            Buddy::allocator.free (reinterpret_cast<mword>(Buddy::phys_to_ptr(static_cast<Paddr>(obj->base_msr))), quota);
-            obj->~Vmcb();
-            Buddy::allocator.free (reinterpret_cast<mword>(obj), quota);
-        }
+    ALWAYS_INLINE
+    static inline void destroy(Vmcb *obj, Quota &quota) {
+        Buddy::allocator.free(reinterpret_cast<mword> (Buddy::phys_to_ptr(static_cast<Paddr> (obj->base_msr))), quota);
+        obj->~Vmcb();
+        Buddy::allocator.free(reinterpret_cast<mword> (obj), quota);
+    }
 
-        Vmcb (Quota &quota, mword, mword);
+    Vmcb(Quota &quota, mword, mword);
+    
+    ALWAYS_INLINE
+    inline Vmcb() {
+        asm volatile ("vmsave" : : "a" (Buddy::ptr_to_phys(this)) : "memory");
+    }
 
-        ALWAYS_INLINE
-        inline Vmcb()
-        {
-            asm volatile ("vmsave" : : "a" (Buddy::ptr_to_phys (this)) : "memory");
-        }
+    ALWAYS_INLINE
+    inline void adjust_rip(mword len) {
+        rip += len;
 
-        ALWAYS_INLINE
-        inline void adjust_rip (mword len)
-        {
-            rip += len;
+        if (int_shadow)
+            int_shadow = 0;
+    }
 
-            if (int_shadow)
-                int_shadow = 0;
-        }
+    static bool has_npt() { return Vmcb::svm_feature & 1; }
+    static bool has_urg() { return true; }
 
-        static bool has_npt() { return Vmcb::svm_feature & 1; }
-        static bool has_urg() { return true; }
-
-        static void init();
+    static void init();
 };

@@ -28,7 +28,8 @@ class Space_pio : public Space
 {
     private:
         Paddr hbmp, gbmp;
-
+        static Paddr bmp_full1, gbmp_backup;
+        
         ALWAYS_INLINE
         static inline mword idx_to_virt (mword idx)
         {
@@ -51,11 +52,14 @@ class Space_pio : public Space
         Space_pio() : hbmp(0), gbmp(0) {}
 
         Paddr walk (Quota &quota, bool = false, mword = 0);
+        void disable_pio(Quota &quota);
+        void enable_pio(Quota &quota);
 
-        bool update (Quota &quota, Mdb *, mword = 0);
+        bool update (Quota &quota, Mdb *, mword = 0, bool = false);
 
         static void page_fault (mword, mword);
 
         ALWAYS_INLINE
         inline mword sticky_sub(mword) { return 0; }
+
 };

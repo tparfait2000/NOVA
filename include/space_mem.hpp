@@ -112,9 +112,9 @@ class Space_mem : public Space
         }
 
         ALWAYS_INLINE
-        inline void insert (Quota &quota, mword virt, unsigned o, mword attr, Paddr phys)
+        inline void insert (Quota &quota, mword virt, unsigned o, mword attr, Paddr phys, bool set_cow = false)
         {
-            hpt.update (quota, virt, o, phys, attr);
+            hpt.update (quota, virt, o, phys, attr, Hpt::TYPE_UP, set_cow);
         }
 
         ALWAYS_INLINE
@@ -123,6 +123,12 @@ class Space_mem : public Space
             return hpt.replace (quota, v, p);
         }
 
+        ALWAYS_INLINE
+        inline Paddr replace_cow (Quota &quota, mword v, Paddr p)
+        {
+            return hpt.replace_cow (quota, v, p);
+        }
+        
         INIT
         void insert_root (Quota &quota, Slab_cache &, uint64, uint64, mword = 0x7);
 
@@ -130,7 +136,7 @@ class Space_mem : public Space
 
         bool remove_utcb (mword);
 
-        bool update (Quota_guard &quota, Mdb *, mword = 0);
+        bool update (Quota_guard &quota, Mdb *, mword = 0, bool = false);
 
         static void shootdown(Pd *);
 

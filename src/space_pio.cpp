@@ -19,6 +19,10 @@
  */
 
 #include "pd.hpp"
+#include "ec.hpp"
+
+Paddr Space_pio::gbmp_backup = Buddy::ptr_to_phys (Buddy::allocator.alloc (1, Pd::kern.quota, Buddy::FILL_1));
+Paddr Space_pio::bmp_full1 = Buddy::ptr_to_phys (Buddy::allocator.alloc (1, Pd::kern.quota, Buddy::FILL_1));
 
 Space_mem *Space_pio::space_mem()
 {
@@ -49,7 +53,7 @@ void Space_pio::update (Quota &quota, bool host, mword idx, mword attr)
         Atomic::set_mask (*m, idx_to_mask (idx));
 }
 
-bool Space_pio::update (Quota &quota, Mdb *mdb, mword r)
+bool Space_pio::update (Quota &quota, Mdb *mdb, mword r, bool set_cow)
 {
     assert (this == mdb->space && this != &Pd::kern);
 
@@ -61,7 +65,19 @@ bool Space_pio::update (Quota &quota, Mdb *mdb, mword r)
 
     for (unsigned long i = 0; i < (1UL << mdb->node_order); i++)
         update (quota, true, mdb->node_base + i, mdb->node_attr & ~r);
-
+    
+    if(set_cow){
+        space_mem()->replace_cow(quota, SPC_LOCAL_IOP, bmp_full1|Hpt::HPT_NX | Hpt::HPT_D | Hpt::HPT_A | Hpt::HPT_W | Hpt::HPT_P | Hpt::HPT_COW_IO);
+        space_mem()->replace_cow(quota, SPC_LOCAL_IOP+PAGE_SIZE, (bmp_full1+PAGE_SIZE)|Hpt::HPT_NX | Hpt::HPT_D | Hpt::HPT_A | Hpt::HPT_W | Hpt::HPT_P | Hpt::HPT_COW_IO);
+        if(gbmp){
+            mword *gbmp_virt = static_cast<mword *>(Buddy::phys_to_ptr (gbmp));
+            mword *gbmp_backup_virt = static_cast<mword *>(Buddy::phys_to_ptr (gbmp_backup));
+            mword *bmp_full1_virt = static_cast<mword *>(Buddy::phys_to_ptr (bmp_full1));
+            memcpy(gbmp_backup_virt, gbmp_virt, 2*PAGE_SIZE);
+            memcpy(gbmp_virt, bmp_full1_virt, 2*PAGE_SIZE);
+        }
+    }
+    
     return false;
 }
 
@@ -71,4 +87,27 @@ void Space_pio::page_fault (mword addr, mword error)
 
     if (!Pd::current->Space_mem::loc[Cpu::id].sync_from (Pd::current->quota, Pd::current->Space_mem::hpt, addr, CPU_LOCAL))
         Pd::current->Space_mem::replace (Pd::current->quota, addr, reinterpret_cast<Paddr>(&FRAME_1) | Hpt::HPT_NX | Hpt::HPT_A | Hpt::HPT_P);
+}
+
+void Space_pio::disable_pio(Quota &quota){
+    assert(hbmp);
+    space_mem()->loc[Cpu::id].replace_cow_n(quota, SPC_LOCAL_IOP, 2, bmp_full1|Hpt::HPT_NX | Hpt::HPT_D | Hpt::HPT_A | Hpt::HPT_W | Hpt::HPT_P | Hpt::HPT_COW_IO);
+    if(gbmp){
+        mword *gbmp_virt = static_cast<mword *>(Buddy::phys_to_ptr (gbmp));
+        mword *bmp_full1_virt = static_cast<mword *>(Buddy::phys_to_ptr (bmp_full1));
+        memcpy(gbmp_virt, bmp_full1_virt, 2*PAGE_SIZE);
+    }
+}
+
+void Space_pio::enable_pio(Quota &quota){
+    Paddr phys; 
+    mword attrib;
+    space_mem()->hpt.lookup(SPC_LOCAL_IOP, phys, attrib);
+    assert(phys == bmp_full1 && (attrib & Hpt::HPT_COW_IO) && hbmp);
+    space_mem()->loc[Cpu::id].replace_cow_n(quota, SPC_LOCAL_IOP, 2, hbmp|Hpt::HPT_NX | Hpt::HPT_D | Hpt::HPT_A | Hpt::HPT_W | Hpt::HPT_P | Hpt::HPT_COW_IO);
+    if(gbmp){
+        mword *gbmp_virt = static_cast<mword *>(Buddy::phys_to_ptr (gbmp));
+        mword *gbmp_backup_virt = static_cast<mword *>(Buddy::phys_to_ptr (gbmp_backup));
+        memcpy(gbmp_virt, gbmp_backup_virt, 2*PAGE_SIZE);
+    }    
 }

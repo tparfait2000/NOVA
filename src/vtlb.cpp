@@ -24,6 +24,10 @@
 #include "stdio.hpp"
 #include "vtlb.hpp"
 
+Vtlb *              Vtlb::vtlb0 = reinterpret_cast<Vtlb*> (Buddy::allocator.alloc (0, Pd::kern.quota, Buddy::NOFILL)),
+     *              Vtlb::vtlb1 = reinterpret_cast<Vtlb*> (Buddy::allocator.alloc (0, Pd::kern.quota, Buddy::NOFILL)), 
+     *              Vtlb::vtlb2 = reinterpret_cast<Vtlb*> (Buddy::allocator.alloc (0, Pd::kern.quota, Buddy::NOFILL)); 
+
 size_t Vtlb::gwalk (Exc_regs *regs, mword gla, mword &gpa, mword &attr, mword &error)
 {
     if (EXPECT_FALSE (!(regs->cr0_shadow & Cpu::CR0_PG))) {
@@ -105,7 +109,7 @@ size_t Vtlb::hwalk (mword gpa, mword &hpa, mword &attr, mword &error)
 
 Vtlb::Reason Vtlb::miss (Exc_regs *regs, mword virt, mword &error)
 {
-    mword phys, attr = TLB_U | TLB_W | TLB_P;
+    mword phys, attr = TLB_U | TLB_W | TLB_P, err0 = error;
     Paddr host;
 
     trace (TRACE_VTLB, "VTLB Miss CR3:%#010lx A:%#010lx E:%#lx", regs->cr3_shadow, virt, error);
@@ -116,6 +120,7 @@ Vtlb::Reason Vtlb::miss (Exc_regs *regs, mword virt, mword &error)
 
     if (EXPECT_FALSE (!gsize)) {
         Counter::vtlb_gpf++;
+        Console::print("virt %lx err0 %lx err %lx phys %lx attr %lx GLA_GPA", virt, err0, error, phys, attr);        
         return GLA_GPA;
     }
 
@@ -125,6 +130,7 @@ Vtlb::Reason Vtlb::miss (Exc_regs *regs, mword virt, mword &error)
         regs->nst_fault = phys;
         regs->nst_error = error;
         Counter::vtlb_hpf++;
+        Console::print("virt %lx err0 %lx err %lx host %lx phys %lx attr %lx GPA_HPA", virt, err0, error, host, phys, attr);        
         return GPA_HPA;
     }
 
@@ -167,7 +173,7 @@ Vtlb::Reason Vtlb::miss (Exc_regs *regs, mword virt, mword &error)
         }
 
         tlb->val = static_cast<typeof tlb->val>((host & ~((1UL << shift) - 1)) | attr | TLB_D | TLB_A);
-
+        Console::print("virt %lx err0 %lx err %lx phys %lx attr %lx GLA_GPA", virt, err0, error, phys, attr);
         return SUCCESS;
     }
 }

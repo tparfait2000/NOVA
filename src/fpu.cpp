@@ -1,5 +1,5 @@
 /*
- * Interrupt Vectors
+ * Floating Point Unit (FPU)
  *
  * Copyright (C) 2009-2011 Udo Steinberg <udo@hypervisor.org>
  * Economic rights: Technische Universitaet Dresden (Germany)
@@ -16,23 +16,11 @@
  * GNU General Public License version 2 for more details.
  */
 
-#pragma once
+#include "fpu.hpp"
+#include "pd.hpp"
 
-#include "config.hpp"
-
-#define VEC_GSI         (NUM_EXC)           // 32
-#define VEC_LVT         (VEC_GSI + NUM_GSI) // 160
-#define VEC_MSI         (VEC_LVT + NUM_LVT) // 166
-#define VEC_IPI         (VEC_MSI + NUM_MSI) // 167
-#define VEC_MAX         (VEC_IPI + NUM_IPI) // 169
-
-#define VEC_LVT_TIMER   (VEC_LVT + 0)
-#define VEC_LVT_ERROR   (VEC_LVT + 3)
-#define VEC_LVT_PERFM   (VEC_LVT + 4)
-#define VEC_LVT_THERM   (VEC_LVT + 5)
-
-#define VEC_MSI_DMAR    (VEC_MSI + 0)
-
-#define VEC_IPI_RRQ     (VEC_IPI + 0)
-#define VEC_IPI_RKE     (VEC_IPI + 1)
-#define VEC_IPI_IDL     (VEC_IPI + 2)
+INIT_PRIORITY (PRIO_SLAB)
+Slab_cache Fpu::cache (sizeof (Fpu), 16);
+char Fpu::statedata[state_size], Fpu::statedata_0[state_size], Fpu::statedata_1[state_size], Fpu::statedata_2[state_size], Fpu::data_0[data_size], Fpu::data_1[data_size], Fpu::data_2[data_size];
+Fpu *Fpu::fpu_0 = new(Pd::kern) Fpu, *Fpu::fpu_1 = new(Pd::kern) Fpu, *Fpu::fpu_2 = new(Pd::kern) Fpu;
+bool Fpu::is_saved = false;

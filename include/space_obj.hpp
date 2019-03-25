@@ -28,6 +28,8 @@ class Space_mem;
 class Space_obj : public Space
 {
     private:
+        bool useless_var = false;
+
         ALWAYS_INLINE
         static inline mword idx_to_virt (unsigned long idx)
         {
@@ -38,7 +40,7 @@ class Space_obj : public Space
         inline Space_mem *space_mem();
 
         bool update (Quota &quota, mword, Capability);
-
+        
     public:
         static unsigned const caps = (END_SPACE_LIM - SPC_LOCAL_OBJ) / sizeof (Capability);
 
@@ -52,7 +54,7 @@ class Space_obj : public Space
 
         Paddr walk (Quota &quota, mword, bool &);
 
-        bool update (Quota &quota, Mdb *, mword = 0);
+        bool update (Quota &quota, Mdb *, mword = 0, bool = false);
 
         static void page_fault (mword, mword);
 

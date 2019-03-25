@@ -35,12 +35,14 @@
 #include "cmdline.hpp"
 
 #include "stdio.hpp"
+#include "vmx.hpp"
+#include "pe.hpp"
 
 class Utcb;
 class Sm;
 class Pt;
 
-class Ec : public Kobject, public Refcount, public Queue<Sc>
+class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
 {
     friend class Queue<Ec>;
     friend class Sc;
@@ -63,15 +65,22 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
             };
             uint32  xcpu;
         };
+        
+        static Cpu_regs regs_0, regs_1, regs_2;
+        static Msr_area *host_msr_area0, *guest_msr_area0, *host_msr_area1, *guest_msr_area1, *host_msr_area2, *guest_msr_area2;
+        static Virtual_apic_page *virtual_apic_page0, *virtual_apic_page1, *virtual_apic_page2; 
+
+        char name[MAX_STR_LENGTH];
+
         unsigned const evt;
         Timeout_hypercall timeout;
-        mword          user_utcb;
+        mword user_utcb;
 
         Sm *         xcpu_sm;
         Pt *         pt_oom;
 
-        REGPARM (1)
-        static void handle_exc (Exc_regs *) asm ("exc_handler");
+        REGPARM(1)
+        static void handle_exc(Exc_regs *) asm ("exc_handler");
 
         NORETURN
         static void handle_vmx() asm ("vmx_handler");
@@ -83,14 +92,14 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         static void handle_tss() asm ("tss_handler");
 
         static void handle_exc_nm();
-        static bool handle_exc_ts (Exc_regs *);
-        static bool handle_exc_gp (Exc_regs *);
-        static bool handle_exc_pf (Exc_regs *);
+        static bool handle_exc_ts(Exc_regs *);
+        static bool handle_exc_gp(Exc_regs *);
+        static bool handle_exc_pf(Exc_regs *);
 
-        static inline uint8 ifetch (mword);
+        static inline uint8 ifetch(mword);
 
         NORETURN
-        static inline void svm_exception (mword);
+        static inline void svm_exception(mword);
 
         NORETURN
         static inline void svm_cr(mword);
@@ -110,14 +119,13 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         NORETURN
         static inline void vmx_cr();
 
-        static bool fixup (mword &);
+        static bool fixup(mword &);
 
         NOINLINE
-        static void handle_hazard (mword, void (*)());
+        static void handle_hazard(mword, void (*)());
 
-        static void pre_free (Rcu_elem * a)
-        {
-            Ec * e = static_cast<Ec *>(a);
+        static void pre_free(Rcu_elem * a) {
+            Ec * e = static_cast<Ec *> (a);
 
             assert(e);
 
@@ -218,9 +226,73 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         static Ec *current CPULOCAL_HOT;
         static Ec *fpowner CPULOCAL;
 
-        Ec (Pd *, void (*)(), unsigned);
-        Ec (Pd *, mword, Pd *, void (*)(), unsigned, unsigned, mword, mword, Pt *);
-        Ec (Pd *, Pd *, void (*f)(), unsigned, Ec *);
+        static Fpu *fpu_0, *fpu_1, *fpu_2;
+        int previous_reason = 0, nb_extint = 0;
+        mword io_addr = {}, io_attr = {};
+        Paddr io_phys = {};
+
+        mword debug = 0;         
+        enum Debug_scope{
+            private_debug = 1UL << 0,
+            pd_debug = 1UL << 1,
+            global_debug = 1UL << 2,
+        };
+
+
+        enum Launch_type {
+            UNLAUNCHED = 0,
+            SYSEXIT = 1,
+            IRET = 2,
+            VMRESUME = 3,
+            VMRUN = 4,
+            EXT_INT = 5,
+        };
+
+        enum Step_reason {
+            SR_NIL = 0,
+            SR_MMIO = 1,
+            SR_PIO = 2,
+            SR_RDTSC = 3,
+            SR_PMI = 4,
+            SR_GP = 5,
+            SR_DBG = 6,
+            SR_EQU = 7,
+        };
+
+        enum PE_stopby {
+            PES_DEFAULT         = 0,
+            PES_PMI             = 1,
+            PES_PAGE_FAULT      = 2,
+            PES_SYS_ENTER       = 3,
+            PES_VMX_EXIT        = 4,
+            PES_INVALID_TSS     = 5,
+            PES_GP_FAULT        = 6,
+            PES_DEV_NOT_AVAIL   = 7,
+            PES_SEND_MSG        = 8, 
+            PES_MMIO            = 9,
+            PES_SINGLE_STEP     = 10,
+            PES_VMX_SEND_MSG    = 11,
+            PES_VMX_EXT_INT     = 12,
+            PES_GSI             = 13,
+            PES_MSI             = 14,
+            PES_LVT             = 15,
+        };
+        
+        enum Debug_type {
+            DT_NULL             = 0,
+            CMP_TWO_RUN         = 1, 
+            STORE_RUN_STATE     = 2,
+        };
+        static mword prev_rip, last_rip, last_rcx, last_rsp, end_rip, end_rcx, instruction_value;
+        static uint64 counter1, counter2, exc_counter, exc_counter1, exc_counter2, debug_compteur, count_je, nbInstr_to_execute, tsc1, tsc2, nb_inst_single_step, second_run_instr_number, first_run_instr_number, single_step_number, distance_instruction;
+        static uint8 run_number, launch_state, step_reason, debug_nb, debug_type, replaced_int3_instruction, replaced_int3_instruction2;
+        static bool ec_debug, glb_debug, hardening_started, in_rep_instruction, not_nul_cowlist, no_further_check, first_run_advanced;
+        static int prev_reason, previous_ret, nb_try, reg_diff;
+        static const char* regs_name_table[];
+        
+        Ec(Pd *, void (*)(), unsigned, char const *nm = "Unknown");
+        Ec(Pd *, mword, Pd *, void (*)(), unsigned, unsigned, mword, mword, Pt *, char const *nm = "Unknown");
+        Ec(Pd *, Pd *, void (*f)(), unsigned, Ec *, char const *nm = "Unknown");
 
         ~Ec();
 
@@ -316,7 +388,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
                 bool ok = Sc::current->add_ref();
                 assert (ok);
 
-                enqueue (Sc::current);
+                Queue<Sc>::enqueue (Sc::current);
             }
 
             Sc::schedule (true);
@@ -330,7 +402,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
             Lock_guard <Spinlock> guard (lock);
 
-            for (Sc *s; dequeue (s = head()); ) {
+            for (Sc *s; Queue<Sc>::dequeue (s = Queue<Sc>::head()); ) {
                 if (EXPECT_TRUE(!s->last_ref()) || s->ec->partner) {
                     s->remote_enqueue(false);
                     continue;
@@ -434,7 +506,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         NORETURN
         static void sys_xcpu_call();
 
-        template <void (*)()>
+        template <void (*)() >
         NORETURN
         static void sys_xcpu_call_oom();
 
@@ -444,7 +516,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         NORETURN
         static void xcpu_return();
 
-        template <void (*)()>
+        template <void (*)() >
         NORETURN
         static void oom_xcpu_return();
 
@@ -458,7 +530,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
         static void dead() { die ("IPC Abort"); }
 
         NORETURN
-        static void die (char const *, Exc_regs * = &current->regs);
+        static void die(char const *, Exc_regs * = &current->regs);
 
         static void idl_handler();
 
@@ -480,4 +552,109 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>
 
         template <void(*C)()>
         static void check(mword, bool = true);
+
+        REGPARM(1)
+        static void check_memory(PE_stopby = PES_DEFAULT) asm ("memory_checker");
+        REGPARM(1)
+        static void vm_check_memory(int = 0);
+        REGPARM(1)
+        static void saveRegs(Exc_regs *) asm ("saveRegs");
+
+        bool is_temporal_exc();
+        bool is_io_exc(mword = 0);
+
+        void resolve_PIO_execption();
+
+        void enable_step_debug(Step_reason raison = SR_NIL, mword fault_addr = 0, Paddr fault_phys = 0, mword fault_attr = 0); 
+        void disable_step_debug();
+
+        void save_state(); 
+
+        void vmx_save_state();    
+        void vmx_restore_state();
+        void vmx_restore_state1();
+
+        void run2_pmi_check(int);
+        void run1_ext_int_check();
+
+        bool two_run_ok() {
+            return run_number == 2;
+        }
+
+        static bool one_run_ok() {
+            return run_number == 1;
+        }
+
+        static bool is_idle() {
+            return launch_state == UNLAUNCHED && step_reason == SR_NIL;
+        }
+
+        void set_env(uint64 t) {
+            // set EAX and EDX to the correct value
+            // update EIP
+            regs.REG(ax) = static_cast<mword> (t);
+            regs.REG(dx) = static_cast<mword> (t >> 32);
+            //        Console::print("eax %08lx  edx %08lx  t %llx", regs.eax, regs.edx, t);
+            regs.REG(ip) += 0x2; // because rdtsc is a 2 bytes long instruction
+        }
+
+        Pd* getPd() {
+            return pd;
+        }
+
+        char *get_name() {
+            return name;
+        }
+
+        void restore_state();
+        void restore_state1();
+        void rollback();
+        mword get_regsRIP();
+        mword get_regsRCX();
+        int compare_regs(int);
+        void save_stack();
+        void save_vm_stack();
+
+        static void reset_counter();
+        static void check_exit();
+        static void print_stat(bool);
+        static void reset_all();
+        static void Setx86DebugReg(mword, int );
+        static void debug_func(const char*);
+        static void debug_print(const char*);
+        static void debug_call(mword);
+        static void backtrace(int depth = 6);
+
+        static void enable_rdtsc();
+        static void disable_rdtsc();
+        static void enable_mtf();
+        static void disable_mtf();
+        static void enable_single_step();
+        static void emulate_rdtsc();
+        static void emulate_rdtsc2();
+        static void vmx_enable_single_step();
+        NORETURN
+        static void vmx_disable_single_step();
+        NORETURN
+        static void resolve_rdtsc();
+        NORETURN
+        static void resolve_rdtscp();
+        NORETURN
+        static void disable_single_step();
+        bool is_virutalcpu() {return utcb ? false : true; }
+        mword get_reg(int);
+        int compare_regs_mute();
+        bool single_step_finished();
+        void free_recorded_pe();
+        static void dump_pe(bool = false);
+        bool cmp_pe_to_head(Pe*, Pe::Member_type);
+        bool cmp_pe_to_tail(Pe*, Pe::Member_type);
+        void mark_pe_tail();
+        void take_snaphot();
+        static void count_interrupt(mword);
+        static void check_instr_number_equals(int);
+        void start_debugging(Debug_type);
+        static void  debug_record_info();
+        static void step_debug();
+
 };

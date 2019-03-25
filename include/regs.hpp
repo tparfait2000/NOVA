@@ -190,13 +190,14 @@ class Exc_regs : public Sys_regs
         void svm_set_cpu_ctrl1 (mword);
         void vmx_set_cpu_ctrl0 (mword);
         void vmx_set_cpu_ctrl1 (mword);
-
+        size_t guest_lookup(mword, mword &, mword &);
         mword svm_read_gpr (unsigned);
         mword vmx_read_gpr (unsigned);
 
         void svm_write_gpr (unsigned, mword);
         void vmx_write_gpr (unsigned, mword);
-
+        size_t vtlb_lookup(mword, uint64 &);
+        
         template <typename T> void nst_ctrl (bool = T::has_urg());
 
         template <typename T> void tlb_flush (bool) const;

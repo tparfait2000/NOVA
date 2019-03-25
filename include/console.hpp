@@ -41,14 +41,21 @@ class Console
 
         static Console *list;
         static Spinlock lock;
+        static unsigned count;
 
         virtual void putc (int) = 0;
         void print_num (uint64, unsigned, unsigned, unsigned);
         void print_str (char const *, unsigned, unsigned);
 
+        void sprint_num (uint64, unsigned, unsigned, unsigned, void**);
+        void sprint_str (char const *, unsigned, unsigned, void**);
+        int vsprintf_help(int , void **);
+        
         FORMAT (2,0)
         void vprintf (char const *, va_list);
-
+        FORMAT (2,0)
+        void vsprintf (char const *, va_list, void *);
+        
     protected:
         NOINLINE
         void enable()
@@ -59,6 +66,9 @@ class Console
     public:
         FORMAT (1,2)
         static void print (char const *, ...);
+
+        FORMAT (2,3)
+        static unsigned sprint (char *, char const *, ...);
 
         FORMAT (1,2) NORETURN
         static void panic (char const *, ...);
