@@ -36,6 +36,7 @@ unsigned Counter::vtlb_gpf;
 unsigned Counter::vtlb_hpf;
 unsigned Counter::vtlb_fill;
 unsigned Counter::vtlb_flush;
+unsigned Counter::vtlb_cow;
 unsigned Counter::schedule;
 unsigned Counter::helping;
 unsigned Counter::rep_io;
@@ -54,6 +55,7 @@ void Counter::dump() {
     trace(0, "VHPF: %16u", vtlb_hpf);
     trace(0, "VFIL: %16u", vtlb_fill);
     trace(0, "VFLU: %16u", vtlb_flush);
+    trace(0, "VCOW: %16u", vtlb_cow);
     trace(0, "SCHD: %16u", schedule);
     trace(0, "HELP: %16u", helping);
     trace(0, "REP_IO: %14u", rep_io);

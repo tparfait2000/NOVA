@@ -23,10 +23,8 @@
 #include "regs.hpp"
 #include "stdio.hpp"
 #include "vtlb.hpp"
-
-Vtlb *              Vtlb::vtlb0 = reinterpret_cast<Vtlb*> (Buddy::allocator.alloc (0, Pd::kern.quota, Buddy::NOFILL)),
-     *              Vtlb::vtlb1 = reinterpret_cast<Vtlb*> (Buddy::allocator.alloc (0, Pd::kern.quota, Buddy::NOFILL)), 
-     *              Vtlb::vtlb2 = reinterpret_cast<Vtlb*> (Buddy::allocator.alloc (0, Pd::kern.quota, Buddy::NOFILL)); 
+#include "vmx.hpp"
+#include "cow_elt.hpp"
 
 size_t Vtlb::gwalk (Exc_regs *regs, mword gla, mword &gpa, mword &attr, mword &error)
 {
@@ -109,10 +107,8 @@ size_t Vtlb::hwalk (mword gpa, mword &hpa, mword &attr, mword &error)
 
 Vtlb::Reason Vtlb::miss (Exc_regs *regs, mword virt, mword &error)
 {
-    mword phys, attr = TLB_U | TLB_W | TLB_P, err0 = error;
+    mword phys, attr = TLB_U | TLB_W | TLB_P;
     Paddr host;
-
-    trace (TRACE_VTLB, "VTLB Miss CR3:%#010lx A:%#010lx E:%#lx", regs->cr3_shadow, virt, error);
 
     error &= ERR_U | ERR_W;
 
@@ -120,7 +116,6 @@ Vtlb::Reason Vtlb::miss (Exc_regs *regs, mword virt, mword &error)
 
     if (EXPECT_FALSE (!gsize)) {
         Counter::vtlb_gpf++;
-        Console::print("virt %lx err0 %lx err %lx phys %lx attr %lx GLA_GPA", virt, err0, error, phys, attr);        
         return GLA_GPA;
     }
 
@@ -130,7 +125,6 @@ Vtlb::Reason Vtlb::miss (Exc_regs *regs, mword virt, mword &error)
         regs->nst_fault = phys;
         regs->nst_error = error;
         Counter::vtlb_hpf++;
-        Console::print("virt %lx err0 %lx err %lx host %lx phys %lx attr %lx GPA_HPA", virt, err0, error, host, phys, attr);        
         return GPA_HPA;
     }
 
@@ -148,6 +142,7 @@ Vtlb::Reason Vtlb::miss (Exc_regs *regs, mword virt, mword &error)
         unsigned shift = --lev * bpl() + PAGE_BITS;
         tlb += virt >> shift & ((1UL << bpl()) - 1);
 
+//        asm volatile ("" :: "m" (tlb)); // to avoid gdb "optimized out"
         if (lev) {
 
             if (lev == 2 || size < 1UL << shift) {
@@ -171,9 +166,14 @@ Vtlb::Reason Vtlb::miss (Exc_regs *regs, mword virt, mword &error)
 
             attr |= TLB_S;
         }
-
+        
+        if(attr & TLB_W){
+            attr &= ~TLB_W;
+            attr |= TLB_COW;
+        }
         tlb->val = static_cast<typeof tlb->val>((host & ~((1UL << shift) - 1)) | attr | TLB_D | TLB_A);
-        Console::print("virt %lx err0 %lx err %lx phys %lx attr %lx GLA_GPA", virt, err0, error, phys, attr);
+//        trace (TRACE_VTLB, "VTLB Miss SUCCESS CR3:%#010lx A:%#010lx P:%#010lx A:%#lx E:%#lx TLB:%#016llx GuestIP %#lx", 
+//                regs->cr3_shadow, virt, phys, attr, error, tlb->val, Vmcs::read(Vmcs::GUEST_RIP));
         return SUCCESS;
     }
 }
@@ -224,4 +224,38 @@ void Vtlb::flush (bool full)
     flush_ptab (full);
 
     Counter::print<1,16> (++Counter::vtlb_flush, Console_vga::COLOR_LIGHT_RED, SPN_VFL);
+}
+
+bool Vtlb::is_cow(mword virt, mword error){
+    if(!(error & ERR_W))
+        return false;
+    unsigned l = max();
+    unsigned b = bpl();
+    unsigned shift = --l * b + PAGE_BITS;
+    Vtlb *tlb = static_cast<Vtlb *> (this) ;
+    tlb += virt >> shift & ((1UL << b) - 1);
+
+    for (;; tlb = static_cast<Vtlb *> (Buddy::phys_to_ptr(tlb->addr())) + (virt >> (--l * b + PAGE_BITS) & ((1UL << b) - 1))) {
+
+//        asm volatile ("" :: "m" (tlb)); // to avoid gdb "optimized out"
+//        asm volatile ("" :: "m" (l)); // to avoid gdb "optimized out"
+        if (EXPECT_FALSE(!tlb->val))
+            return false;
+
+        if (EXPECT_FALSE(l && !tlb->super()))
+                continue;            
+        
+        if(tlb->attr() & TLB_COW){
+            trace (TRACE_VTLB, "Cow fault A:%#010lx E:%#lx TLB:%#016llx GuestIP %#lx",             
+                virt, error, tlb->val, Vmcs::read(Vmcs::GUEST_RIP));
+            Counter::vtlb_cow++;   
+            mword attr = tlb->attr();
+            Paddr new_phys = Cow_elt::resolve_cow_fault(virt, tlb->addr(), tlb->attr());
+            tlb->val = new_phys | attr| TLB_W;
+            tlb->val &= ~TLB_COW;
+            return true;
+        } else {
+            return false;
+        }
+    }
 }

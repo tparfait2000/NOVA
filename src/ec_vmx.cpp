@@ -61,6 +61,9 @@ void Ec::vmx_exception()
             mword err = Vmcs::read (Vmcs::EXI_INTR_ERROR);
             mword cr2 = Vmcs::read (Vmcs::EXI_QUALIFICATION);
 
+            if(current->regs.vtlb->is_cow(cr2, err))
+                ret_user_vmresume();
+            
             switch (Vtlb::miss (&current->regs, cr2, err)) {
 
                 case Vtlb::GPA_HPA:

@@ -192,8 +192,3 @@ void Pte<P, E, L, B, F>::free_up(Quota &quota, unsigned l, P * e, mword v, bool 
 template class Pte<Dpt, uint64, 4, 9, true>;
 template class Pte<Ept, uint64, 4, 9, false>;
 template class Pte<Hpt, mword, PTE_LEV, PTE_BPL, false>;
-#ifdef __i386__
-template class Pte<Vtlb, uint32, 2, 10, false>;
-#else
-template class Pte<Vtlb, uint64, 3, 9, false>;
-#endif

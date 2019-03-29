@@ -196,9 +196,9 @@ public:
     Cow::cow_elt* cowlist_contains(mword, Paddr);
     bool compare_and_commit();
     bool vtlb_compare_and_commit();
-    void restore_state(bool = false);
-    void restore_state1(bool = false);
-    void rollback(bool = false);
+    void restore_state();
+    void restore_state1();
+    void rollback();
     void set_to_be_cowed();
     bool get_to_be_cowed(){
         return to_be_cowed;

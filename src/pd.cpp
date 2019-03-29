@@ -448,28 +448,19 @@ Cow::cow_elt* Pd::cowlist_contains(mword addr, Paddr phys) {
 
 bool Pd::is_mapped_elsewhere(Paddr phys, Cow::cow_elt* cow) {
     Lock_guard <Spinlock> guard(cow_lock);
-    bool is_mapped = false;
     Cow::cow_elt *c = cow_list;
     while ((c != nullptr) && (c != cow)) {
         if (c->old_phys == phys) {//frame already mapped elsewhere
             cow->old_phys = phys;
             cow->new_phys[0] = c->new_phys[0];
             cow->new_phys[1] = c->new_phys[1];
-            is_mapped = true;
+            trace(COW_FAULT, "Is mapped elsewhere c->old_phys == phys : Phys:%lx new_phys[0]:%lx new_phys[1]:%lx",
+                    c->old_phys, c->new_phys[0]->phys_addr, c->new_phys[1]->phys_addr);
+            return true;
         }
-        if (c->new_phys[0] && c->new_phys[0]->phys_addr == phys) {//mapping created before subtitute(v)
-            cow->old_phys = c->old_phys;
-            cow->new_phys[0] = c->new_phys[0];
-            cow->new_phys[1] = c->new_phys[1];
-            is_mapped = true;
-        }
-
         c = c->next;
     }
-    if (is_mapped)
-        return true;
-    else
-        return false;
+    return false;
 }
 
 Cow::cow_elt* Pd::find_cow_elt(mword gpa) {
@@ -489,48 +480,36 @@ Cow::cow_elt* Pd::find_cow_elt(mword gpa) {
     return result;
 }
 
-void Pd::restore_state(bool is_vcpu) {
+void Pd::restore_state() {
     Lock_guard <Spinlock> guard(cow_lock);
     Cow::cow_elt *cow = cow_list;
     Quota q = this->quota;
     while (cow != nullptr) {
         mword v = cow->page_addr_or_gpa;
-        if(is_vcpu){
-            cow->vtlb_entry->set_val(cow->prev_tlb_val);
-        }else{
-            loc[Cpu::id].replace_cow(q, v, cow->new_phys[1]->phys_addr | (cow->attr | Hpt::HPT_W));
-        }
+        loc[Cpu::id].replace_cow(q, v, cow->new_phys[1]->phys_addr | (cow->attr | Hpt::HPT_W));
         cow = cow->next;
     }
 }
 
-void Pd::restore_state1(bool is_vcpu) {
+void Pd::restore_state1() {
     Lock_guard <Spinlock> guard(cow_lock);
     Cow::cow_elt *cow = cow_list;
     Quota q = this->quota;
     while (cow != nullptr) {
         mword v = cow->page_addr_or_gpa;
-        if(is_vcpu){
-            cow->vtlb_entry->set_val(cow->new_phys[0]->phys_addr | (cow->attr | Vtlb::TLB_W));
-        }else{
-            loc[Cpu::id].replace_cow(q, v, cow->new_phys[0]->phys_addr | (cow->attr | Hpt::HPT_W));
-        }
+        loc[Cpu::id].replace_cow(q, v, cow->new_phys[0]->phys_addr | (cow->attr | Hpt::HPT_W));
         cow = cow->next;
     }
 }
 
-void Pd::rollback(bool is_vcpu) {
+void Pd::rollback() {
     Lock_guard <Spinlock> guard(cow_lock);
     Cow::cow_elt *cow = cow_list;
     Quota q = this->quota;
     while (cow != nullptr) {
         Paddr old_phys = cow->old_phys;
         mword v = cow->page_addr_or_gpa;
-        if(is_vcpu){
-            cow->vtlb_entry->set_val(cow->prev_tlb_val);
-        }else{
-            loc[Cpu::id].replace_cow(q, v, old_phys| (cow->attr & ~Hpt::HPT_W));
-        }
+        loc[Cpu::id].replace_cow(q, v, old_phys| (cow->attr & ~Hpt::HPT_W));
         Cow::free_cow_elt(cow);
         cow = cow->next;
     }
@@ -549,6 +528,9 @@ void Pd::set_to_be_cowed(){
 }
 
 bool Pd::compare_and_commit() {
+    /**TODO
+     * implement virtual machine memory comparison
+     */
     Lock_guard <Spinlock> guard(cow_lock);
     Cow::cow_elt *cow = cow_list;
     Quota q = this->quota;
@@ -575,33 +557,6 @@ bool Pd::compare_and_commit() {
     }
     return false;
 }
-
-bool Pd::vtlb_compare_and_commit(){
-    Lock_guard <Spinlock> guard(cow_lock);
-    Cow::cow_elt *cow = cow_list;
-    Quota q = this->quota;
-    while (cow != nullptr) {
-        //        Console::print("Compare v: %p  phys: %p  ce: %p  phys1: %p  phys2: %p", cow->page_addr_or_gpa, cow->old_phys, cow, cow->new_phys[0]->phys_addr, cow->new_phys[1]->phys_addr);
-        mword *ptr1 = reinterpret_cast<mword*> (Hpt::remap_cow(q, cow->new_phys[0]->phys_addr)),
-                *ptr2 = reinterpret_cast<mword*> (Hpt::remap_cow(q, cow->new_phys[1]->phys_addr, PAGE_SIZE));
-        int missmatch_addr = memcmp(ptr1, ptr2, PAGE_SIZE);
-        if (missmatch_addr) {
-            mword index = PAGE_SIZE /sizeof(mword) - missmatch_addr * 4/sizeof(mword) - 1;
-            mword val1 = *(ptr1 + index);
-            mword val2 = *(ptr2 + index);
-            Console::print("addr: %lx  phys1 %lx phys2 %lx ptr1: %p  ptr2: %p  val1: %lx  val2: %lx  missmatch_addr: %p mword size %ld",
-                    cow->page_addr_or_gpa, cow->new_phys[0]->phys_addr, cow->new_phys[1]->phys_addr, ptr1, ptr2, val1, val2, ptr2 + index, sizeof(mword));
-            return true;
-        }
-        void *ptr = Hpt::remap_cow(q, cow->old_phys);
-        memcpy(ptr, ptr2, PAGE_SIZE);
-        cow->vtlb_entry->set_val(cow->old_phys | (cow->attr & ~Vtlb::TLB_W));
-        Cow::free_cow_elt(cow);
-        cow = cow->next;
-    }
-    return false;
-}
-
 
 bool Pd::compare_memory_mute() {
     Cow::cow_elt *cow = cow_list;

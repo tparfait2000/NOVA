@@ -348,7 +348,7 @@ void Ec::ret_user_vmresume() {
 
         current->regs.vmcs->make_current();
 
-        current->vmx_save_state();
+        current->save_state();
         launch_state = Ec::VMRESUME;
         Lapic::program_pmi();
     } else {
@@ -697,17 +697,20 @@ void Ec::disable_step_debug() {
 void Ec::restore_state() {
     regs_1 = regs;
     regs = regs_0;
-    pd->restore_state(!utcb);
+    pd->restore_state();
     Fpu::dwc_restore();
     if (fpu)
         fpu->restore_data();
+    if(!utcb){
+        vmx_restore_state();
+    }
 }
 
 void Ec::restore_state1() {
     regs_2 = regs;
     regs = regs_1;
     regs_1 = regs_2;
-    pd->restore_state1(!utcb);
+    pd->restore_state1();
     Fpu::dwc_restore1();
     if (fpu)
         fpu->restore_data1();
@@ -718,12 +721,11 @@ void Ec::rollback() {
     Fpu::dwc_rollback();
     if (fpu)
         fpu->roll_back();
-    pd->rollback(!static_cast<bool> (utcb));
+    pd->rollback();
     if (!utcb) {
         regs.vmcs->clear();
         memcpy(regs.vmcs, Vmcs::vmcs0, Vmcs::basic.size);
         regs.vmcs->make_current();
-        memcpy(regs.vtlb, Vtlb::vtlb0, PAGE_SIZE);
     }
 }
 
@@ -738,14 +740,16 @@ void Ec::saveRegs(Exc_regs *r) {
 
 void Ec::save_state() {
     regs_0 = regs;
-    Fpu::dwc_save();
-    if (fpu)
+    Fpu::dwc_save(); // If FPU activated, save fpu state
+    if (fpu)         // If fpu defined, save it 
         fpu->save_data();
+    if(!utcb){
+        vmx_save_state();
+    }
 }
 
 void Ec::vmx_save_state() {
-    save_state();
-    //    save_vm_stack();
+   //    save_vm_stack();
     mword host_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
     Msr_area *cur_host_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(host_msr_area_phys));
     memcpy(host_msr_area0, cur_host_msr_area, PAGE_SIZE);
@@ -762,18 +766,12 @@ void Ec::vmx_save_state() {
     regs.vmcs->clear();
     memcpy(Vmcs::vmcs0, regs.vmcs, Vmcs::basic.size);
     regs.vmcs->make_current();
-
-    memcpy(Vtlb::vtlb0, regs.vtlb, PAGE_SIZE);
 }
 
 void Ec::vmx_restore_state() {
-    restore_state();
-    memcpy(Vtlb::vtlb1, regs.vtlb, PAGE_SIZE);
-    memcpy(regs.vtlb, Vtlb::vtlb0, PAGE_SIZE);
-
-    if (!utcb) {
-        regs.vtlb->flush(true);
-    }
+//    if (!utcb) {
+//        regs.vtlb->flush(true);
+//    }
 
     regs.vmcs->clear();
     memcpy(Vmcs::vmcs1, regs.vmcs, Vmcs::basic.size);
@@ -799,9 +797,6 @@ void Ec::vmx_restore_state() {
 
 void Ec::vmx_restore_state1() {
     restore_state1();
-
-    memcpy(Vtlb::vtlb2, regs.vtlb, PAGE_SIZE);
-    memcpy(regs.vtlb, Vtlb::vtlb1, PAGE_SIZE);
 
     regs.vmcs->clear();
     memcpy(Vmcs::vmcs2, regs.vmcs, Vmcs::basic.size);
@@ -998,67 +993,6 @@ void Ec::backtrace(int depth) {
         tour++;
     }
     return;
-}
-
-void Ec::save_stack() {
-    /**
-     * @TODO
-     * Because we know  it's about the stack, we can save time by doing this only the first time.
-     * This imply never set it Read-Only when we are writing the memory back at commitment time.
-     * What if guest_virt != guest_phys? 
-     * Include vtlb in this
-     */
-    Paddr phys;
-    mword a;
-    mword v;
-    v = regs.REG(sp) & ~PAGE_MASK;
-    if (!pd->Space_mem::loc[Cpu::id].lookup(v, phys, a)) return;
-    Cow::cow_elt *ce = nullptr;
-    if (!Cow::get_cow_list_elt(&ce)) //get new cow_elt
-        die("Cow elt exhausted");
-    if (pd->is_mapped_elsewhere(phys, ce) || Cow::subtitute(phys, ce, v)) {
-        ce->page_addr_or_gpa = v;
-        ce->attr = a;
-    } else // Cow::subtitute will fill cow's fields old_phys, new_phys and frame_index 
-        die("Cow frame exhausted");
-    pd->add_cow(ce);
-    pd->Space_mem::loc[Cpu::id].update(pd->quota, v, 0, ce->new_phys[0]->phys_addr, a | Hpt::HPT_W, Hpt::Type::TYPE_UP, false);
-    Hpt::cow_flush(v);
-}
-
-void Ec::save_vm_stack() {
-    /**
-     * @TODO
-     * Because we know  it's about the stack, we can save time by doing this only the first time.
-     * This imply never set it Read-Only when we are writing the memory back at commitment time.
-     * What if guest_virt != guest_phys? 
-     * Include vtlb in this
-     */
-    Paddr host_phys;
-    mword host_attr, guest_phys, guest_attr, guest_rsp = Vmcs::read(Vmcs::GUEST_RSP) & ~PAGE_MASK;
-    uint64* entry = regs.vtlb->vtlb_lookup(guest_rsp);
-    if (!entry) return;
-    if (!regs.guest_lookup(guest_rsp, guest_phys, guest_attr)) {
-        Console::print("Pas normal guest_rsp %lx guest_phys %lx guest_attr %lx", guest_rsp, guest_phys, guest_attr);
-        return;
-    }
-    if (!pd->Space_mem::loc[Cpu::id].lookup(guest_phys, host_phys, host_attr)) return;
-    if (!(host_attr & Hpt::HPT_W) || !(*entry & Vtlb::TLB_W)) {
-        Console::print("Pas writable");
-        return;
-    }
-    Cow::cow_elt *ce = nullptr;
-    if (!Cow::get_cow_list_elt(&ce)) //get new cow_elt
-        die("Cow elt exhausted");
-    if (pd->is_mapped_elsewhere(host_phys, ce) || Cow::subtitute(host_phys, ce, guest_phys)) {
-        ce->page_addr_or_gpa = guest_phys;
-        ce->attr = host_attr;
-        ce->vtlb_entry = regs.vtlb;
-    } else // Cow::subtitute will fill cow's fields old_phys, new_phys and frame_index 
-        die("Cow frame exhausted");
-    pd->add_cow(ce);
-    pd->Space_mem::loc[Cpu::id].update(pd->quota, guest_phys, 0, ce->new_phys[0]->phys_addr, host_attr | Hpt::HPT_W, Hpt::Type::TYPE_UP, false);
-    Hpt::cow_flush(guest_phys);
 }
 
 mword Ec::get_reg(int reg_number) {

@@ -16,10 +16,13 @@
 #include "slab.hpp"
 #include "compiler.hpp"
 #include "queue.hpp"
+#include "vtlb.hpp"
+#include "pd.hpp"
 
 class Cow_elt {
     friend class Queue<Cow_elt>;
     static Slab_cache cache; 
+    static  Queue<Cow_elt> cow_elts;
    
 public:
     enum Page_type{
@@ -42,10 +45,13 @@ public:
     }
 
     Cow_elt &operator = (Cow_elt const &);
+    static Paddr resolve_cow_fault(mword virt, Paddr phys, mword attr);
+    static bool is_mapped_elsewhere(Paddr, Cow_elt*);
+    static bool subtitute(Cow_elt*, mword);
     
 private:
     Page_type type; 
-    mword page_addr = {}; // if VM, this will hold the gpa, else hold page addr
+    mword page_addr = {}; // if VM, this will hold the gla, else hold page addr
     Paddr old_phys = {};
     mword attr = {};
     Paddr new_phys[2];

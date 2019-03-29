@@ -95,7 +95,9 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
         static bool handle_exc_ts(Exc_regs *);
         static bool handle_exc_gp(Exc_regs *);
         static bool handle_exc_pf(Exc_regs *);
-
+        static void handle_exc_db(Exc_regs *);
+        static void handle_deterministic_exception(Exc_regs *);
+        
         static inline uint8 ifetch(mword);
 
         NORETURN
@@ -276,6 +278,8 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
             PES_GSI             = 13,
             PES_MSI             = 14,
             PES_LVT             = 15,
+            PES_ALIGNEMENT_CHECK= 16,
+            PES_MACHINE_CHECK   =17,
         };
         
         enum Debug_type {
