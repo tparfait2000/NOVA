@@ -38,8 +38,7 @@ class Fpu
         ALWAYS_INLINE
         inline void load() { asm volatile ("fxrstor %0" : : "m" (*data)); }
 
-        ALWAYS_INLINE
-        static inline void init() { asm volatile ("fninit"); }
+        static void init();
 
         ALWAYS_INLINE
         static inline void enable() { asm volatile ("clts"); Cpu::hazard |= HZD_FPU; }

@@ -24,6 +24,14 @@
 #include "mca.hpp"
 #include "stdio.hpp"
 
+ALIGNED(16) static Fpu empty;
+
+void Fpu::init()
+{
+    empty.load();
+    asm volatile ("fninit");
+}
+
 void Ec::load_fpu()
 {
     if (!Cmdline::fpu_eager && !utcb)
