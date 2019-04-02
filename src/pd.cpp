@@ -32,7 +32,7 @@ Slab_cache Pd::cache (sizeof (Pd), 32);
 
 Pd *Pd::current;
 
-INIT_PRIORITY (PRIO_BUDDY)
+INIT_PRIORITY (PRIO_SLAB)
 ALIGNED(32) Pd Pd::kern (&Pd::kern);
 ALIGNED(32) Pd Pd::root (&Pd::root, NUM_EXC, 0x1f);
 
