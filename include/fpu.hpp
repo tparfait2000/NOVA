@@ -29,7 +29,20 @@
 class Fpu
 {
     private:
-        char data[512];
+        union {
+            char data[512];
+            struct {
+                uint16 fcw;
+                uint16 fsw;
+                uint8  ftw;
+                uint8  res;
+                uint16 fop;
+                uint64 fip;
+                uint64 fdp;
+                uint32 mxcsr;
+                uint32 mxcsr_mask;
+            };
+        };
 
     public:
         ALWAYS_INLINE
@@ -51,4 +64,11 @@ class Fpu
 
         ALWAYS_INLINE
         static inline void destroy(Fpu *obj, Pd &pd) { obj->~Fpu(); pd.fpu_cache.free (obj, pd.quota); }
+
+        Fpu()
+        {
+            // Mask exceptions by default according to SysV ABI spec.
+            fcw = 0x37f;
+            mxcsr = 0x1f80;
+        }
 };
