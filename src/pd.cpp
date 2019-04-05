@@ -36,7 +36,7 @@ INIT_PRIORITY(PRIO_BUDDY)
 ALIGNED(32) Pd Pd::kern(&Pd::kern);
 ALIGNED(32) Pd Pd::root(&Pd::root, NUM_EXC, 0x1f);
 
-const char *Pd::names[] = {nullptr};
+const char *Pd::names[] = {"init -> nic_drv", "init -> fb_drv", "init -> fb_boot_drv", nullptr};//Do never forget to terminate this by nullptr
 
 Pd::Pd (Pd *own) : Kobject (PD, static_cast<Space_obj *>(own)), pt_cache (sizeof (Pt), 32), mdb_cache (sizeof (Mdb), 16), sm_cache (sizeof (Sm), 32), sc_cache (sizeof (Sc), 32), ec_cache (sizeof (Ec), 32), fpu_cache (sizeof (Fpu), 16){
     copy_string(name, const_cast<char* const> ("kern_pd"));
@@ -540,10 +540,10 @@ bool Pd::compare_and_commit() {
                 *ptr2 = reinterpret_cast<mword*> (cow->page_addr_or_gpa);
         int missmatch_addr = memcmp(ptr1, ptr2, PAGE_SIZE);
         if (missmatch_addr) {
-            mword index = PAGE_SIZE / 4 - missmatch_addr - 1;
+            mword index = (PAGE_SIZE / 4 - missmatch_addr - 1) * 4 /sizeof(mword); // because memcmp compare by grasp of 4 bytes
             mword val1 = *(ptr1 + index);
             mword val2 = *(ptr2 + index);
-            Console::print("Pd: %p  phys1 %lx phys2 %lx ptr1: %p  ptr2: %p  val1: %lx  val2: %lx  missmatch_addr: %p",
+            Console::print("Pd: %p  phys1 %lx phys2 %lx ptr1: %p  ptr2: %p  val1: 0x%lx  val2: 0x%lx  missmatch_addr: %p",
                     this, cow->new_phys[0]->phys_addr, cow->new_phys[1]->phys_addr, ptr1, ptr2, val1, val2, ptr2 + index);
             return true;
         }

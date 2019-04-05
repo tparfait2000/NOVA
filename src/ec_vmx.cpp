@@ -42,7 +42,13 @@ void Ec::vmx_exception()
     };
 
     mword intr_info = Vmcs::read (Vmcs::EXI_INTR_INFO);
-
+    if((intr_info & 0x7ff) == 0x30e && // Page fault
+            current->regs.vtlb->is_cow(Vmcs::read (Vmcs::EXI_QUALIFICATION), Vmcs::read (Vmcs::EXI_INTR_ERROR))){
+            ret_user_vmresume();
+    } else {
+        check_memory(PES_VMX_EXC);
+    }
+    
     switch (intr_info & 0x7ff) {
 
         default:
@@ -60,9 +66,6 @@ void Ec::vmx_exception()
         case 0x30e:         // #PF
             mword err = Vmcs::read (Vmcs::EXI_INTR_ERROR);
             mword cr2 = Vmcs::read (Vmcs::EXI_QUALIFICATION);
-
-            if(current->regs.vtlb->is_cow(cr2, err))
-                ret_user_vmresume();
             
             switch (Vtlb::miss (&current->regs, cr2, err)) {
 
@@ -194,19 +197,175 @@ void Ec::handle_vmx()
     mword reason = Vmcs::read (Vmcs::EXI_REASON) & 0xff;
 
     Counter::vmi[reason]++;
+    trace(TRACE_VMX, "VMExit reason %lx Guest rip %lx", reason, Vmcs::read (Vmcs::GUEST_RIP));
 
     switch (reason) {
         case Vmcs::VMX_EXC_NMI:     vmx_exception();
         case Vmcs::VMX_EXTINT:      vmx_extint();
-        case Vmcs::VMX_INVLPG:      vmx_invlpg();
-        case Vmcs::VMX_CR:          vmx_cr();
+        case Vmcs::VMX_INVLPG:      check_memory(PES_VMX_INVLPG); vmx_invlpg();
+        case Vmcs::VMX_RDTSC:       
+            if(run_number == 0)
+                tsc1 = rdtsc();
+            check_memory(PES_VMX_RDTSC); 
+            vmx_resolve_rdtsc();
+        case Vmcs::VMX_CR:          check_memory(PES_VMX_CR); vmx_cr();
+        case Vmcs::VMX_MTF:         vmx_disable_single_step();
         case Vmcs::VMX_EPT_VIOLATION:
+            check_memory(PES_VMX_EPT_VIOL); 
             current->regs.nst_error = Vmcs::read (Vmcs::EXI_QUALIFICATION);
             current->regs.nst_fault = Vmcs::read (Vmcs::INFO_PHYS_ADDR);
             break;
+        case Vmcs::VMX_RDTSCP:      
+            if(run_number == 0)
+                tsc1 = rdtscp(tscp_rcx1);
+            check_memory(PES_VMX_RDTSCP); 
+            vmx_resolve_rdtsc(true);
+            break;
     }
-
+    check_memory(PES_VMX_EXIT);     
     current->regs.dst_portal = reason;
 
     send_msg<ret_user_vmresume>();
 }
+
+void Ec::vmx_disable_single_step() {
+    switch(step_reason){
+        case SR_RDTSC:
+            disable_mtf();
+            disable_rdtsc();
+            step_reason = SR_NIL;
+            break;
+        case SR_PMI:
+            mword current_rip = Vmcs::read(Vmcs::GUEST_RIP);
+            if (prev_rip == current_rip) {
+                // It may happen that this is the final instruction
+                if ((current_rip == end_rip) && (current->regs.REG(cx) == end_rcx)) {
+                    disable_mtf();
+                    step_reason = SR_NIL;
+                    check_memory(PES_PMI);
+                }
+            } else {
+                if (nbInstr_to_execute > 0)
+                    nbInstr_to_execute--;
+            }
+            prev_rip = current_rip;
+            if (nbInstr_to_execute > 0) {
+                ret_user_vmresume();
+            }
+            if ((current_rip == end_rip) && (current->regs.REG(cx) == end_rcx)) {
+                    disable_mtf();
+                    step_reason = SR_NIL;
+                    check_memory(PES_PMI);
+            } else {
+                nbInstr_to_execute = 1;
+                ret_user_vmresume();
+            }
+    }
+    ret_user_vmresume();
+}
+
+void Ec::vmx_resolve_io(){
+    if (Vmcs::has_mtf()) // if the CPU honors the monitor trap flag
+        vmx_enable_single_step();
+    else
+        vmx_emulate_io();
+    ret_user_vmresume();
+}
+
+void Ec::vmx_emulate_io(){
+    Console::panic("VMX_IO and monitor trap not supported : IO Emulation required");
+}
+
+void Ec::vmx_resolve_rdtsc(bool is_rdtscp) {
+    if (Vmcs::has_mtf()) // if the CPU honors the monitor trap flag
+        vmx_enable_single_step();
+    else
+        vmx_emulate_rdtsc(is_rdtscp);
+    ret_user_vmresume();
+}
+
+void Ec::vmx_enable_single_step() {
+    enable_mtf();
+    enable_rdtsc();
+//    ec_debug = true;
+    step_reason = SR_RDTSC;
+    current->regs.vmcs->make_current();
+}
+
+void Ec::vmx_emulate_rdtsc(bool is_rdtscp) {
+    tsc2 = is_rdtscp ? rdtscp(tscp_rcx2) : rdtsc();
+    bool is_tsc_scale_defined = (Vmcs::read(Vmcs::CPU_EXEC_CTRL1) & Vmcs::CPU_TSC_MUL),
+           is_tsc_offset_defined = (Vmcs::read(Vmcs::CPU_EXEC_CTRL0) & Vmcs::CPU_TSC_OFFSET);
+    if(is_tsc_scale_defined || is_tsc_offset_defined){
+        mword h = 0, l = 0, aux = 0;
+        mword inst_addr = Vmcs::read(Vmcs::GUEST_RIP);
+        mword inst_off = inst_addr & PAGE_MASK;
+        uint64 entry = 0;
+        Paddr physic;
+        mword attrib;
+        if (!current->regs.vtlb->vtlb_lookup(inst_addr, physic, attrib)) {
+            Console::print("Instr_addr not found %lx", inst_addr);
+        }
+        uint8 *ptr = reinterpret_cast<uint8 *> (Hpt::remap_cow(Pd::current->quota, entry & ~PAGE_MASK));  
+        uint16 *inst_val = reinterpret_cast<uint16 *>(ptr + inst_off);
+        mword off = 0, off_hi = 0, mul = 0, mul_hi = 0;
+        mul =  is_tsc_scale_defined? Vmcs::read(Vmcs::TSC_MUL) : 1;
+        mul_hi = is_tsc_scale_defined ? Vmcs::read(Vmcs::TSC_MUL_HI) : 1;
+
+        switch(*inst_val){
+            case 0x310f:
+                asm volatile ("rdtsc" : "=a" (l), "=d" (h));
+                break;
+            case 0xf901:
+                asm volatile ("rdtscp" : "=a" (l), "=d" (h), "=c" (aux));
+                current->regs.REG(cx) = off + aux*mul;            
+                break;
+            default:
+                Console::print("Instr_val not found inst_addr %lx entry %llx ptr %p inst_off %lx inst_val %x", inst_addr, entry, ptr, inst_off, *inst_val);
+        }       
+        if (is_tsc_offset_defined) {
+            off = Vmcs::read(Vmcs::TSC_OFFSET);
+            off_hi = Vmcs::read(Vmcs::TSC_OFFSET_HI);
+        }
+        mword delta_tsc = (tsc2 - tsc1)/2;
+        current->regs.REG(ax) = off + l*mul + (delta_tsc & 0xffffffff); //Consider using current->regs.vmx_write_gpr(gpr, regs_number) if there is a problem;
+        current->regs.REG(dx) = off_hi + h*mul_hi + (delta_tsc >> 32);
+
+        //    Console::print("rdtsc tsc1 %lu tsc2 %lu delta %lu ax %lu dx %lu", tscm1, tscm2, tscm2 - tscm1, current->regs.REG(ax), current->regs.REG(dx));
+        current->regs.vmcs->adjust_rip();
+    } else {
+        mword tsc = (tsc1 + tsc2)/2;
+        current->regs.REG(ax) = tsc & 0xffffffff;
+        current->regs.REG(dx) = tsc >> 32;
+        if(is_rdtscp)
+            current->regs.REG(cx) = (tscp_rcx1 + tscp_rcx2)/2;
+        //    Console::print("rdtsc tsc1 %llu tsc2 %llu delta %llu ax %lu dx %lu", tsc1, tsc2, tsc2 - tsc1, current->regs.REG(ax), current->regs.REG(dx));
+        current->regs.vmcs->adjust_rip();
+    }
+}
+
+void Ec::enable_rdtsc() {
+    mword val = Vmcs::read(Vmcs::CPU_EXEC_CTRL0);
+    val &= ~Vmcs::CPU_RDTSC;
+    Vmcs::write(Vmcs::CPU_EXEC_CTRL0, val);
+}
+
+void Ec::disable_rdtsc() {
+    mword val = Vmcs::read(Vmcs::CPU_EXEC_CTRL0);
+    val |= Vmcs::CPU_RDTSC;
+    Vmcs::write(Vmcs::CPU_EXEC_CTRL0, val);
+}
+
+void Ec::enable_mtf() {
+    if (!Vmcs::has_mtf()) return;
+    mword val = Vmcs::read(Vmcs::CPU_EXEC_CTRL0);
+    val |= Vmcs::CPU_MONITOR_TRAP_FLAG;
+    Vmcs::write(Vmcs::CPU_EXEC_CTRL0, val);
+}
+
+void Ec::disable_mtf() {
+    mword val = Vmcs::read(Vmcs::CPU_EXEC_CTRL0);
+    val &= ~Vmcs::CPU_MONITOR_TRAP_FLAG;
+    Vmcs::write(Vmcs::CPU_EXEC_CTRL0, val);
+}
+

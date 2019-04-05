@@ -145,7 +145,8 @@ public:
     void replace_cow_n(Quota &quota, mword, int, mword);
     static void print(char const *s, mword v);
     static void set_cow_page(mword virt, mword &entry);
-
+    void cow_update(Paddr, mword);
+    
 };
 
 class Hptp : public Hpt {

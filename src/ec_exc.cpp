@@ -29,6 +29,7 @@
 #include "vmx.hpp"
 #include "gsi.hpp"
 #include "pending_int.hpp"
+#include "cow_elt.hpp"
 
 void Ec::load_fpu() {
     if (!Cmdline::fpu_eager && !utcb)
@@ -439,7 +440,7 @@ void Ec::check_memory(PE_stopby from) {
     Pd *pd = ec->getPd();
     //    if (is_idle())
     //        Console::print("TCHA HOHO Must not be idle here, sth wrong. pmi: %d cowlist: %p Pd: %s", pmi, current->getPd()->cow_list, current->getPd()->get_name());
-    if (!pd->cow_list) {
+    if (!pd->cow_list && Cow_elt::is_empty()) {
         launch_state = UNLAUNCHED;
         reset_all();
         return;
@@ -513,19 +514,30 @@ void Ec::check_memory(PE_stopby from) {
         {
             ec->regs_2 = ec->regs;
             reg_diff = ec->compare_regs(from);
-            if (reg_diff || pd->compare_and_commit()) {
-                Console::print("Checking failed : Ec %s  Pd: %s From: %d launch_state: %d", ec->get_name(), pd->get_name(), from, launch_state);
-                ec->rollback();
-                ec->reset_all();
-                ec->save_state();
-                //                    current->pd->cow_list = nullptr;
-                //                    run_number = 0;
-                //                    nbInstr_to_execute = first_run_instr_number;
-                //                    current->save_state();
-                //                    launch_state = Ec::IRET;
-                //                    current->enable_step_debug(SR_DBG);
-                check_exit();
-            } else {
+            if(current->utcb){
+                if (reg_diff || pd->compare_and_commit()) {
+                    Console::panic("Checking failed : Ec %s  Pd: %s From: %d launch_state: %d", ec->get_name(), pd->get_name(), from, launch_state);
+                    ec->rollback();
+                    ec->reset_all();
+                    ec->save_state();
+                    //                    current->pd->cow_list = nullptr;
+                    //                    run_number = 0;
+                    //                    nbInstr_to_execute = first_run_instr_number;
+                    //                    current->save_state();
+                    //                    launch_state = Ec::IRET;
+                    //                    current->enable_step_debug(SR_DBG);
+                    check_exit();
+                } else {
+                    ++Counter::nb_pe;
+                    launch_state = UNLAUNCHED;
+                    reset_all();
+                    return;
+                }
+            } else { // VMX
+                trace(TRACE_VMX, "Check Memory in VMX 2");
+                if (reg_diff || Cow_elt::compare_and_commit()){
+                    Console::panic("Checking failed : VMX %s  Pd: %s From: %d launch_state: %d", ec->get_name(), pd->get_name(), from, launch_state);                    
+                }
                 ++Counter::nb_pe;
                 launch_state = UNLAUNCHED;
                 reset_all();

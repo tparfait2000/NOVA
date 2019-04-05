@@ -66,6 +66,14 @@ static inline uint64 rdtsc()
 }
 
 ALWAYS_INLINE
+static inline uint64 rdtscp(mword &rcx)
+{
+    mword h, l;
+    asm volatile ("rdtscp" : "=a" (l), "=d" (h), "=c" (rcx));
+    return static_cast<uint64>(h) << 32 | l;
+}
+
+ALWAYS_INLINE
 static inline mword get_cr0()
 {
     mword cr0;

@@ -112,7 +112,7 @@ inline bool strmatch (char const *s1, char const *s2, size_t n)
  */
 extern "C" NONNULL
 inline int memcmp(const void *s1, const void *s2, size_t len) {
-    len /=4;
+    len /=4; // cmpsl compare double word (4 bytes)
     int diff = 0;
     asm volatile ("repe; cmpsl; movl %%ecx, %0;"
                 : "=qm" (diff), "+D" (s1), "+S" (s2), "+c" (len));

@@ -279,7 +279,15 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
             PES_MSI             = 14,
             PES_LVT             = 15,
             PES_ALIGNEMENT_CHECK= 16,
-            PES_MACHINE_CHECK   =17,
+            PES_MACHINE_CHECK   = 17,
+            PES_VMX_INVLPG      = 18,
+            PES_VMX_PAGE_FAULT  = 19,
+            PES_VMX_EPT_VIOL    = 20,
+            PES_VMX_CR          = 21,
+            PES_VMX_EXC         = 22,  
+            PES_VMX_RDTSC       = 23,
+            PES_VMX_RDTSCP      = 24,
+            PES_VMX_IO          = 25,
         };
         
         enum Debug_type {
@@ -287,7 +295,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
             CMP_TWO_RUN         = 1, 
             STORE_RUN_STATE     = 2,
         };
-        static mword prev_rip, last_rip, last_rcx, last_rsp, end_rip, end_rcx, instruction_value;
+        static mword prev_rip, last_rip, last_rcx, last_rsp, end_rip, end_rcx, instruction_value, tscp_rcx1, tscp_rcx2;
         static uint64 counter1, counter2, exc_counter, exc_counter1, exc_counter2, debug_compteur, count_je, nbInstr_to_execute, tsc1, tsc2, nb_inst_single_step, second_run_instr_number, first_run_instr_number, single_step_number, distance_instruction;
         static uint8 run_number, launch_state, step_reason, debug_nb, debug_type, replaced_int3_instruction, replaced_int3_instruction2;
         static bool ec_debug, glb_debug, hardening_started, in_rep_instruction, not_nul_cowlist, no_further_check, first_run_advanced;
@@ -633,18 +641,17 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
         static void disable_rdtsc();
         static void enable_mtf();
         static void disable_mtf();
-        static void enable_single_step();
-        static void emulate_rdtsc();
-        static void emulate_rdtsc2();
         static void vmx_enable_single_step();
+        static void vmx_emulate_rdtsc(bool);
+        static void emulate_rdtsc2();
         NORETURN
         static void vmx_disable_single_step();
         NORETURN
-        static void resolve_rdtsc();
+        static void vmx_resolve_rdtsc(bool = false);
         NORETURN
-        static void resolve_rdtscp();
+        static void vmx_resolve_io();
         NORETURN
-        static void disable_single_step();
+        static void vmx_emulate_io();
         bool is_virutalcpu() {return utcb ? false : true; }
         mword get_reg(int);
         int compare_regs_mute();

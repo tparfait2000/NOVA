@@ -36,8 +36,9 @@
 #include "string.hpp"
 #include "vectors.hpp"
 #include "pe.hpp"
+#include "cow_elt.hpp"
 
-mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx;
+mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx, Ec::tscp_rcx1 = 0, Ec::tscp_rcx2 = 0;
 bool Ec::ec_debug = false, Ec::glb_debug = false, Ec::hardening_started = false, Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false, Ec::no_further_check = false, Ec::first_run_advanced = false;
 uint64 Ec::exc_counter = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::counter1 = 0, Ec::counter2 = 0, Ec::debug_compteur = 0, Ec::count_je = 0, Ec::nbInstr_to_execute = 0,
         Ec::nb_inst_single_step = 0, Ec::second_run_instr_number = 0, Ec::first_run_instr_number = 0, Ec::single_step_number = 0, Ec::distance_instruction = 0;
@@ -365,9 +366,8 @@ void Ec::ret_user_vmresume() {
 
     if (EXPECT_FALSE(get_cr2() != current->regs.cr2))
         set_cr2(current->regs.cr2);
-    if (Lapic::tour >= 66600)
-        Console::print("VmRun tour %u RIM %lx", Lapic::tour, Vmcs::read(Vmcs::GUEST_RIP));
     //    Console::print("Counter before VMENTRY %llx", Lapic::read_instCounter());
+    trace(TRACE_VMX, "VMResume  GuestRip %lx Run %d", Vmcs::read(Vmcs::GUEST_RIP), run_number);       
     Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xb);
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR)
                 "vmresume;"
@@ -528,9 +528,10 @@ bool Ec::fixup(mword &eip) {
 
 void Ec::die(char const *reason, Exc_regs *r) {
     bool const show = current->pd == &Pd::kern || current->pd == &Pd::root;
-
-    if (current->utcb || show) {
-        if (show || !strmatch(reason, "PT not found", 12))
+    bool const pf_in_kernel = str_equal(reason, "#PF (kernel)");
+    
+    if (current->utcb || show || pf_in_kernel) {
+//        if (show || !strmatch(reason, "PT not found", 12))
             trace(0, "Killed EC:%s SC:%p V:%#lx CS:%#lx IP:%#lx(%#lx) CR2:%#lx ERR:%#lx (%s) %s",
                 current->name, Sc::current, r->vec, r->cs, r->REG(ip), r->ARG_IP, r->cr2, r->err, reason, current->pd == &Pd::root ? "Pd::root" : current->pd == &Pd::kern ? "Pd::kern" : "");
     } else
@@ -702,7 +703,9 @@ void Ec::restore_state() {
     if (fpu)
         fpu->restore_data();
     if(!utcb){
+        trace(TRACE_VMX, "Restore  in VMX");       
         vmx_restore_state();
+        Cow_elt::restore_state();
     }
 }
 

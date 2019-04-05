@@ -249,13 +249,45 @@ bool Vtlb::is_cow(mword virt, mword error){
             trace (TRACE_VTLB, "Cow fault A:%#010lx E:%#lx TLB:%#016llx GuestIP %#lx",             
                 virt, error, tlb->val, Vmcs::read(Vmcs::GUEST_RIP));
             Counter::vtlb_cow++;   
-            mword attr = tlb->attr();
-            Paddr new_phys = Cow_elt::resolve_cow_fault(virt, tlb->addr(), tlb->attr());
-            tlb->val = new_phys | attr| TLB_W;
-            tlb->val &= ~TLB_COW;
+            Cow_elt::resolve_cow_fault(tlb, virt, tlb->addr(), tlb->attr());
             return true;
         } else {
             return false;
         }
+    }
+}
+
+/**
+ * This update is very specific to our copy on write because it is relative to the entry 
+ * directely. So, no page walking is needed.
+ * @param phys
+ * @param attr
+ */
+void Vtlb::cow_update(Paddr phys, mword attr){
+    val = phys | attr| TLB_W;
+    val &= ~TLB_COW;
+}
+
+size_t Vtlb::vtlb_lookup(mword v, Paddr &p, mword &a) {
+    unsigned l = max();
+    unsigned b = bpl();
+    unsigned shift = --l * b + PAGE_BITS;
+    Vtlb *tlb = static_cast<Vtlb *> (this) ;
+    tlb += v >> shift & ((1UL << b) - 1);
+
+    for (;; tlb = static_cast<Vtlb *> (Buddy::phys_to_ptr(tlb->addr())) + (v >> (--l * b + PAGE_BITS) & ((1UL << b) - 1))) {
+        if (EXPECT_FALSE(!tlb->val))
+            return 0;
+
+        if (EXPECT_FALSE(l && !tlb->super()))
+                continue; 
+        
+        size_t s = 1UL << (l * b + tlb->order());
+
+        p = static_cast<Paddr> (tlb->addr() | (v & (s - 1)));
+
+        a = tlb->attr();
+
+        return s;
     }
 }

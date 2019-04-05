@@ -211,3 +211,16 @@ void Hpt::set_cow_page(mword virt, mword &entry) {
         }
     }
 }
+
+/**
+ * This update is very specific to our copy on write because it is relative to the entry 
+ * directely. So, no page walking is needed.
+ * @param phys
+ * @param attr
+ */
+void Hpt::cow_update(Paddr phys, mword attr){
+    /**TODO
+     Use tremplate to merge Hpt::cow_update and Vtlb::cow_update in one function*/
+    val = phys | attr| HPT_W;
+    val &= ~HPT_COW;
+}
