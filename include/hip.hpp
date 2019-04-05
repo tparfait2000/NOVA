@@ -46,6 +46,7 @@ class Hip_mem
 {
     public:
     enum {
+        AVAILABLE   =  1u,
         HYPERVISOR  = -1u,
         MB_MODULE   = -2u,
         ACPI_RSDT   = -3u,
@@ -119,13 +120,6 @@ public:
 
     INIT
     static void build_mbi1 (Hip_mem *&, mword);
-    static bool cpu_next() {
-        unsigned id = Cpu::id + 1;
-        unsigned n = sizeof (hip()->cpu_desc) / sizeof (*hip()->cpu_desc);
-        while (!cpu_online(id))
-            id = (id + 1) % n;
-        return id;
-    }
 
     INIT
     static void build_mbi2 (Hip_mem *&, mword);
@@ -149,21 +143,7 @@ public:
     static void add_mhv(Hip_mem *&);
     
     static void add_cpu();
-    static void add_check();
-
-    static Hip_mem* get_mem_desc(){
-        return hip()->mem_desc;
-    }
+    static void add_check();   
     
-    static uint16 get_mem_offset(){
-        return hip()->mem_offs;
-    }
-    
-    static uint16 get_mem_size(){
-        return hip()->mem_size;
-    }
-    
-    static uint16 get_length(){
-        return hip()->length;
-    }    
+    static bool is_mmio(const Paddr);
 };

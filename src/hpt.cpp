@@ -26,6 +26,7 @@
 #include "string.hpp"
 #include "ec.hpp"
 #include "cow.hpp"
+#include "hip.hpp"
 
 //void Hpt::print_table(Quota &quota, mword o) {
 //    for (mword v = 0; v <= o; v = v + PAGE_SIZE) {
@@ -201,7 +202,7 @@ void Hpt::print(char const *s, mword v){
 
 void Hpt::set_cow_page(mword virt, mword &entry) {
     if ((virt < USER_ADDR) && (entry & HPT_P) && (entry & HPT_U)) {
-        if (is_mmio(entry & ~(PAGE_MASK|HPT_NX))) {
+        if (Hip::is_mmio(entry & ~(PAGE_MASK|HPT_NX))) {
             entry |= HPT_COW | HPT_COW_IO;
             entry &= ~HPT_P;
         } else if (entry & HPT_W) {

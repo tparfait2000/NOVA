@@ -31,19 +31,6 @@ mword Ept::ord = ~0UL;
 mword Hpt::ord = ~0UL;
 
 template <typename P, typename E, unsigned L, unsigned B, bool F>
-bool Pte<P, E, L, B, F>::is_mmio(E p) {
-    Cow::block *b = Cow::ram_mem_list;
-    while (b != nullptr) {
-        //        Console::print("deb: %08lx  fin: %08lx  p: %08lx", b->start, b->end, p);
-        if ((p >= b->start) && (p < b->end)) {
-            return false;
-        }
-        b = b->next;
-    }
-    return true;
-}
-
-template <typename P, typename E, unsigned L, unsigned B, bool F>
 P *Pte<P, E, L, B, F>::walk(Quota &quota, E v, unsigned long n, bool a) {
     unsigned long l = L;
 

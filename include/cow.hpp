@@ -40,15 +40,6 @@ public:
     };
     static struct cow_elt cow_list[NB_COW_ELT];
 
-    struct block {
-        Paddr start = {};
-        Paddr end = {};
-        bool used = false;
-        block *next = nullptr;
-    };
-    static struct block block_elts[NB_BLOCK_ELT];
-    static struct block *ram_mem_list;
-
     enum Multiboot_Type {
         MULTIBOOT_MODULE = -2,
         MICROHYPERVISOR = -1,
@@ -61,16 +52,6 @@ public:
     Cow();
     //    Cow(const Cow& orig);
     virtual ~Cow();
-
-    static struct block* get_new_block_elt() {
-        for (uint32 i = 0; i < NB_BLOCK_ELT; i++) {
-            if (!block_elts[i].used) {
-                block_elts[i].used = true;
-                return &block_elts[i];
-            }
-        }
-        return nullptr; //Normally this should never happen cause we allocate NB_BLOCK_ELT = 10
-    }
 
     /**
      * @param elt_index

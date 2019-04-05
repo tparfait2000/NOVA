@@ -121,7 +121,6 @@ public:
     bool check(Quota_guard &qg, mword o) {
         return qg.check(o / (4096 / sizeof (E)) + L);
     }
-    static bool is_mmio(E p);
     
     void print_walk(Quota &quota, E, mword);
     
