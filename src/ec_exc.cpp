@@ -141,7 +141,7 @@ bool Ec::handle_exc_pf (Exc_regs *r)
     mword addr = r->cr2;
 
     if (r->err & Hpt::ERR_U)
-        return addr < USER_ADDR && Pd::current->Space_mem::loc[Cpu::id].sync_from (Pd::current->quota, Pd::current->Space_mem::hpt, addr, USER_ADDR);
+        return addr < USER_ADDR && Pd::current->Space_mem::loc[Cpu::id].sync_user (Pd::current->quota, Pd::current->Space_mem::hpt, addr);
 
     if (addr < USER_ADDR) {
 

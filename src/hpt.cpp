@@ -23,6 +23,11 @@
 #include "bits.hpp"
 #include "hpt.hpp"
 
+bool Hpt::sync_user (Quota &quota, Hpt src, mword v)
+{
+    return Hpt::sync_from (quota, src, v, CANONICAL_ADDR);
+}
+
 bool Hpt::sync_from (Quota &quota, Hpt src, mword v, mword o)
 {
     mword l = (bit_scan_reverse (v ^ o) - PAGE_BITS) / bpl();

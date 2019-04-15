@@ -109,6 +109,7 @@ class Hpt : public Pte<Hpt, mword, PTE_LEV, PTE_BPL, false>
             asm volatile ("mov %0, %%cr3" : : "r" (val | pcid) : "memory");
         }
 
+        bool sync_user (Quota &quota, Hpt, mword);
         bool sync_from (Quota &quota, Hpt, mword, mword);
 
         void sync_master_range (Quota &quota, mword, mword);
