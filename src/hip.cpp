@@ -34,8 +34,19 @@
 
 extern char _mempool_e;
 
+enum { MEMORY_AVAIL = 1 };
+
 mword Hip::root_addr;
 mword Hip::root_size;
+
+static uint64 kernel_target_size(uint64 const system_mem_max)
+{
+    uint64 const kernel_mem_min = CONFIG_MEMORY_DYN_MIN; /* preferred min */
+    uint64 system_mem = system_mem_max / 1000 * CONFIG_MEMORY_DYN_PER_MILL;
+    if (system_mem_max >= kernel_mem_min)
+        system_mem = max(kernel_mem_min, system_mem);
+    return system_mem;
+}
 
 void Hip::build (mword magic, mword addr)
 {
@@ -67,9 +78,16 @@ void Hip::build (mword magic, mword addr)
 
     h->length = static_cast<uint16>(reinterpret_cast<mword>(mem) - reinterpret_cast<mword>(h));
 
-    add_buddy (mem, h);
+    uint64 const system_mem_max = system_memory(*h);
+    uint64     memory_allocated = 0;
 
+    add_buddy (mem, h, system_mem_max, memory_allocated, true);
     h->length = static_cast<uint16>(reinterpret_cast<mword>(mem) - reinterpret_cast<mword>(h));
+
+    if (memory_allocated < kernel_target_size(system_mem_max)) {
+        add_buddy (mem, h, system_mem_max, memory_allocated, false);
+        h->length = static_cast<uint16>(reinterpret_cast<mword>(mem) - reinterpret_cast<mword>(h));
+    }
 }
 
 void Hip::build_mbi1(Hip_mem *&mem, mword addr)
@@ -231,51 +249,67 @@ void Hip::add_check()
     h->checksum = c;
 }
 
-void Hip::add_buddy (Hip_mem *&mem, Hip * hip)
+uint64 Hip::system_memory (Hip &hip)
+{
+    uint64 system_mem_max = 0;
+
+    for_each(hip, [&] (Hip_mem &block) {
+        if (block.type != MEMORY_AVAIL)
+            return;
+        system_mem_max += block.size;
+    });
+
+    return system_mem_max;
+}
+
+void Hip::add_buddy (Hip_mem *&mem, Hip * hip, uint64 const system_mem_max,
+                     uint64 &memory_allocated, bool close)
+{
+    mword const mhv_end = reinterpret_cast<mword>(&LINK_E);
+    bool done = false;
+
+    for_each(*hip, [&] (Hip_mem &m) {
+        if (done || (m.type != MEMORY_AVAIL))
+            return;
+
+        uint64 const memory_before = memory_allocated;
+
+        /* find memory close behind hypervisor for close = true */
+        if (!close || (m.addr <= mhv_end && mhv_end < m.addr + m.size))
+            _add_buddy(mem, hip, system_mem_max, memory_allocated, m);
+
+        done = (memory_before != memory_allocated);
+    });
+}
+
+void Hip::_add_buddy (Hip_mem *&mem, Hip * hip, uint64 const system_mem_max,
+                      uint64 &memory_allocated, Hip_mem const &cmp)
 {
     enum { MEMORY_AVAIL = 1 };
 
-    mword const mhv_cnt = (reinterpret_cast<mword>(hip) + hip->length - reinterpret_cast<mword>(hip->mem_desc)) / sizeof(Hip_mem);
     mword const mhv_end = reinterpret_cast<mword>(&LINK_E);
-    mword mhv_i = mhv_cnt;
-    uint64 system_mem_max = 0;
-
-    /* find memory close behind hypervisor */
-    for (unsigned i = 0; i < mhv_cnt; i++) {
-        Hip_mem * m = hip->mem_desc + i;
-        if (m->type != MEMORY_AVAIL)
-            continue;
-
-        system_mem_max += m->size;
-
-        if ((m->addr <= mhv_end) && (mhv_end < m->addr + m->size))
-            mhv_i = i;
-    }
-
-    if (mhv_i >= mhv_cnt)
-        return;
-
-    Hip_mem const * const cmp = hip->mem_desc + mhv_i;
     uint64 region_start = mhv_end;
-    uint64 region_end   = cmp->addr + cmp->size;
+    uint64 region_end   = cmp.addr + cmp.size;
+
+    if (region_end <= region_start)
+         return;
 
     /* exclude all reserved memory part of region */
-    for (unsigned i = 0; i < mhv_cnt; i++) {
-        Hip_mem const * const m = hip->mem_desc + i;
-        uint64 m_end = m->addr + m->size;
+    for_each(*hip, [&] (Hip_mem &m) {
+        uint64 m_end = m.addr + m.size;
 
-        if (m->type == Hip_mem::MB2_FB)
-            m_end = m->addr + m->aux * (m->size >> 40);
+        if (m.type == Hip_mem::MB2_FB)
+            m_end = m.addr + m.aux * (m.size >> 40);
 
-        if (m->type == MEMORY_AVAIL)
-            continue;
-        if (m->addr >= region_end)
-            continue;
+        if (m.type == MEMORY_AVAIL)
+            return;
+        if (m.addr >= region_end)
+            return;
         if (m_end <= region_start)
-            continue;
+            return;
 
-        if (region_start <= m->addr) {
-            uint64 const new_end  = min (region_end, m->addr);
+        if (region_start <= m.addr) {
+            uint64 const new_end  = min (region_end, m.addr);
             uint64 const new_size = new_end - region_start;
             if (region_end > m_end && region_end - m_end > new_size)
                 region_start = m_end;
@@ -284,7 +318,7 @@ void Hip::add_buddy (Hip_mem *&mem, Hip * hip)
         } else
         if (region_start <= m_end)
             region_start = m_end;
-    }
+    });
 
     /* align region_size and region_addr */
     uint64 region_size = region_end - region_start;
@@ -312,10 +346,9 @@ void Hip::add_buddy (Hip_mem *&mem, Hip * hip)
     if (v_buddy + region_size >= BUDDY_V_MAX)
         region_size = (BUDDY_V_MAX - v_buddy);
 
-    uint64 const kernel_mem_min = CONFIG_MEMORY_DYN_MIN; /* preferred min */
-    uint64 system_mem = system_mem_max / 1000 * CONFIG_MEMORY_DYN_PER_MILL;
-    if (system_mem_max >= kernel_mem_min)
-        system_mem = max(kernel_mem_min, system_mem);
+    uint64 system_mem = kernel_target_size(system_mem_max);
+    if (memory_allocated < system_mem)
+        system_mem -= memory_allocated;
 
     uint64 const buddy_size = min(system_mem, region_size) & ~mask;
     if (!buddy_size)
@@ -338,4 +371,6 @@ void Hip::add_buddy (Hip_mem *&mem, Hip * hip)
     mem->size = buddy_size;
     mem->type = Hip_mem::HYPERVISOR;
     mem++;
+
+    memory_allocated += buddy_size;
 }

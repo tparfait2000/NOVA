@@ -143,7 +143,26 @@ class Hip
         static void add_mhv (Hip_mem *&);
 
         INIT
-        static void add_buddy (Hip_mem *&, Hip *);
+        static void add_buddy (Hip_mem *&, Hip *, uint64 const, uint64 &, bool);
+
+        INIT
+        static void _add_buddy (Hip_mem *&, Hip *, uint64 const, uint64 &, Hip_mem const &);
+
+        template <typename T>
+        INIT
+        static void for_each (Hip &hip, T const fn)
+        {
+            mword const mhv_cnt = (reinterpret_cast<mword>(&hip) + hip.length - reinterpret_cast<mword>(hip.mem_desc)) / sizeof(Hip_mem);
+
+            for (unsigned i = 0; i < mhv_cnt; i++) {
+                Hip_mem * m = hip.mem_desc + i;
+
+                fn(*m);
+            }
+        }
+
+        INIT
+        static uint64 system_memory (Hip &);
 
         static void add_cpu();
         static void add_check();
