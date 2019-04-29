@@ -23,7 +23,6 @@
 #include "ept.hpp"
 #include "hpt.hpp"
 #include "pte.hpp"
-#include "cow.hpp"
 #include "vtlb.hpp"
 
 mword Dpt::ord = ~0UL;

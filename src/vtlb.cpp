@@ -249,7 +249,7 @@ bool Vtlb::is_cow(mword virt, mword error){
             trace (TRACE_VTLB, "Cow fault A:%#010lx E:%#lx TLB:%#016llx GuestIP %#lx",             
                 virt, error, tlb->val, Vmcs::read(Vmcs::GUEST_RIP));
             Counter::vtlb_cow++;   
-            Cow_elt::resolve_cow_fault(tlb, virt, tlb->addr(), tlb->attr());
+            Cow_elt::resolve_cow_fault(tlb, nullptr, virt, tlb->addr(), tlb->attr());
             return true;
         } else {
             return false;
@@ -264,8 +264,7 @@ bool Vtlb::is_cow(mword virt, mword error){
  * @param attr
  */
 void Vtlb::cow_update(Paddr phys, mword attr){
-    val = phys | attr| TLB_W;
-    val &= ~TLB_COW;
+    val = phys | attr;
 }
 
 size_t Vtlb::vtlb_lookup(mword v, Paddr &p, mword &a) {

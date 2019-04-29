@@ -37,6 +37,7 @@
 #include "stdio.hpp"
 #include "vmx.hpp"
 #include "pe.hpp"
+#include "pe_state.hpp"
 
 class Utcb;
 class Sm;
@@ -251,14 +252,15 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
         };
 
         enum Step_reason {
-            SR_NIL = 0,
-            SR_MMIO = 1,
-            SR_PIO = 2,
-            SR_RDTSC = 3,
-            SR_PMI = 4,
-            SR_GP = 5,
-            SR_DBG = 6,
-            SR_EQU = 7,
+            SR_NIL      = 0,
+            SR_MMIO     = 1,
+            SR_PIO      = 2,
+            SR_RDTSC    = 3,
+            SR_PMI      = 4,
+            SR_GP       = 5,
+            SR_DBG      = 6,
+            SR_EQU      = 7,
+            SR_VMIO     = 8,
         };
 
         enum PE_stopby {
@@ -641,7 +643,8 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
         static void disable_rdtsc();
         static void enable_mtf();
         static void disable_mtf();
-        static void vmx_enable_single_step();
+        NORETURN
+        static void vmx_enable_single_step(Step_reason);
         static void vmx_emulate_rdtsc(bool);
         static void emulate_rdtsc2();
         NORETURN
@@ -658,8 +661,6 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
         bool single_step_finished();
         void free_recorded_pe();
         static void dump_pe(bool = false);
-        bool cmp_pe_to_head(Pe*, Pe::Member_type);
-        bool cmp_pe_to_tail(Pe*, Pe::Member_type);
         void mark_pe_tail();
         void take_snaphot();
         static void count_interrupt(mword);
@@ -667,5 +668,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
         void start_debugging(Debug_type);
         static void  debug_record_info();
         static void step_debug();
+        static void prepare_checking();
 
+//        void dump_regs();
 };

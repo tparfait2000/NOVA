@@ -22,11 +22,12 @@
 
 class Cow_elt {
     friend class Queue<Cow_elt>;
-    static Slab_cache cache; 
-    static  Queue<Cow_elt> cow_elts;
-   
+    static Slab_cache cache;
+    static Queue<Cow_elt> cow_elts;
+
 public:
-    enum Page_type{
+
+    enum Page_type {
         NORMAL,
         BIG_PAGE,
     };
@@ -35,34 +36,49 @@ public:
     ~Cow_elt();
 
     ALWAYS_INLINE
-    static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
+    static inline void *operator new (size_t, Quota &quota){return cache.alloc(quota);}
+
     ALWAYS_INLINE
-    static inline void destroy (Cow_elt *obj, Quota &quota) { obj->~Cow_elt(); cache.free (obj, quota);}
+    static inline void destroy(Cow_elt *obj, Quota &quota) {
+        obj->~Cow_elt();
+        cache.free(obj, quota);
+    }
+
     ALWAYS_INLINE
     static inline void operator delete (void *ptr, Quota &quota) {
         Cow_elt* ce = static_cast<Cow_elt*> (ptr);
         ce->~Cow_elt();
-        cache.free (ptr, quota);
+        cache.free(ptr, quota);
     }
 
-    Cow_elt &operator = (Cow_elt const &);
-    static void resolve_cow_fault(Vtlb*, mword virt, Paddr phys, mword attr);
+    Cow_elt &operator=(Cow_elt const &);
+
+    static size_t get_number() { return number; }
+
+    static void resolve_cow_fault(Vtlb*, Hpt*, mword virt, Paddr phys, mword attr);
     static bool is_mapped_elsewhere(Paddr, Cow_elt*);
     static void copy_frame(Cow_elt*, mword);
-    static bool is_empty(){ return !cow_elts.head(); }
+
+    static bool is_empty() {
+        return !cow_elts.head();
+    }
     static void restore_state();
     static bool compare_and_commit();
-    
+    static void restore_state1();
+    static void rollback();
+
 private:
-    Page_type type; 
+    Page_type type;
     mword page_addr = {}; // if VM, this will hold the gla, else hold page addr
     Paddr old_phys = {};
     mword attr = {};
     Paddr new_phys[2];
+    /*---These should moved to Pe class when it will be used -----*/
     Vtlb *vtlb = nullptr;
     Hpt *hpt = nullptr;
+    /*------------------------------------------------------------*/
     void* linear_add = nullptr;
     Cow_elt *prev;
     Cow_elt *next;
-    static size_t number;    
+    static size_t number;
 };

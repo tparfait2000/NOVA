@@ -26,7 +26,6 @@
 #include "space_mem.hpp"
 #include "space_obj.hpp"
 #include "space_pio.hpp"
-#include "cow.hpp"
 
 class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, public Space_obj {
 private:
@@ -109,7 +108,6 @@ public:
     ~Pd();
 
     /*--------Copy on write treatement--------*/
-    Cow::cow_elt *cow_list = {nullptr};
     Spinlock cow_lock { };
 
     Pd(const Pd&);
@@ -188,17 +186,8 @@ public:
 
         cache.free (ptr, pd_to->quota);
     }
-    
     char *get_name() {return name;}  
-    Cow::cow_elt* find_cow_elt(mword gpa);
-    bool is_mapped_elsewhere(Paddr phys, Cow::cow_elt* cow);
-    void add_cow(Cow::cow_elt *ce);
-    Cow::cow_elt* cowlist_contains(mword, Paddr);
-    bool compare_and_commit();
-    bool vtlb_compare_and_commit();
-    void restore_state();
-    void restore_state1();
-    void rollback();
+
     void set_to_be_cowed();
     bool get_to_be_cowed(){
         return to_be_cowed;

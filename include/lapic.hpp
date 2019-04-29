@@ -106,7 +106,8 @@ class Lapic
         static unsigned freq_tsc;
         static unsigned freq_bus;
         static uint64 prev_tsc;
-        static uint64 end_time, begin_time, counter, prev_counter, start_counter, perf_max_count;
+        static uint64 end_time, begin_time, counter, prev_counter, start_counter, 
+        perf_max_count, counter_read_value;
         static bool timeout_to_check, timeout_expired;
         static uint32 tour, tour1;
         static const uint32 max_info;

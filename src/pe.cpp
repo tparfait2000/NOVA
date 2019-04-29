@@ -14,9 +14,12 @@
 #include "pe.hpp"
 #include "pd.hpp"
 #include "string.hpp"
+#include "regs.hpp"
 Slab_cache Pe::cache(sizeof (Pe), 32);
 size_t Pe::number = 0;
-Queue<Pe> Pe::pe_states;
+bool Pe::inState1 = false;
+bool Pe::pmi_pending = false;
+Queue<Pe> Pe::pes;
 unsigned Pe::ipi[2][NUM_IPI];
 unsigned Pe::msi[2][NUM_MSI];
 unsigned Pe::lvt[2][NUM_LVT];
@@ -35,9 +38,14 @@ unsigned Pe::pio[2];
 unsigned Pe::mmio[2];
 unsigned Pe::rep_prefix[2];
 unsigned Pe::hlt_instr[2];
-uint64 Pe::nb_pe;
+unsigned Pe::vmlaunch = 0;
 
-Pe::Pe(const char* ec_name, const char* pd_name, mword rip_value) : rip(rip_value), prev(nullptr), next(nullptr){
+char Pe::current_ec[], Pe::current_pd[];
+Cpu_regs Pe::c_regs[];
+mword Pe::vmcsRIP[], Pe::vmcsRSP[], Pe::vmcsRIP_0, Pe::vmcsRIP_1, Pe::vmcsRIP_2, 
+        Pe::vmcsRSP_0, Pe::vmcsRSP_1, Pe::vmcsRSP_2;
+
+Pe::Pe(const char* ec_name, const char* pd_name, Cpu_regs cpu_regs) : regs(cpu_regs), prev(nullptr), next(nullptr){
     copy_string(ec, ec_name);
     copy_string(pd, pd_name);  
     numero = number;
@@ -48,58 +56,29 @@ Pe::~Pe() {
     number--;
 }
 
-void Pe::add_counter(uint64 counter){
-    retirement_counter = counter;
-}
-
-void Pe::add_rip(mword rip_value){
-    rip = rip_value;
-}
-
-void Pe::add_instruction(mword instruction_value){
-    instruction = instruction_value;
-}
-
-bool Pe::cmp_to(Member_type member, Pe* pe){
-    switch (member){
-        case RETIREMENT_COUNTER:
-            return retirement_counter == pe->retirement_counter;
-        case REGISTER_RIP:
-            return rip == pe->rip;
-        default:
-            Console::panic("Unknown Member_type");
-    }
-}
-
 void Pe::mark(){
     marked = true;
 }
-void Pe::add_pe_state(Pe* pe){
-    pe_states.enqueue(pe);
-}
 
-void Pe::add_pe_state(const char* ec_name, const char* pd_name, mword rip_value, mword attrib){
-    Pe* pe = new (Pd::kern.quota) Pe(ec_name, pd_name, rip_value);
-    pe->attr = attrib;
-    pe_states.enqueue(pe);
+void Pe::add_pe(Pe* pe){
+    pes.enqueue(pe);
 }
 
 void Pe::free_recorded_pe() {
     Pe *pe = nullptr;
-    while (pe_states.dequeue(pe = pe_states.head())) {
+    while (pes.dequeue(pe = pes.head())) {
         Pe::destroy(pe, Pd::kern.quota);
     }
 }
 
-void Pe::dump(bool all){
-    Pe *pe = pe_states.tail();
-    if(!pe)
-        return;
-    do {
-        if(all || pe->is_marked())
-            pe->print();
-        pe = pe->get_previous();
-    } while(pe != pe_states.tail());
+void Pe::dump(bool all){    
+    Pe *p = pes.head(), *head = pes.head(), *n = nullptr;
+    while(p) {
+        if(all || p->is_marked())
+            p->print();
+        n = p->next;
+        p = (p == n || n == head) ? nullptr : n;
+    }
 }
 
 void Pe::reset_counter(){

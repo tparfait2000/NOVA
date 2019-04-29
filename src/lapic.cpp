@@ -33,7 +33,8 @@
 
 unsigned    Lapic::freq_tsc;
 unsigned    Lapic::freq_bus;
-uint64 Lapic::counter = 0, Lapic::prev_counter, Lapic::max_tsc = 0, Lapic::start_counter, Lapic::perf_max_count; 
+uint64 Lapic::counter = 0, Lapic::prev_counter, Lapic::max_tsc = 0, Lapic::start_counter, 
+        Lapic::perf_max_count, Lapic::counter_read_value; 
 bool Lapic::timeout_to_check = false, Lapic::timeout_expired = false;
 uint32 Lapic::tour = 0, Lapic::tour1 = 0;
 const uint32 Lapic::max_info = 100000;
@@ -222,15 +223,20 @@ void Lapic::ipi_vector (unsigned vector){
  * Only used in case of virtualization
  */
 void Lapic::save_counter(){
-    Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa); //unless we may face a pmi in the kernel
-    uint64 compteur_value = Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), deduced_cmpteurValue = compteur_value - 0x43;
-    counter = compteur_value>start_counter? deduced_cmpteurValue : 
-        compteur_value < 0x43 ? perf_max_count + compteur_value - 0x43 : deduced_cmpteurValue; 
+//    Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa); //unless we may face a pmi in the kernel
+    unsigned bias = Pe::vmlaunch ? 44 : 10; // Pour calculer ces nombres, il faut activer le MTF (enable_mtf()).
+    // le compteur contient alors le nombre d'instructions en mode privilegié + 1 instruction en machine virtuelle
+    counter_read_value = Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0); 
+    uint64 deduced_cmpteurValue = counter_read_value - bias;
+    if(Ec::step_reason == Ec::SR_NIL) {
+        counter = counter_read_value>start_counter? deduced_cmpteurValue : 
+            counter_read_value < bias ? perf_max_count + counter_read_value - bias : deduced_cmpteurValue; 
+    } else {
+        counter = counter_read_value - 10;         
+    }
     Msr::write(Msr::MSR_PERF_FIXED_CTR0, counter); //0x44 is the number of hypervisor's instruction for now
     Ec::last_rip = Vmcs::read(Vmcs::GUEST_RIP);
     Ec::last_rcx = Ec::current->get_regsRCX();
-    Ec::exc_counter++;
-//    Console::print("Counter after2 VMEXIT %llx %llx %d Eip: %lx compteur_value %llx", prev_counter, counter, Ec::run_number, Ec::last_rip, compteur_value);
 }    
 
 void Lapic::activate_pmi() {
@@ -361,32 +367,7 @@ bool Lapic::too_few_instr(){
 }
 
 void Lapic::check_dwc(){
-    if((Ec::run_number == 0) || (tour == tour1))
-        return;
-    if(Ec::prev_reason != 3002 && Ec::prev_reason != 5972) //only Perf and Timer
-        return;
-    if(Ec::step_reason != Ec::SR_NIL)
-        return;
-    if(Ec::no_further_check)
-        return;
-    if(perf_compteur[tour-1-tour1][1] == perf_compteur[tour-1][0] &&
-            info[tour-1][1] == info[tour-1-tour1][1] && 
-            info[tour-1][2] == info[tour-1-tour1][2]
-            )
-        return;
-    else{
-        if(info[0][1] == 0x1800c)
-            return;
-        Ec::no_further_check = true;
-//        if((perf_compteur[tour-1-tour1][1] != perf_compteur[tour-1][0] ||
-//                info[tour-1][2] != info[tour-1-tour1][2]) &&
-//                info[tour-1][2] == 1){
-//            print_compteur();
-//            return;
-//        }
-        print_compteur();        
-    }
-        
+//    print_compteur();                
 }
 
 uint64 Lapic::nb_executed_instr(){

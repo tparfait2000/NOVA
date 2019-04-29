@@ -36,7 +36,7 @@ INIT_PRIORITY(PRIO_BUDDY)
 ALIGNED(32) Pd Pd::kern(&Pd::kern);
 ALIGNED(32) Pd Pd::root(&Pd::root, NUM_EXC, 0x1f);
 
-const char *Pd::names[] = {"init -> nic_drv", "init -> fb_drv", "init -> fb_boot_drv", nullptr};//Do never forget to terminate this by nullptr
+const char *Pd::names[] = {"init -> nic_drv", "init -> fb_drv", "init -> fb_boot_drv", "init -> platform_drv", nullptr};//Do never forget to terminate this by nullptr
 
 Pd::Pd (Pd *own) : Kobject (PD, static_cast<Space_obj *>(own)), pt_cache (sizeof (Pt), 32), mdb_cache (sizeof (Mdb), 16), sm_cache (sizeof (Sm), 32), sc_cache (sizeof (Sc), 32), ec_cache (sizeof (Ec), 32), fpu_cache (sizeof (Fpu), 16){
     copy_string(name, const_cast<char* const> ("kern_pd"));
@@ -426,94 +426,7 @@ void Pd::assign_rid(uint16 const r)
     rids_u     |= static_cast<uint16>(1U << free);
 }
 
-void Pd::add_cow(Cow::cow_elt *ce) {
-    Lock_guard <Spinlock> guard(cow_lock);
-    Cow::cow_elt *tampon = cow_list;
-    cow_list = ce;
-    ce->next = tampon;
-}
 
-Cow::cow_elt* Pd::cowlist_contains(mword addr, Paddr phys) {
-    phys = phys & ~PAGE_MASK;
-    addr = addr & ~PAGE_MASK;
-    Lock_guard <Spinlock> guard(cow_lock);
-    Cow::cow_elt *c = cow_list;
-    while (c != nullptr) {
-        if (c->page_addr_or_gpa == addr && c->old_phys == phys)
-            return c;
-        c = c->next;
-    }
-    return nullptr;
-}
-
-bool Pd::is_mapped_elsewhere(Paddr phys, Cow::cow_elt* cow) {
-    Lock_guard <Spinlock> guard(cow_lock);
-    Cow::cow_elt *c = cow_list;
-    while ((c != nullptr) && (c != cow)) {
-        if (c->old_phys == phys) {//frame already mapped elsewhere
-            cow->old_phys = phys;
-            cow->new_phys[0] = c->new_phys[0];
-            cow->new_phys[1] = c->new_phys[1];
-            trace(COW_FAULT, "Is mapped elsewhere c->old_phys == phys : Phys:%lx new_phys[0]:%lx new_phys[1]:%lx",
-                    c->old_phys, c->new_phys[0]->phys_addr, c->new_phys[1]->phys_addr);
-            return true;
-        }
-        c = c->next;
-    }
-    return false;
-}
-
-Cow::cow_elt* Pd::find_cow_elt(mword gpa) {
-    int n = 0;
-    Lock_guard <Spinlock> guard(cow_lock);
-    Cow::cow_elt *c = cow_list, *result = nullptr;
-    while (c != nullptr) {
-        if (c->old_phys == (gpa & ~PAGE_MASK)) {
-            result = c;
-            n++;
-        }
-    }
-    if (n != 1) {
-        Ec::die("Cow elt not find");
-        Console::print("Cow elt not find");
-    }
-    return result;
-}
-
-void Pd::restore_state() {
-    Lock_guard <Spinlock> guard(cow_lock);
-    Cow::cow_elt *cow = cow_list;
-    Quota q = this->quota;
-    while (cow != nullptr) {
-        mword v = cow->page_addr_or_gpa;
-        loc[Cpu::id].replace_cow(q, v, cow->new_phys[1]->phys_addr | (cow->attr | Hpt::HPT_W));
-        cow = cow->next;
-    }
-}
-
-void Pd::restore_state1() {
-    Lock_guard <Spinlock> guard(cow_lock);
-    Cow::cow_elt *cow = cow_list;
-    Quota q = this->quota;
-    while (cow != nullptr) {
-        mword v = cow->page_addr_or_gpa;
-        loc[Cpu::id].replace_cow(q, v, cow->new_phys[0]->phys_addr | (cow->attr | Hpt::HPT_W));
-        cow = cow->next;
-    }
-}
-
-void Pd::rollback() {
-    Lock_guard <Spinlock> guard(cow_lock);
-    Cow::cow_elt *cow = cow_list;
-    Quota q = this->quota;
-    while (cow != nullptr) {
-        Paddr old_phys = cow->old_phys;
-        mword v = cow->page_addr_or_gpa;
-        loc[Cpu::id].replace_cow(q, v, old_phys| (cow->attr & ~Hpt::HPT_W));
-        Cow::free_cow_elt(cow);
-        cow = cow->next;
-    }
-}
 
 void Pd::set_to_be_cowed(){   
     int i = 0; 
@@ -527,52 +440,6 @@ void Pd::set_to_be_cowed(){
     to_be_cowed = true; 
 }
 
-bool Pd::compare_and_commit() {
-    /**TODO
-     * implement virtual machine memory comparison
-     */
-    Lock_guard <Spinlock> guard(cow_lock);
-    Cow::cow_elt *cow = cow_list;
-    Quota q = this->quota;
-    while (cow != nullptr) {
-        //        Console::print("Compare v: %p  phys: %p  ce: %p  phys1: %p  phys2: %p", cow->page_addr_or_gpa, cow->old_phys, cow, cow->new_phys[0]->phys_addr, cow->new_phys[1]->phys_addr);
-        mword *ptr1 = reinterpret_cast<mword*> (Hpt::remap_cow(q, cow->new_phys[0]->phys_addr)),
-                *ptr2 = reinterpret_cast<mword*> (cow->page_addr_or_gpa);
-        int missmatch_addr = memcmp(ptr1, ptr2, PAGE_SIZE);
-        if (missmatch_addr) {
-            mword index = (PAGE_SIZE / 4 - missmatch_addr - 1) * 4 /sizeof(mword); // because memcmp compare by grasp of 4 bytes
-            mword val1 = *(ptr1 + index);
-            mword val2 = *(ptr2 + index);
-            Console::print("Pd: %p  phys1 %lx phys2 %lx ptr1: %p  ptr2: %p  val1: 0x%lx  val2: 0x%lx  missmatch_addr: %p",
-                    this, cow->new_phys[0]->phys_addr, cow->new_phys[1]->phys_addr, ptr1, ptr2, val1, val2, ptr2 + index);
-            return true;
-        }
-        Paddr old_phys = cow->old_phys;
-        mword v = cow->page_addr_or_gpa;
-        void *ptr = Hpt::remap_cow(q, old_phys);
-        memcpy(ptr, reinterpret_cast<const void*> (v), PAGE_SIZE);
-        loc[Cpu::id].replace_cow(q, v, old_phys | (cow->attr & ~Hpt::HPT_W)); 
-        Cow::free_cow_elt(cow);
-        cow = cow->next;
-    }
-    return false;
-}
-
-bool Pd::compare_memory_mute() {
-    Cow::cow_elt *cow = cow_list;
-    Quota q = this->quota;
-    while (cow != nullptr) {
-        //        Console::print("Compare v: %p  phys: %p  ce: %p  phys1: %p  phys2: %p", cow->page_addr_or_gpa, cow->old_phys, cow, cow->new_phys[0]->phys_addr, cow->new_phys[1]->phys_addr);
-        mword *ptr1 = reinterpret_cast<mword*> (Hpt::remap_cow(q, cow->new_phys[0]->phys_addr)),
-                *ptr2 = reinterpret_cast<mword*> (cow->page_addr_or_gpa);
-        int missmatch_addr = memcmp(ptr1, ptr2, PAGE_SIZE);
-        if (missmatch_addr) {
-            return true;
-        }
-        cow = cow->next;
-    }
-    return false;
-}
 
 Pd::~Pd() {
     pre_free(this);

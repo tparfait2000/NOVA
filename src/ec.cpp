@@ -37,6 +37,7 @@
 #include "vectors.hpp"
 #include "pe.hpp"
 #include "cow_elt.hpp"
+#include "pe_state.hpp"
 
 mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx, Ec::tscp_rcx1 = 0, Ec::tscp_rcx2 = 0;
 bool Ec::ec_debug = false, Ec::glb_debug = false, Ec::hardening_started = false, Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false, Ec::no_further_check = false, Ec::first_run_advanced = false;
@@ -366,14 +367,31 @@ void Ec::ret_user_vmresume() {
 
     if (EXPECT_FALSE(get_cr2() != current->regs.cr2))
         set_cr2(current->regs.cr2);
-    //    Console::print("Counter before VMENTRY %llx", Lapic::read_instCounter());
-    trace(TRACE_VMX, "VMResume  GuestRip %lx Run %d", Vmcs::read(Vmcs::GUEST_RIP), run_number);       
-    Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xb);
-    asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR)
-                "vmresume;"
+//    trace(TRACE_VMX, "VMResume  GuestRip %lx Run %d", Vmcs::read(Vmcs::GUEST_RIP), run_number);   
+//    Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xb);
+//    enable_mtf();
+    asm volatile ("mov %2," EXPAND(PREG(sp);)
+                EXPAND(SAVE_GPR)
+                "movb $0x0, %0;"
+                "lea %1," EXPAND(PREG(sp); LOAD_GPR)
+                "push " EXPAND(PREG(ax);)
+                "push " EXPAND(PREG(cx);)
+                "push " EXPAND(PREG(dx);)
+                "mov $0x38d," EXPAND(PREG(cx);)
+                "xor " EXPAND(PREG(dx)) ", " EXPAND(PREG(dx);)
+                "mov $0xb," EXPAND(PREG(ax);)
+                "wrmsr;"  
+                "pop " EXPAND(PREG(dx);)
+                "pop " EXPAND(PREG(cx);)
+                "pop " EXPAND(PREG(ax);)
+                "vmresume;" // VMRESUME is not counted as instruction; we don't know why
+                "mov %3," EXPAND(PREG(sp);)
+                EXPAND(LOAD_GPR)
+                "movb $0x1, %0;"
+                "lea %1," EXPAND(PREG(sp); LOAD_GPR)
                 "vmlaunch;"
-                "mov %1," EXPAND(PREG(sp);)
-                : : "m" (current->regs), "i" (CPU_LOCAL_STCK + PAGE_SIZE) : "memory");
+                "mov %2," EXPAND(PREG(sp);)
+                : "=m" (Pe::vmlaunch) : "m" (current->regs), "i" (CPU_LOCAL_STCK + PAGE_SIZE), "i" (CPU_LOCAL_STCK + PAGE_SIZE - 0x80) : "memory");
 
     trace(0, "VM entry failed with error %#lx", Vmcs::read(Vmcs::VMX_INST_ERROR));
 
@@ -529,7 +547,9 @@ bool Ec::fixup(mword &eip) {
 void Ec::die(char const *reason, Exc_regs *r) {
     bool const show = current->pd == &Pd::kern || current->pd == &Pd::root;
     bool const pf_in_kernel = str_equal(reason, "#PF (kernel)");
-    
+//    prepare_checking();    
+    Pe::print_current(current->utcb ? false : true);
+    Pe_state::dump();
     if (current->utcb || show || pf_in_kernel) {
 //        if (show || !strmatch(reason, "PT not found", 12))
             trace(0, "Killed EC:%s SC:%p V:%#lx CS:%#lx IP:%#lx(%#lx) CR2:%#lx ERR:%#lx (%s) %s",
@@ -698,25 +718,28 @@ void Ec::disable_step_debug() {
 void Ec::restore_state() {
     regs_1 = regs;
     regs = regs_0;
-    pd->restore_state();
+    Cow_elt::restore_state();
     Fpu::dwc_restore();
     if (fpu)
         fpu->restore_data();
     if(!utcb){
-        trace(TRACE_VMX, "Restore  in VMX");       
         vmx_restore_state();
-        Cow_elt::restore_state();
     }
+    Pe::c_regs[1] = regs_1;
+    Pe::c_regs[2] = regs_0;
 }
 
 void Ec::restore_state1() {
+    Pe::inState1 = true;
     regs_2 = regs;
     regs = regs_1;
-    regs_1 = regs_2;
-    pd->restore_state1();
+    Cow_elt::restore_state1();
     Fpu::dwc_restore1();
     if (fpu)
         fpu->restore_data1();
+    if(!utcb){
+        vmx_restore_state1();
+    }
 }
 
 void Ec::rollback() {
@@ -724,7 +747,7 @@ void Ec::rollback() {
     Fpu::dwc_rollback();
     if (fpu)
         fpu->roll_back();
-    pd->rollback();
+    Cow_elt::rollback();
     if (!utcb) {
         regs.vmcs->clear();
         memcpy(regs.vmcs, Vmcs::vmcs0, Vmcs::basic.size);
@@ -737,7 +760,8 @@ void Ec::saveRegs(Exc_regs *r) {
     last_rcx = r->REG(cx);
     exc_counter++;
     count_interrupt(r->vec);
-//    current->take_snaphot();   
+    Pe_state::add_pe_state(new(Pd::kern.quota) Pe_state(r, Lapic::read_instCounter(), 
+            run_number, r->vec));
     return;
 }
 
@@ -749,6 +773,10 @@ void Ec::save_state() {
     if(!utcb){
         vmx_save_state();
     }
+    copy_string(Pe::current_ec, current->get_name());
+    copy_string(Pe::current_pd, current->getPd()->get_name());
+    Pe::c_regs[0] = regs_0;
+    Pe::inState1 = false;
 }
 
 void Ec::vmx_save_state() {
@@ -769,6 +797,10 @@ void Ec::vmx_save_state() {
     regs.vmcs->clear();
     memcpy(Vmcs::vmcs0, regs.vmcs, Vmcs::basic.size);
     regs.vmcs->make_current();
+    Pe::vmcsRIP_0 = Vmcs::read(Vmcs::GUEST_RIP);   
+    Pe::vmcsRSP_0 = Vmcs::read(Vmcs::GUEST_RSP);   
+    Pe::vmcsRIP[0] = Pe::vmcsRIP_0;     
+    Pe::vmcsRSP[0] = Pe::vmcsRSP_0;       
 }
 
 void Ec::vmx_restore_state() {
@@ -776,11 +808,17 @@ void Ec::vmx_restore_state() {
 //        regs.vtlb->flush(true);
 //    }
 
+    Pe::vmcsRIP_1 = Vmcs::read(Vmcs::GUEST_RIP);        
+    Pe::vmcsRSP_1 = Vmcs::read(Vmcs::GUEST_RSP);  
+    Pe::vmcsRIP[1] = Pe::vmcsRIP_1;
+    Pe::vmcsRSP[1] = Pe::vmcsRSP_1;
     regs.vmcs->clear();
     memcpy(Vmcs::vmcs1, regs.vmcs, Vmcs::basic.size);
     memcpy(regs.vmcs, Vmcs::vmcs0, Vmcs::basic.size);
     regs.vmcs->make_current();
-
+    Pe::vmcsRIP[2] = Vmcs::read(Vmcs::GUEST_RIP);
+    Pe::vmcsRSP[2] = Vmcs::read(Vmcs::GUEST_RSP);
+    
     mword host_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
     Msr_area *cur_host_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(host_msr_area_phys));
     memcpy(host_msr_area1, cur_host_msr_area, PAGE_SIZE);
@@ -799,13 +837,14 @@ void Ec::vmx_restore_state() {
 }
 
 void Ec::vmx_restore_state1() {
-    restore_state1();
-
+    Pe::vmcsRIP_2 = Vmcs::read(Vmcs::GUEST_RIP);        
+    Pe::vmcsRSP_2 = Vmcs::read(Vmcs::GUEST_RSP);  
+    Pe::vmcsRIP[3] = Pe::vmcsRIP_2;
+    Pe::vmcsRSP[3] = Pe::vmcsRSP_2;
     regs.vmcs->clear();
     memcpy(Vmcs::vmcs2, regs.vmcs, Vmcs::basic.size);
     memcpy(regs.vmcs, Vmcs::vmcs1, Vmcs::basic.size);
     regs.vmcs->make_current();
-    Console::print("Restoring...");
 
     mword host_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
     Msr_area *cur_host_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(host_msr_area_phys));
@@ -837,70 +876,70 @@ void regs_missmatch_print(char const *reg_name, mword reg_0, mword reg_1, mword 
 }
 
 int Ec::compare_regs(int reason) {
-    if (regs.r15 != regs_1.r15) {
-        regs_missmatch_print("R15", regs_0.r15, regs_1.r15, regs.r15);
+    if (regs_2.r15 != regs_1.r15) {
+        regs_missmatch_print("R15", regs_0.r15, regs_1.r15, regs_2.r15);
         return 15;
     }
-    if (regs.r14 != regs_1.r14) {
-        regs_missmatch_print("R14", regs_0.r14, regs_1.r14, regs.r14);
+    if (regs_2.r14 != regs_1.r14) {
+        regs_missmatch_print("R14", regs_0.r14, regs_1.r14, regs_2.r14);
         return 14;
     }
-    if (regs.r13 != regs_1.r13) {
-        regs_missmatch_print("R13", regs_0.r13, regs_1.r13, regs.r13);
+    if (regs_2.r13 != regs_1.r13) {
+        regs_missmatch_print("R13", regs_0.r13, regs_1.r13, regs_2.r13);
         return 13;
     }
-    if (regs.r12 != regs_1.r12) {
-        regs_missmatch_print("R12", regs_0.r12, regs_1.r12, regs.r12);
+    if (regs_2.r12 != regs_1.r12) {
+        regs_missmatch_print("R12", regs_0.r12, regs_1.r12, regs_2.r12);
         return 12;
     }
-    if (regs.r11 != regs_1.r11) {
+    if (regs_2.r11 != regs_1.r11) {
         // resume flag  or trap flag may be set if reason is step-mode
         // but it is unclear why. Must be fixed later
-        if (((regs.r11 | 1u << 16) == regs_1.r11) || (regs.r11 == (regs_1.r11 | 1u << 8)))
+        if (((regs_2.r11 | 1u << 16) == regs_1.r11) || (regs_2.r11 == (regs_1.r11 | 1u << 8)))
             return 0;
         else {
-            regs_missmatch_print("R11", regs_0.r11, regs_1.r11, regs.r11);
+            regs_missmatch_print("R11", regs_0.r11, regs_1.r11, regs_2.r11);
             return 11;
         }
     }
-    if (regs.r10 != regs_1.r10) {
-        regs_missmatch_print("R10", regs_0.r10, regs_1.r10, regs.r10);
+    if (regs_2.r10 != regs_1.r10) {
+        regs_missmatch_print("R10", regs_0.r10, regs_1.r10, regs_2.r10);
         return 10;
     }
-    if (regs.r9 != regs_1.r9) {
-        regs_missmatch_print("R9", regs_0.r9, regs_1.r9, regs.r9);
+    if (regs_2.r9 != regs_1.r9) {
+        regs_missmatch_print("R9", regs_0.r9, regs_1.r9, regs_2.r9);
         return 9;
     }
-    if (regs.r8 != regs_1.r8) {
-        regs_missmatch_print("R8", regs_0.r8, regs_1.r8, regs.r8);
+    if (regs_2.r8 != regs_1.r8) {
+        regs_missmatch_print("R8", regs_0.r8, regs_1.r8, regs_2.r8);
         return 8;
     }
-    if (regs.REG(di) != regs_1.REG(di)) {
-        regs_missmatch_print("RDI", regs_0.REG(di), regs_1.REG(di), regs.REG(di));
+    if (regs_2.REG(di) != regs_1.REG(di)) {
+        regs_missmatch_print("RDI", regs_0.REG(di), regs_1.REG(di), regs_2.REG(di));
         return 7;
     }
-    if (regs.REG(si) != regs_1.REG(si)) {
-        regs_missmatch_print("RSI", regs_0.REG(si), regs_1.REG(si), regs.REG(si));
+    if (regs_2.REG(si) != regs_1.REG(si)) {
+        regs_missmatch_print("RSI", regs_0.REG(si), regs_1.REG(si), regs_2.REG(si));
         return 6;
     }
-    if (regs.REG(bp) != regs_1.REG(bp)) {
-        regs_missmatch_print("RBP", regs_0.REG(bp), regs_1.REG(bp), regs.REG(bp));
+    if (regs_2.REG(bp) != regs_1.REG(bp)) {
+        regs_missmatch_print("RBP", regs_0.REG(bp), regs_1.REG(bp), regs_2.REG(bp));
         return 5;
     }
-    if (regs.REG(bx) != regs_1.REG(bx)) {
-        regs_missmatch_print("RBX", regs_0.REG(bx), regs_1.REG(bx), regs.REG(bx));
+    if (regs_2.REG(bx) != regs_1.REG(bx)) {
+        regs_missmatch_print("RBX", regs_0.REG(bx), regs_1.REG(bx), regs_2.REG(bx));
         return 4;
     }
-    if (regs.REG(cx) != regs_1.REG(cx)) {
-        regs_missmatch_print("RCX", regs_0.REG(cx), regs_1.REG(cx), regs.REG(cx));
+    if (regs_2.REG(cx) != regs_1.REG(cx)) {
+        regs_missmatch_print("RCX", regs_0.REG(cx), regs_1.REG(cx), regs_2.REG(cx));
         return 3;
     }
-    if (regs.REG(dx) != regs_1.REG(dx)) {
-        regs_missmatch_print("RDX", regs_0.REG(dx), regs_1.REG(dx), regs.REG(dx));
+    if (regs_2.REG(dx) != regs_1.REG(dx)) {
+        regs_missmatch_print("RDX", regs_0.REG(dx), regs_1.REG(dx), regs_2.REG(dx));
         return 2;
     }
-    if (regs.REG(ax) != regs_1.REG(ax)) {
-        regs_missmatch_print("RAX", regs_0.REG(ax), regs_1.REG(ax), regs.REG(ax));
+    if (regs_2.REG(ax) != regs_1.REG(ax)) {
+        regs_missmatch_print("RAX", regs_0.REG(ax), regs_1.REG(ax), regs_2.REG(ax));
         return 1;
     }
     if (fpu && fpu->data_check())
@@ -909,20 +948,32 @@ int Ec::compare_regs(int reason) {
         return 17;
     if (reason == PES_SYS_ENTER || !utcb) // following checks are not valid if reason is Sysenter or current is vCPU
         return 0;
-    if ((regs.REG(ip) != regs_1.REG(ip))) {
-        regs_missmatch_print("RIP", regs_0.REG(ip), regs_1.REG(ip), regs.REG(ip));
+    if ((regs_2.REG(ip) != regs_1.REG(ip))) {
+        regs_missmatch_print("RIP", regs_0.REG(ip), regs_1.REG(ip), regs_2.REG(ip));
         return 18;
     }
-//    if ((regs.REG(fl) != regs_1.REG(fl)) && ((regs.REG(fl) | (1u << 16)) != regs_1.REG(fl))) {
-//        regs_missmatch_print("RFLAGS", regs_0.REG(fl), regs_1.REG(fl), regs.REG(fl));
-//        // resume flag may be set if reason is step-mode but it is curious why this flag is set in regs_1 and not in regs.
+//    if ((regs_2.REG(fl) != regs_1.REG(fl)) && ((regs_2.REG(fl) | (1u << 16)) != regs_1.REG(fl))) {
+//        regs_missmatch_print("RFLAGS", regs_0.REG(fl), regs_1.REG(fl), regs_2.REG(fl));
+//        // resume flag may be set if reason is step-mode but it is curious why this flag is set in regs_1 and not in regs_2.
 //        // the contrary would be understandable. Must be fixed later
 //        return 19;
 //    }
-    if (regs.REG(sp) != regs_1.REG(sp)) {
-        regs_missmatch_print("RSP", regs_0.REG(sp), regs_1.REG(sp), regs.REG(sp));
+    if (regs_2.REG(sp) != regs_1.REG(sp)) {
+        regs_missmatch_print("RSP", regs_0.REG(sp), regs_1.REG(sp), regs_2.REG(sp));
         return 20;
     }
+    if (!utcb){
+//        if(memcmp(regs.vmcs, Pe::inState1 ? Vmcs::vmcs2 : Vmcs::vmcs1, Vmcs::basic.size))
+        if(Vmcs::read(Vmcs::GUEST_RIP) != (Pe::inState1 ? Pe::vmcsRIP_2 : Pe::vmcsRIP_1)){
+            regs_missmatch_print("GUEST_RIP", Pe::vmcsRIP[0], Pe::vmcsRIP_2, Pe::vmcsRIP_1);
+            return 21;
+        }
+        if(Vmcs::read(Vmcs::GUEST_RSP) != (Pe::inState1 ? Pe::vmcsRSP_2 : Pe::vmcsRSP_1)){
+            regs_missmatch_print("GUEST_RIP", Pe::vmcsRSP[0], Pe::vmcsRSP_2, Pe::vmcsRSP_1);
+            return 22;
+        }
+    }
+    
     return 0;
 }
 
@@ -1045,62 +1096,70 @@ mword Ec::get_reg(int reg_number) {
 }
 
 int Ec::compare_regs_mute() {
-    if (regs.r15 != regs_1.r15) {
+    if (regs.r15 != (Pe::inState1 ? regs_2.r15 : regs_1.r15)) {
         return 15;
     }
-    if (regs.r14 != regs_1.r14) {
+    if (regs.r14 != (Pe::inState1 ? regs_2.r14 : regs_1.r14)) {
         return 14;
     }
-    if (regs.r13 != regs_1.r13) {
+    if (regs.r13 != (Pe::inState1 ? regs_2.r13 : regs_1.r13)) {
         return 13;
     }
-    if (regs.r12 != regs_1.r12) {
+    if (regs.r12 != (Pe::inState1 ? regs_2.r12 : regs_1.r12)) {
         return 12;
     }
-    if (regs.r11 != regs_1.r11) {
+    if (regs.r11 != (Pe::inState1 ? regs_2.r11 : regs_1.r11)) {
         // resume flag  or trap flag may be set if reason is step-mode
         // but it is unclear why. Must be fixed later
-        if (((regs.r11 | 1u << 16) == regs_1.r11) || (regs.r11 == (regs_1.r11 | 1u << 8)))
+        if (((regs.r11 | 1u << 16) == (Pe::inState1 ? regs_2.r11 : regs_1.r11)) || 
+                (regs.r11 == ((Pe::inState1 ? regs_2.r11 : regs_1.r11) | 1u << 8)))
             return 0;
         else {
             return 11;
         }
     }
-    if (regs.r10 != regs_1.r10) {
+    if (regs.r10 != (Pe::inState1 ? regs_2.r10 : regs_1.r10)) {
         return 10;
     }
-    if (regs.r9 != regs_1.r9) {
+    if (regs.r9 != (Pe::inState1 ? regs_2.r9 : regs_1.r9)) {
         return 9;
     }
-    if (regs.r8 != regs_1.r8) {
+    if (regs.r8 != (Pe::inState1 ? regs_2.r8 : regs_1.r8)) {
         return 8;
     }
-    if (regs.REG(di) != regs_1.REG(di)) {
+    if (regs.REG(di) != (Pe::inState1 ? regs_2.REG(di) : regs_1.REG(di))) {
         return 7;
     }
-    if (regs.REG(si) != regs_1.REG(si)) {
+    if (regs.REG(si) != (Pe::inState1 ? regs_2.REG(si) : regs_1.REG(si))) {
         return 6;
     }
-    if (regs.REG(bp) != regs_1.REG(bp)) {
+    if (regs.REG(bp) != (Pe::inState1 ? regs_2.REG(bp) : regs_1.REG(bp))) {
         return 5;
     }
-    if (regs.REG(bx) != regs_1.REG(bx)) {
+    if (regs.REG(bx) != (Pe::inState1 ? regs_2.REG(bx) : regs_1.REG(bx))) {
         return 4;
     }
-    if (regs.REG(cx) != regs_1.REG(cx)) {
+    if (regs.REG(cx) != (Pe::inState1 ? regs_2.REG(cx) : regs_1.REG(cx))) {
         return 3;
     }
-    if (regs.REG(dx) != regs_1.REG(dx)) {
+    if (regs.REG(dx) != (Pe::inState1 ? regs_2.REG(dx) : regs_1.REG(dx))) {
         return 2;
     }
-    if (regs.REG(ax) != regs_1.REG(ax)) {
+    if (regs.REG(ax) != (Pe::inState1 ? regs_2.REG(ax) : regs_1.REG(ax))) {
         return 1;
     }
-    if ((regs.REG(ip) != regs_1.REG(ip))) {
+    if (regs.REG(ip) != (Pe::inState1 ? regs_2.REG(ip) : regs_1.REG(ip))) {
         return 18;
     }
-    if (regs.REG(sp) != regs_1.REG(sp)) {
+    if (regs.REG(sp) != (Pe::inState1 ? regs_2.REG(sp) : regs_1.REG(sp))) {
         return 20;
+    }
+    if (!utcb){
+//        if(memcmp(regs.vmcs, Pe::inState1 ? Vmcs::vmcs2 : Vmcs::vmcs1, Vmcs::basic.size))
+        if(Vmcs::read(Vmcs::GUEST_RIP) != (Pe::inState1 ? Pe::vmcsRIP_2 : Pe::vmcsRIP_1))
+            return 21;
+        if(Vmcs::read(Vmcs::GUEST_RSP) != (Pe::inState1 ? Pe::vmcsRSP_2 : Pe::vmcsRSP_1))
+            return 22;
     }
     return 0;
 }
@@ -1124,17 +1183,9 @@ void Ec::dump_pe(bool all){
         return;
     do {
         if(all || pe->is_marked())
-            pe->print();
+            pe->print_current();
         pe = pe->get_next();
     } while(pe != current->Queue<Pe>::head());
-}
-
-bool Ec::cmp_pe_to_tail(Pe* pe, Pe::Member_type member){
-    Pe *tail = Queue<Pe>::tail();    
-    if(tail && pe != tail)
-        return tail->cmp_to(member, pe);
-    else
-        return false;
 }
 
 void Ec::mark_pe_tail(){
@@ -1144,38 +1195,7 @@ void Ec::mark_pe_tail(){
 }
 
 void Ec::take_snaphot(){
-    mword rip = current->regs.REG(ip);
-    Pe* pe = new(Pd::kern.quota) Pe(current->get_name(), current->getPd()->get_name(), rip);
-    pe->add_counter(Lapic::read_instCounter());
-    Paddr p;
-    mword a;
-    if (Ec::current->getPd()->Space_mem::loc[Cpu::id].lookup(last_rip, p, a)){
-        mword length = PAGE_SIZE - (last_rip & PAGE_MASK);
-        if(length < sizeof(mword)){ // cross two pages: rip = 0x...FF9
-            if (Ec::current->getPd()->Space_mem::loc[Cpu::id].lookup(last_rip + sizeof(mword), p, a)){
-                pe->add_instruction(*(reinterpret_cast<mword *> (last_rip)));
-            }else{
-                switch(length){
-                    case 1: 
-                        pe->add_instruction(*(reinterpret_cast<uint8 *> (last_rip)));
-                        break;
-                    case 2 ... 3:
-                        pe->add_instruction(*(reinterpret_cast<uint16 *> (last_rip)));                        
-                        break;
-                    case 4 ... 7:
-                        pe->add_instruction(*(reinterpret_cast<uint32 *> (last_rip)));                
-                        break;
-                    default: 
-                        Console::panic("Unknown length size %lx", length);
-                }
-            }
-        }else{
-            pe->add_instruction(*(reinterpret_cast<mword *> (last_rip)));
-        }
-    }
-//    if (current->cmp_pe_to_tail(pe, Pe::RETIREMENT_COUNTER)) {
-//        double_interrupt_counter++;
-//    }
+    Pe* pe = new(Pd::kern.quota) Pe(current->get_name(), current->getPd()->get_name(), regs);
     Queue<Pe>::enqueue(pe);
 }
 

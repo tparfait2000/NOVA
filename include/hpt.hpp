@@ -73,7 +73,6 @@ public:
         PTE_COW = HPT_COW,
         PTE_COW_IO = PTE_COW >> 1,
         PTE_W = HPT_W,
-        PTE_U = 1UL << 63,
     };
 
     ALWAYS_INLINE
@@ -145,7 +144,7 @@ public:
     void replace_cow_n(Quota &quota, mword, int, mword);
     static void print(char const *s, mword v);
     static void set_cow_page(mword virt, mword &entry);
-    void cow_update(Paddr, mword);
+    void cow_update(Paddr, mword, mword);
     
 };
 

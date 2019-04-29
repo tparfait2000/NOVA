@@ -25,8 +25,8 @@
 #include "pd.hpp"
 #include "string.hpp"
 #include "ec.hpp"
-#include "cow.hpp"
 #include "hip.hpp"
+#include "cow_elt.hpp"
 
 //void Hpt::print_table(Quota &quota, mword o) {
 //    for (mword v = 0; v <= o; v = v + PAGE_SIZE) {
@@ -146,7 +146,10 @@ bool Hpt::is_cow_fault(Quota &quota, mword v, mword err) {
             } else {
                 if (Ec::step_reason && (Ec::step_reason != Ec::SR_DBG) && (Ec::step_reason != Ec::SR_GP)) {//Cow error in single stepping : why this? we don't know; qemu oddities
                     if (Ec::step_reason != Ec::SR_PIO)
-                        Console::print("Cow error in single stepping v: %lx  phys: %lx  Pd: %s", v, phys, pd->get_name());
+                        Console::print("Cow error in single stepping v: %lx  phys: %lx  Pd: %s step_reason %d",
+                                v, phys, pd->get_name(), Ec::step_reason);
+                    Pe::print_current(false);
+                    Pe_state::dump();
                     if (ec->is_io_exc()) {
                         replace_cow(quota, v, phys | a | Hpt::HPT_W);
 //                        cow_flush(v);
@@ -157,22 +160,24 @@ bool Hpt::is_cow_fault(Quota &quota, mword v, mword err) {
                             Ec::launch_state = Ec::UNLAUNCHED;
                     }
                 }
-                Cow::cow_elt *ce = nullptr;
-                if (!Cow::get_cow_list_elt(&ce)) //get new cow_elt
-                    ec->die("Cow elt exhausted");
-
-                if (pd->is_mapped_elsewhere(phys & ~PAGE_MASK, ce) || Cow::subtitute(phys & ~PAGE_MASK, ce, v & ~PAGE_MASK)) {
-                    ce->page_addr_or_gpa = v & ~PAGE_MASK;
-                    ce->attr = a;
-                } else // Cow::subtitute will fill cow's fields old_phys, new_phys and frame_index 
-                    ec->die("Cow frame exhausted");
-                pd->add_cow(ce);
-                replace_cow(quota, v, ce->new_phys[0]->phys_addr | a | Hpt::HPT_W);
+                
+                Hpt *e = walk(quota, v, 0);
+                assert(e);
+                Cow_elt::resolve_cow_fault(nullptr, e, v, phys, a);
+            
+//                Cow::cow_elt *ce = nullptr;
+//                if (!Cow::get_cow_list_elt(&ce)) //get new cow_elt
+//                    ec->die("Cow elt exhausted");
+//
+//                if (pd->is_mapped_elsewhere(phys & ~PAGE_MASK, ce) || Cow::subtitute(phys & ~PAGE_MASK, ce, v & ~PAGE_MASK)) {
+//                    ce->page_addr_or_gpa = v & ~PAGE_MASK;
+//                    ce->attr = a;
+//                } else // Cow::subtitute will fill cow's fields old_phys, new_phys and frame_index 
+//                    ec->die("Cow frame exhausted");
+//                pd->add_cow(ce);
+//                replace_cow(quota, v, ce->new_phys[0]->phys_addr | a | Hpt::HPT_W);
 //                cow_flush(v);
-//                                Console::print("Cow error Ec: %p  v: %lx  phys: %lx  ce: %p  phys1: %lx  phys2: %lx", ec, v, phys, ce, ce->new_phys[0]->phys_addr, ce->new_phys[1]->phys_addr);
-                //                update(quota, v, 0, phys, a | Hpt::HPT_W, Type::TYPE_UP, false);
-                //                cow_flush(v);
-                //                Console::print("Cow error Ec: %p  v: %p  phys: %p", ec, v, phys);
+//                Console::print("Cow error Ec: %p  v: %lx  phys: %lx  ce: %p  phys1: %lx  phys2: %lx", ec, v, phys, ce, ce->new_phys[0]->phys_addr, ce->new_phys[1]->phys_addr);
             }
             return true;
         } else
@@ -219,9 +224,11 @@ void Hpt::set_cow_page(mword virt, mword &entry) {
  * @param phys
  * @param attr
  */
-void Hpt::cow_update(Paddr phys, mword attr){
+void Hpt::cow_update(Paddr phys, mword attr, mword v){
     /**TODO
      Use tremplate to merge Hpt::cow_update and Vtlb::cow_update in one function*/
-    val = phys | attr| HPT_W;
-    val &= ~HPT_COW;
+    Hpt o, *e = this;
+    mword new_val = phys | attr;
+    do o = *e; while (o.val != new_val && !e->set (o.val, new_val));
+    flush(v);    
 }

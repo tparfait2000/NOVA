@@ -42,6 +42,7 @@ void Ec::vmx_exception()
     };
 
     mword intr_info = Vmcs::read (Vmcs::EXI_INTR_INFO);
+    Pe_state::set_current_pe_sub_reason(intr_info & 0x7ff);
     if((intr_info & 0x7ff) == 0x30e && // Page fault
             current->regs.vtlb->is_cow(Vmcs::read (Vmcs::EXI_QUALIFICATION), Vmcs::read (Vmcs::EXI_INTR_ERROR))){
             ret_user_vmresume();
@@ -89,7 +90,7 @@ void Ec::vmx_exception()
 void Ec::vmx_extint()
 {
     unsigned vector = Vmcs::read (Vmcs::EXI_INTR_INFO) & 0xff;
-
+    Pe_state::set_current_pe_sub_reason(vector);
     if (vector >= VEC_IPI)
         Lapic::ipi_vector (vector);
     else if (vector >= VEC_MSI)
@@ -98,7 +99,7 @@ void Ec::vmx_extint()
         Lapic::lvt_vector (vector);
     else if (vector >= VEC_GSI)
         Gsi::vector (vector);
-
+    
     ret_user_vmresume();
 }
 
@@ -197,7 +198,22 @@ void Ec::handle_vmx()
     mword reason = Vmcs::read (Vmcs::EXI_REASON) & 0xff;
 
     Counter::vmi[reason]++;
-    trace(TRACE_VMX, "VMExit reason %lx Guest rip %lx", reason, Vmcs::read (Vmcs::GUEST_RIP));
+//    if(reason == Vmcs::VMX_EXTINT){
+//        unsigned vector = Vmcs::read (Vmcs::EXI_INTR_INFO) & 0xff;
+//        trace(TRACE_VMX, "VMExit reason %ld:%d Guest rip %lx run %d counter %llx:%llx rcx %lx", reason, vector, Vmcs::read (Vmcs::GUEST_RIP), run_number, Lapic::read_instCounter(), Lapic::counter_read_value, current->regs.REG(cx));
+//    } 
+//    else if (reason == Vmcs::VMX_EXC_NMI){
+//        mword intr_info = Vmcs::read (Vmcs::EXI_INTR_INFO);
+//        if((intr_info & 0x7ff) == 0x30e) {       // #PF
+//            mword err = Vmcs::read (Vmcs::EXI_INTR_ERROR);
+//            mword cr2 = Vmcs::read (Vmcs::EXI_QUALIFICATION);
+//            trace(0, "VMExit reason %ld:%lx:%lx Guest rip %lx run %d counter %llx rcx %lx", reason, cr2, err, Vmcs::read (Vmcs::GUEST_RIP), run_number, Lapic::read_instCounter(), current->regs.REG(cx));    
+//        } 
+//    }
+//    else
+//        trace(TRACE_VMX, "VMExit reason %ld Guest rip %lx run %d counter %llx:%llx rcx %lx", reason, Vmcs::read (Vmcs::GUEST_RIP), run_number, Lapic::read_instCounter(), Lapic::counter_read_value, current->regs.REG(cx));
+    
+    Pe_state::add_pe_state(new(Pd::kern.quota) Pe_state(&current->regs, Lapic::read_instCounter(), run_number, reason));
 
     switch (reason) {
         case Vmcs::VMX_EXC_NMI:     vmx_exception();
@@ -235,39 +251,103 @@ void Ec::vmx_disable_single_step() {
             disable_rdtsc();
             step_reason = SR_NIL;
             break;
-        case SR_PMI:
+        case SR_PMI: {
+            ++Counter::pmi_ss;
+            nb_inst_single_step++;
             mword current_rip = Vmcs::read(Vmcs::GUEST_RIP);
-            if (prev_rip == current_rip) {
+            if(Lapic::read_instCounter() > (Lapic::perf_max_count - MAX_INSTRUCTION + 300)){
+                prepare_checking();    
+                Pe::print_current(true);
+                Pe_state::dump();
+                Console::panic("SR_PMI Too much single stepping GuestRIP %lx nbSS %llx ", current_rip, nb_inst_single_step);
+            }
+            if (nbInstr_to_execute > 0)
+                nbInstr_to_execute--;
+            if (prev_rip == current_rip) { // Rep Prefix
+                nb_inst_single_step--;
+                nbInstr_to_execute++; // Re-adjust the number of instruction                  
+                // Console::print("EIP: %lx  prev_rip: %lx MSR_PERF_FIXED_CTR0: %lld instr: %lx", 
+                // current->regs.REG(ip), prev_rip, Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), *reinterpret_cast<mword *>(current->regs.REG(ip)));
                 // It may happen that this is the final instruction
-                if ((current_rip == end_rip) && (current->regs.REG(cx) == end_rcx)) {
+                if (!current->compare_regs_mute()) {
+                    //                                check_instr_number_equals(1);
                     disable_mtf();
-                    step_reason = SR_NIL;
-                    check_memory(PES_PMI);
+                    check_memory(PES_SINGLE_STEP);
                 }
-            } else {
-                if (nbInstr_to_execute > 0)
-                    nbInstr_to_execute--;
             }
             prev_rip = current_rip;
-            if (nbInstr_to_execute > 0) {
+            // No need to compare if nbInstr_to_execute > 3 
+            if (nbInstr_to_execute > 3) {
+                vmx_enable_single_step(SR_PMI);
                 ret_user_vmresume();
             }
-            if ((current_rip == end_rip) && (current->regs.REG(cx) == end_rcx)) {
-                    disable_mtf();
-                    step_reason = SR_NIL;
-                    check_memory(PES_PMI);
+            if (!current->compare_regs_mute()) {
+                //                            check_instr_number_equals(2);
+                disable_mtf();
+                check_memory(PES_SINGLE_STEP);
             } else {
+                vmx_enable_single_step(SR_PMI);
                 nbInstr_to_execute = 1;
                 ret_user_vmresume();
             }
+            break;
+        }
+        case SR_EQU: {
+            ++Counter::pmi_ss;
+            nb_inst_single_step++;
+            mword current_rip = Vmcs::read(Vmcs::GUEST_RIP);
+            if(Lapic::read_instCounter() > (Lapic::perf_max_count - MAX_INSTRUCTION + 300)){
+                prepare_checking();    
+                Pe::print_current(true);
+                Pe_state::dump();
+                Console::panic("SR_EQU Too much single stepping GuestRIP %lx nbSS %llx ", current_rip, nb_inst_single_step);
+            }
+            if (nbInstr_to_execute > 0)
+                nbInstr_to_execute--;
+            if (prev_rip == current_rip) { // Rep Prefix
+                nb_inst_single_step--;
+                nbInstr_to_execute++; // Re-adjust the number of instruction                  
+                // Console::print("EIP: %lx  prev_rip: %lx MSR_PERF_FIXED_CTR0: %lld instr: %lx", 
+                // current->regs.REG(ip), prev_rip, Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), *reinterpret_cast<mword *>(current->regs.REG(ip)));
+                // It may happen that this is the final instruction
+                if (!current->compare_regs_mute()) {
+                    //                                check_instr_number_equals(3);
+                    disable_mtf();
+                    check_memory(PES_SINGLE_STEP);
+                }
+            }
+            //here, single stepping 2nd run should be ok
+            if (!current->compare_regs_mute()) {// if ok?
+                //                            check_instr_number_equals(4);
+                disable_mtf();
+                check_memory(PES_SINGLE_STEP);
+            } else {
+                if (nbInstr_to_execute == 0) { // single stepping the first run with 2 credits instructions
+                    current->restore_state1();
+                    nbInstr_to_execute = distance_instruction + nb_inst_single_step + 1;
+                    nb_inst_single_step = 0;
+                    first_run_advanced = true;
+                    vmx_enable_single_step(SR_EQU);
+                    ret_user_vmresume();
+                } else { // relaunch the first run without restoring the second execution state
+                    vmx_enable_single_step(SR_EQU);
+                    ret_user_vmresume();
+                }
+            }
+            break;
+        }
+        default:
+            Console::panic("No step Reason");
     }
     ret_user_vmresume();
 }
 
 void Ec::vmx_resolve_io(){
-    if (Vmcs::has_mtf()) // if the CPU honors the monitor trap flag
-        vmx_enable_single_step();
-    else
+    if (Vmcs::has_mtf()) {// if the CPU honors the monitor trap flag
+        enable_mtf();
+        step_reason = SR_VMIO;
+        current->regs.vmcs->make_current();
+    } else
         vmx_emulate_io();
     ret_user_vmresume();
 }
@@ -277,19 +357,25 @@ void Ec::vmx_emulate_io(){
 }
 
 void Ec::vmx_resolve_rdtsc(bool is_rdtscp) {
-    if (Vmcs::has_mtf()) // if the CPU honors the monitor trap flag
-        vmx_enable_single_step();
-    else
+    if (Vmcs::has_mtf()) {// if the CPU honors the monitor trap flag
+        enable_mtf();
+        enable_rdtsc();
+        step_reason = SR_RDTSC;
+        current->regs.vmcs->make_current();
+    } else
         vmx_emulate_rdtsc(is_rdtscp);
     ret_user_vmresume();
 }
 
-void Ec::vmx_enable_single_step() {
-    enable_mtf();
-    enable_rdtsc();
-//    ec_debug = true;
-    step_reason = SR_RDTSC;
-    current->regs.vmcs->make_current();
+void Ec::vmx_enable_single_step(Step_reason reason) {
+    if (Vmcs::has_mtf()) {// if the CPU honors the monitor trap flag
+        enable_mtf();
+        step_reason = reason;
+        current->regs.vmcs->make_current();
+    } else {
+        Console::panic("VM Single step required and monitor trap not supported : IO Emulation required");        
+    }
+    ret_user_vmresume();    
 }
 
 void Ec::vmx_emulate_rdtsc(bool is_rdtscp) {
@@ -367,5 +453,6 @@ void Ec::disable_mtf() {
     mword val = Vmcs::read(Vmcs::CPU_EXEC_CTRL0);
     val &= ~Vmcs::CPU_MONITOR_TRAP_FLAG;
     Vmcs::write(Vmcs::CPU_EXEC_CTRL0, val);
+    step_reason = SR_NIL;
 }
 

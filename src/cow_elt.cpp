@@ -34,20 +34,37 @@ Cow_elt::~Cow_elt() {
     number--;
 }
 
-void Cow_elt::resolve_cow_fault(Vtlb* tlb, mword virt, Paddr phys, mword attr) {
+void Cow_elt::resolve_cow_fault(Vtlb* tlb, Hpt *hpt, mword virt, Paddr phys, mword attr) {
     phys &= ~PAGE_MASK; 
     virt &= ~PAGE_MASK; 
     Cow_elt *ce = new (Pd::kern.quota) Cow_elt(virt, phys, attr, Cow_elt::NORMAL);
     if(tlb){
+        assert(!hpt);
         ce->vtlb = tlb;
+//        Paddr r_phys;
+//        mword r_attr;
+//        Pd::current->Space_mem::loc[Cpu::id].lookup(virt, r_phys, r_attr);
+//        Console::print("Cow error  v: %lx  phys: %lx attr %lx ce: %p  phys1: %lx  phys2: %lx r_phys %lx r_attr %lx", virt, phys, ce->attr, ce, ce->new_phys[0], ce->new_phys[1], r_phys, r_attr);        
+    }
+    if(hpt){
+        assert(!tlb);
+        ce->hpt = hpt;
     }
     if (!is_mapped_elsewhere(phys, ce)) {
         copy_frame(ce, virt);
     }
     cow_elts.enqueue(ce);
-    mword a = ce->attr | Vtlb::TLB_W;
-    a &= ~Vtlb::TLB_COW;
-    tlb->cow_update(ce->new_phys[0], a);
+    if(tlb) {
+        mword a = ce->attr | Vtlb::TLB_W;
+        a &= ~Vtlb::TLB_COW;
+        tlb->cow_update(ce->new_phys[0], a);
+//        Console::print("Cow error  v: %lx  phys: %lx attr %lx ce: %p  phys1: %lx  phys2: %lx", virt, phys, ce->attr, ce, ce->new_phys[0], ce->new_phys[1]);        
+    } 
+    if(hpt) {
+        mword a = ce->attr | Hpt::HPT_W;
+        a &= ~Hpt::HPT_COW;
+        hpt->cow_update(ce->new_phys[0], a, ce->page_addr); 
+    }
 }
     
 bool Cow_elt::is_mapped_elsewhere(Paddr phys, Cow_elt* ce){
@@ -76,10 +93,19 @@ void Cow_elt::copy_frame(Cow_elt *ce, mword virt){
 
 void Cow_elt::restore_state(){
     Cow_elt *c = cow_elts.head(), *head = cow_elts.head(), *n = nullptr;
+    
     while (c) {
         mword a = c->attr|Vtlb::TLB_W;
         a &= ~Vtlb::TLB_COW;
-        c->vtlb->cow_update(c->new_phys[1], a);
+        if(c->vtlb) {
+            c->vtlb->cow_update(c->new_phys[1], a);
+//            Console::print("Cow Restore  ce: %p  virt: %lx  phys2: %lx attr %lx", 
+//                    c, c->page_addr, c->new_phys[1], c->attr);        
+        }
+        if(c->hpt){
+            c->hpt->cow_update(c->new_phys[1], a, c->page_addr); 
+        }
+
         n = c->next;
         c = (c == n || n == head) ? nullptr : n;
     }
@@ -93,10 +119,12 @@ bool Cow_elt::compare_and_commit(){
                 *ptr2 = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, c->new_phys[1], PAGE_SIZE));
         int missmatch_addr = memcmp(ptr1, ptr2, PAGE_SIZE); 
         if (missmatch_addr) {
-            mword index = (PAGE_SIZE / 4 - missmatch_addr - 1) * 4 /sizeof(mword); // because memcmp compare by grasp of 4 bytes
+            asm volatile ("" :: "m" (missmatch_addr)); // to avoid gdb "optimized out"            
+            asm volatile ("" :: "m" (c)); // to avoid gdb "optimized out"                        
+            mword index = (PAGE_SIZE - 4 * (missmatch_addr + 1)) / sizeof(mword); // because memcmp compare by grasp of 4 bytes
             mword val1 = *(ptr1 + index);
             mword val2 = *(ptr2 + index);
-            Console::print("VMX Pd: %s phys0:%lx phys1 %lx phys2 %lx ptr1: %p  ptr2: %p  val1: 0x%lx  val2: 0x%lx  missmatch_addr: %p",
+            Console::print("MISSMATCH Pd: %s phys0:%lx phys1 %lx phys2 %lx ptr1: %p  ptr2: %p  val1: 0x%lx  val2: 0x%lx  missmatch_addr: %p",
                     Pd::current->get_name(), c->old_phys, c->new_phys[0], c->new_phys[1], ptr1, ptr2, val1, val2, ptr2 + index);
             return true;
         }
@@ -105,10 +133,48 @@ bool Cow_elt::compare_and_commit(){
         memcpy(ptr, ptr2, PAGE_SIZE);
         if(c->vtlb){
             c->vtlb->cow_update(old_phys, c->attr);
-        }else{
-            c->hpt->cow_update(old_phys, c->attr);
+//            Console::print("Cow compare_and_commit  ce: %p  virt: %lx  phys2: %lx attr %lx", 
+//                    c, c->page_addr, c->new_phys[1], c->attr);        
+        }
+        if(c->hpt){
+            c->hpt->cow_update(old_phys, c->attr, c->page_addr);
+//            Paddr phys;
+//            mword attrib;
+//            Pd::current->Space_mem::loc[Cpu::id].lookup(c->page_addr, phys, attrib);
+//            Console::print("Cow compare_and_commit  ce: %p  virt: %lx  phys2: %lx attr %lx | phys %lx attr %lx", 
+//                    c, c->page_addr, c->new_phys[1], c->attr, phys, attrib);        
         }
         destroy(c, Pd::kern.quota);
     }
     return false;
+}
+
+void Cow_elt::restore_state1(){
+    Cow_elt *c = cow_elts.head(), *head = cow_elts.head(), *n = nullptr;
+    
+        while (c) {
+            mword a = c->attr|Vtlb::TLB_W;
+            a &= ~Vtlb::TLB_COW;
+            if(c->vtlb) {
+                c->vtlb->cow_update(c->new_phys[0], a);
+            }
+            if(c->hpt){
+                c->hpt->cow_update(c->new_phys[0], a, c->page_addr); 
+            }
+            n = c->next;
+            c = (c == n || n == head) ? nullptr : n;
+    }
+}
+
+void Cow_elt::rollback(){
+    Cow_elt *c = nullptr;
+    while (cow_elts.dequeue(c = cow_elts.head())) {
+        if(c->vtlb){
+            c->vtlb->cow_update(c->new_phys[0], c->attr);    
+        }
+        if(c->hpt){
+            c->hpt->cow_update(c->old_phys, c->attr, c->page_addr); 
+        }
+        destroy(c, Pd::kern.quota);        
+    }
 }

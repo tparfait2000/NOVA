@@ -198,7 +198,7 @@ void Ec::handle_exc_db(Exc_regs *r) {
                     Console::print("cow_list not null was noticed Pd: %s", current->getPd()->get_name());
                     not_nul_cowlist = false;
                 }
-                if (current->getPd()->cow_list) {
+                if (!Cow_elt::is_empty()) {
                     if (step_reason != SR_PIO)
                         Console::print("cow_list not null, noticed! Pd: %s", current->getPd()->get_name());
                     else {
@@ -334,6 +334,8 @@ void Ec::handle_deterministic_exception(Exc_regs *r) {
             case Cpu::EXC_MC:
                 check_reason = PES_MACHINE_CHECK;
                 break;
+            default :
+                Console::panic("Check reason not handled");
         }
         check_memory(check_reason);
     }
@@ -421,7 +423,7 @@ void Ec::handle_exc(Exc_regs *r) {
     }
 
     if (r->user()) {
-        if (!is_idle() || current->getPd()->cow_list)
+        if (!is_idle() || !Cow_elt::is_empty())
             check_memory(PES_SEND_MSG);
         send_msg<ret_user_iret>();
     }
@@ -436,28 +438,35 @@ void Ec::handle_exc(Exc_regs *r) {
  * @param from : where it is called from
  */
 void Ec::check_memory(PE_stopby from) {
-    Ec *ec = current;
-    Pd *pd = ec->getPd();
-    //    if (is_idle())
+   //    if (is_idle())
     //        Console::print("TCHA HOHO Must not be idle here, sth wrong. pmi: %d cowlist: %p Pd: %s", pmi, current->getPd()->cow_list, current->getPd()->get_name());
-    if (!pd->cow_list && Cow_elt::is_empty()) {
+    if (Cow_elt::is_empty()) {
         launch_state = UNLAUNCHED;
         reset_all();
         return;
     }
-
+    
+    Ec *ec = current;
+    Pd *pd = ec->getPd();
     //  Console::print("EIP = check_memory utcb %p run %d pmi %d counter %llx exc %lld rcx %lx eip %lx", ec->utcb, run_number, pmi, Lapic::read_instCounter(), exc_counter, current->regs.REG(cx), current->regs.REG(ip));
     switch (run_number) {
         case 0:
+            prev_reason = from;
             ec->restore_state();
+            counter1 = Lapic::read_instCounter(); // to be removed after we found the cause of "Attention : reason >< prevreason 1:22 counter1 160e7b counter2 ffffffffffbd "
             if (from == PES_PMI) {
-                prev_reason = from;
+                end_rip = last_rip;
+                end_rcx = last_rcx;
+                exc_counter1 = exc_counter;
+                counter1 = Lapic::read_instCounter();
+                /*
+                 * Here we assume that Lapic::start_counter = (Lapic::perf_max_count - MAX_INSTRUCTION) ie 0xFFFFFFF00000
+                 * So when counter overflows, counter1 will NEVER be > Lapic::start_counter.
+                 */
+                first_run_instr_number = counter1 < Lapic::start_counter ? 
+                    MAX_INSTRUCTION + counter1 - exc_counter1 : counter1 - (Lapic::perf_max_count - MAX_INSTRUCTION);
+                assert(first_run_instr_number < Lapic::perf_max_count);
                 if (current->utcb) {
-                    end_rip = last_rip;
-                    end_rcx = last_rcx;
-                    exc_counter1 = exc_counter;
-                    counter1 = Lapic::read_instCounter();
-                    first_run_instr_number = MAX_INSTRUCTION + counter1 - exc_counter1;
                     uint8 *ptr = reinterpret_cast<uint8 *> (end_rip);
                     if (*ptr == 0xf3 || *ptr == 0xf2) {
                         char buff[MAX_STR_LENGTH];
@@ -466,9 +475,31 @@ void Ec::check_memory(PE_stopby from) {
                         in_rep_instruction = true;
                         Cpu::disable_fast_string();
                     }
-                } else {
-                    
-                }
+                }/*else{
+                    Paddr inst_phys;
+                    mword inst_attr;
+                    if (!current->regs.vtlb->vtlb_lookup(end_rip, inst_phys, inst_attr)) {
+                        Console::print("Instr_addr not found %lx", end_rip);
+                    }
+                    mword inst_off = end_rip & PAGE_MASK;
+                    uint8 *ptr = reinterpret_cast<uint8 *> (Hpt::remap_cow(Pd::kern.quota, inst_phys & ~PAGE_MASK));  
+                    uint16 *inst_val = reinterpret_cast<uint16 *>(ptr + inst_off);
+                    if (*inst_val == 0xf3 || *inst_val == 0xf2) {
+                        char buff[MAX_STR_LENGTH];
+                        instruction_in_hex(*(reinterpret_cast<mword *> (end_rip)), buff);
+                        Console::print("VMX Rep prefix in Run1 %lx: %s rcx %lx", end_rip, buff, end_rcx);
+                        in_rep_instruction = true;
+                        Cpu::disable_fast_string();
+                    }
+                }*/
+                
+                /* Currently, this only happens on vmx execution on qemu.
+                 * must be dug deeper
+                 */
+                if(first_run_instr_number > (MAX_INSTRUCTION + 300)){
+                    Console::panic("PMI not served early counter1 %llx \nMust be dug deeper", counter1);
+                    Lapic::program_pmi2(first_run_instr_number);
+                } 
                 Lapic::program_pmi();
             } else {
                 Lapic::cancel_pmi();
@@ -478,66 +509,102 @@ void Ec::check_memory(PE_stopby from) {
             check_exit();
             break;
         case 1:
-            if (from == PES_PMI) {
-                if (from != prev_reason) {
-                    //means that pmi was simultaneous to another exception, which has been prioritized. 
-                    //And the PMI is now to be serviced; but it does not matter anymore. Just launch the 2nd run.
-                    Console::print("from %d different from previous_reason %d", from, prev_reason);
-                    check_exit();
+            /* If from is not PES_PMI nor PES_SINGLE_STEP and prev_reason == PES_PMI, 
+             * surely the second run exceeds the first in a way the second run 
+             * encounter an exception not found during the first run. So we have to 
+             * single step the first run to catch up the second.
+             * 
+             */
+            if (from == PES_PMI || (prev_reason == PES_PMI && from != PES_SINGLE_STEP)) {
+                if (prev_reason != PES_PMI) {
+                    /* This means that the second run lasts more than the first. 
+                     * It may also result from a simultaneous PMI with another exception which was prioritized
+                     * In this case, current pmi does not matter. Just go on with the second run.*/
+                    
+                    // If simulatneous PMI and exception, Lapic::read_instCounter() must be 0xFFFFFFF00001
+                    if(Lapic::read_instCounter() == Lapic::perf_max_count - MAX_INSTRUCTION + 1)
+                        check_exit();
+                    
+                    Pe::print_current(ec->utcb ? false : true);
+                    Pe_state::dump();
+                    Console::print("Attention : from >< prevreason %d:%d counter1 %llx counter2 %llx ", 
+                        prev_reason, from, counter1, Lapic::read_instCounter());
+                    
+                    
                 }
                 exc_counter2 = exc_counter;
                 counter2 = Lapic::read_instCounter();
-                second_run_instr_number = MAX_INSTRUCTION + counter2 - exc_counter2;
+                Lapic::cancel_pmi();
+                /*
+                 * Here we assume that Lapic::start_counter = (Lapic::perf_max_count - MAX_INSTRUCTION) ie 0xFFFFFFF00000
+                 * So when counter overflows, counter2 will NEVER be > Lapic::start_counter.
+                 */
+                second_run_instr_number = counter2 < Lapic::start_counter ? 
+                    MAX_INSTRUCTION + counter2 - exc_counter2 : counter2 - (Lapic::perf_max_count - MAX_INSTRUCTION);
+                assert(second_run_instr_number < Lapic::perf_max_count);
+                if(second_run_instr_number > (MAX_INSTRUCTION + 300)){
+                    Console::panic("PMI not served early counter2 %llx \nMust be dug deeper", counter2);
+                } 
                 distance_instruction = distance(first_run_instr_number, second_run_instr_number);
+                if(!ec->utcb)
+                    trace(0, "restoring %d count1 %llx count2 %llx counter %llx", distance_instruction <= 2 ? 0 : 
+                        first_run_instr_number > second_run_instr_number ? 2 : 1, first_run_instr_number, 
+                        second_run_instr_number, Lapic::read_instCounter());
                 if (distance_instruction <= 2) {
                     if (ec->compare_regs_mute()) {
                         nbInstr_to_execute = distance_instruction + 1;
-                        prev_rip = current->regs.REG(ip);
-                        ec->enable_step_debug(SR_EQU);
-                        ret_user_iret();
+                        if(ec->utcb){
+                            prev_rip = current->regs.REG(ip);
+                            ec->enable_step_debug(SR_EQU);
+                            ret_user_iret();
+                        } else {
+                            prev_rip = Vmcs::read(Vmcs::GUEST_RIP);
+                            vmx_enable_single_step(SR_EQU);
+                        }
                     } else {
                         //                        check_instr_number_equals(5);                        
                     }
                 } else if (first_run_instr_number > second_run_instr_number) {
                     nbInstr_to_execute = first_run_instr_number - second_run_instr_number;
-                    prev_rip = current->regs.REG(ip);
-                    ec->enable_step_debug(SR_PMI);
-                    ret_user_iret();
+                    if(ec->utcb){
+                        prev_rip = current->regs.REG(ip);
+                        ec->enable_step_debug(SR_PMI);
+                        ret_user_iret();
+                    } else {
+                        prev_rip = Vmcs::read(Vmcs::GUEST_RIP);
+                        vmx_enable_single_step(SR_PMI);
+                    }
                 } else if (first_run_instr_number < second_run_instr_number) {
                     ec->restore_state1();
                     nbInstr_to_execute = second_run_instr_number - first_run_instr_number;
-                    prev_rip = current->regs.REG(ip);
-                    ec->enable_step_debug(SR_PMI);
-                    ret_user_iret();
+                    if(ec->utcb){
+                        prev_rip = current->regs.REG(ip);
+                        ec->enable_step_debug(SR_PMI);
+                        ret_user_iret();
+                    } else {
+                        prev_rip = Vmcs::read(Vmcs::GUEST_RIP);
+                        vmx_enable_single_step(SR_PMI);
+                    }
                 }
             }
         {
-            ec->regs_2 = ec->regs;
+            prepare_checking();    
             reg_diff = ec->compare_regs(from);
-            if(current->utcb){
-                if (reg_diff || pd->compare_and_commit()) {
-                    Console::panic("Checking failed : Ec %s  Pd: %s From: %d launch_state: %d", ec->get_name(), pd->get_name(), from, launch_state);
-                    ec->rollback();
-                    ec->reset_all();
-                    ec->save_state();
-                    //                    current->pd->cow_list = nullptr;
-                    //                    run_number = 0;
-                    //                    nbInstr_to_execute = first_run_instr_number;
-                    //                    current->save_state();
-                    //                    launch_state = Ec::IRET;
-                    //                    current->enable_step_debug(SR_DBG);
-                    check_exit();
-                } else {
-                    ++Counter::nb_pe;
-                    launch_state = UNLAUNCHED;
-                    reset_all();
-                    return;
-                }
-            } else { // VMX
-                trace(TRACE_VMX, "Check Memory in VMX 2");
-                if (reg_diff || Cow_elt::compare_and_commit()){
-                    Console::panic("Checking failed : VMX %s  Pd: %s From: %d launch_state: %d", ec->get_name(), pd->get_name(), from, launch_state);                    
-                }
+            if (Cow_elt::compare_and_commit() ||reg_diff) {
+                Pe::print_current(ec->utcb ? false : true);
+                Pe_state::dump();
+                Console::panic("Checking failed : Ec %s  Pd: %s From: %d:%d launch_state: %d", ec->get_name(), pd->get_name(), prev_reason, from, launch_state);
+                ec->rollback();
+                ec->reset_all();
+                ec->save_state();
+                //                    current->pd->cow_list = nullptr;
+                //                    run_number = 0;
+                //                    nbInstr_to_execute = first_run_instr_number;
+                //                    current->save_state();
+                //                    launch_state = Ec::IRET;
+                //                    current->enable_step_debug(SR_DBG);
+                check_exit();
+            } else {
                 ++Counter::nb_pe;
                 launch_state = UNLAUNCHED;
                 reset_all();
@@ -570,19 +637,18 @@ void Ec::check_exit() {
 
 void Ec::reset_counter() {
     exc_counter = counter1 = counter2 = exc_counter1 = exc_counter2 = nb_inst_single_step = 0;
-    distance_instruction = 0;
+    distance_instruction = first_run_instr_number = second_run_instr_number = 0;
     Pe::reset_counter();
     Lapic::program_pmi();
 }
 
 void Ec::reset_all() {
-    current->pd->cow_list = nullptr;
     run_number = 0;
     reset_counter();
     prev_reason = 0;
     no_further_check = false;
     Pending_int::exec_pending_interrupt();
-    //    current->free_recorded_pe();
+    Pe_state::free_recorded_pe_state();
 }
 
 void Ec::start_debugging(Debug_type dt) {
@@ -590,7 +656,6 @@ void Ec::start_debugging(Debug_type dt) {
     rollback();
     //                ec->reset_all();
     //                check_exit();
-    pd->cow_list = nullptr;
     run_number = 0;
     nbInstr_to_execute = first_run_instr_number;
     save_state();
@@ -609,5 +674,24 @@ void Ec::debug_record_info() {
             break;
         default:
             Console::panic("Undefined debug type %u", debug_type);
+    }
+}
+
+void Ec::prepare_checking(){
+    Cpu_regs regs = current->regs;
+    if (Pe::inState1){
+        current->regs_1 = regs;
+        Pe::c_regs[1] = regs;    
+        if(!current->utcb){
+            Pe::vmcsRIP_1 = Vmcs::read(Vmcs::GUEST_RIP);        
+            Pe::vmcsRSP_1 = Vmcs::read(Vmcs::GUEST_RSP);  
+        }
+    } else {
+        current->regs_2 = regs;
+        Pe::c_regs[3] = regs;            
+        if(!current->utcb){
+            Pe::vmcsRIP_2 = Vmcs::read(Vmcs::GUEST_RIP);        
+            Pe::vmcsRSP_2 = Vmcs::read(Vmcs::GUEST_RSP);   
+        }
     }
 }

@@ -255,7 +255,17 @@ entry_sysenter:         LOAD_KSP
  */
 .align                  4, 0x90
 .globl                  entry_vmx
-entry_vmx:              SAVE_GPR
+entry_vmx:              push    %REG(ax)
+                        push    %REG(cx)
+                        push    %REG(dx)
+                        xor     %REG(dx), %REG(dx)
+                        mov     $0x38d, %REG(cx)
+                        mov     $0x0, %REG(ax)
+                        wrmsr  
+                        pop %REG(dx)
+                        pop %REG(cx)
+                        pop %REG(ax)
+                        SAVE_GPR
                         mov     %cr2, %REG(ax)
                         mov     %REG(ax), OFS_CR2 (%REG(sp))
                         mov     $(CPU_LOCAL_STCK + PAGE_SIZE), %REG(sp)

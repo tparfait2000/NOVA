@@ -17,22 +17,21 @@
 #include "compiler.hpp"
 #include "queue.hpp"
 #include "console.hpp"
+#include "regs.hpp"
 
 class Pe {
     friend class Queue<Pe>;
     static Slab_cache cache;    
-    static Queue<Pe> pe_states;
+    static Queue<Pe> pes;
     
     static size_t number;
     char ec[MAX_STR_LENGTH];
     char pd[MAX_STR_LENGTH];
-    mword rip;
+    Cpu_regs regs;
     Pe* prev;
     Pe* next;
     size_t numero = 0;
     bool marked = false;
-    uint64 retirement_counter = 0;
-    mword instruction = 0;
     mword attr = 0; 
     
 public:
@@ -57,29 +56,27 @@ public:
     static unsigned mmio[2];
     static unsigned rep_prefix[2];
     static unsigned hlt_instr[2];
-    static uint64 nb_pe;
     //----------------------------------------------
-        
+    /**
+     * These static variables are for Pe environment
+     */
+    static unsigned vmlaunch;
+    
+    static char current_ec[MAX_STR_LENGTH];
+    static char current_pd[MAX_STR_LENGTH];
+    static Cpu_regs c_regs[4]; //current_regs
+    static mword vmcsRIP[4], vmcsRSP[4], vmcsRIP_0, vmcsRIP_1, vmcsRIP_2, vmcsRSP_0, vmcsRSP_1, vmcsRSP_2;
+    static bool inState1;
+    static bool pmi_pending;
     /**
      * 
      * @param ec
      * @param pd
-     * @param rip_value
      * @param counter
      */
-    Pe(const char* ec, const char* pd, mword rip_value);
+    Pe(const char* ec, const char* pd, Cpu_regs);
     Pe &operator = (Pe const &);
 
-    enum Member_type{
-        RETIREMENT_COUNTER  = 0,
-        REGISTER_RIP        = 1,
-    };
-    
-    enum {
-        RUN_NUMBER_1        = 1UL << 0,
-        RET_STATE_SYS       = 1UL << 1,
-    };
-    
     ALWAYS_INLINE
     static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
 
@@ -104,14 +101,6 @@ public:
         return pd;
     }
 
-    uint64 GetRetirement_counter() const {
-        return retirement_counter;
-    }
-
-    mword GetRip() const {
-        return rip;
-    }
-    
     Pe* get_next(){
         return next;
     };
@@ -120,25 +109,55 @@ public:
         return prev;
     };
     
-    void print(){
-//        char num_to_str[20];
-//        if(retirement_counter < MAX_INSTRUCTION)
-//            Console::sprint(num_to_str, "%llu", retirement_counter);
-//        else
-//            Console::sprint(num_to_str, "%llx", retirement_counter);
-//        Console::print("Pe_state %s %s %lu %lx %s %lx", ec, pd, numero, rip, num_to_str, instruction);
-        Console::print("%s %s %lx %lx", ec, pd, rip, attr);
+    static void print_current(bool isvCPU = false){
+        Console::print("%s %s \n"
+        "RAX %#8lx %#8lx %#8lx %#8lx\n"
+        "RBX %#8lx %#8lx %#8lx %#8lx\n"
+        "RCX %#8lx %#8lx %#8lx %#8lx\n"
+        "RDX %#8lx %#8lx %#8lx %#8lx\n"
+        "RSI %#8lx %#8lx %#8lx %#8lx\n"
+        "RDI %#8lx %#8lx %#8lx %#8lx\n"
+        "RBP %#8lx %#8lx %#8lx %#8lx\n"
+        "RSP %#8lx %#8lx %#8lx %#8lx\n"
+        "RIP %#8lx %#8lx %#8lx %#8lx\n"
+        "R8  %#8lx %#8lx %#8lx %#8lx\n"
+        "R9  %#8lx %#8lx %#8lx %#8lx\n"
+        "R10 %#8lx %#8lx %#8lx %#8lx\n"
+        "R11 %#8lx %#8lx %#8lx %#8lx\n"
+        "R12 %#8lx %#8lx %#8lx %#8lx\n"
+        "R13 %#8lx %#8lx %#8lx %#8lx\n"
+        "R14 %#8lx %#8lx %#8lx %#8lx\n"
+        "R15 %#8lx %#8lx %#8lx %#8lx\n", current_ec, current_pd, 
+                c_regs[0].REG(ax), c_regs[1].REG(ax), c_regs[2].REG(ax), c_regs[3].REG(ax),
+                c_regs[0].REG(bx), c_regs[1].REG(bx), c_regs[2].REG(bx), c_regs[3].REG(bx),
+                c_regs[0].REG(cx), c_regs[1].REG(cx), c_regs[2].REG(cx), c_regs[3].REG(cx),
+                c_regs[0].REG(dx), c_regs[1].REG(dx), c_regs[2].REG(dx), c_regs[3].REG(dx),
+                c_regs[0].REG(si), c_regs[1].REG(si), c_regs[2].REG(si), c_regs[3].REG(si),
+                c_regs[0].REG(di), c_regs[1].REG(di), c_regs[2].REG(di), c_regs[3].REG(di),
+                c_regs[0].REG(bp), c_regs[1].REG(bp), c_regs[2].REG(bp), c_regs[3].REG(bp),
+                c_regs[0].REG(sp), c_regs[1].REG(sp), c_regs[2].REG(sp), c_regs[3].REG(sp),
+                c_regs[0].REG(ip), c_regs[1].REG(ip), c_regs[2].REG(ip), c_regs[3].REG(ip),
+                c_regs[0].r8, c_regs[1].r8, c_regs[2].r8, c_regs[3].r8,
+                c_regs[0].r9, c_regs[1].r9, c_regs[2].r9, c_regs[3].r9,
+                c_regs[0].r10, c_regs[1].r10, c_regs[2].r10, c_regs[3].r10,
+                c_regs[0].r11, c_regs[1].r11, c_regs[2].r11, c_regs[3].r11,
+                c_regs[0].r12, c_regs[1].r12, c_regs[2].r12, c_regs[3].r12,
+                c_regs[0].r13, c_regs[1].r13, c_regs[2].r13, c_regs[3].r13,
+                c_regs[0].r14, c_regs[1].r14, c_regs[2].r14, c_regs[3].r14,
+                c_regs[0].r15, c_regs[1].r15, c_regs[2].r15, c_regs[3].r15
+                );
+        if(isvCPU){
+            Console::print("RAX %#8lx %#8lx %#8lx %#8lx\n"
+                "RBX %#8lx %#8lx %#8lx %#8lx\n",
+                    vmcsRIP[0], vmcsRIP[1], vmcsRIP[2], vmcsRIP[3],
+                    vmcsRSP[0], vmcsRSP[1], vmcsRSP[2], vmcsRSP[3]);
+        }
     }
 
-    void add_counter(uint64);
-    
-    void add_rip(mword);
-    
-    void add_instruction(mword);
-    
-    bool cmp_to(Member_type, Pe*);
-    
     void mark();
+    void print(){
+        
+    };
     
     bool is_marked() { return marked; }
     
@@ -146,9 +165,7 @@ public:
         return number;
     }
     
-    static void add_pe_state(const char*, const char*, mword, mword = 0);
-    
-    static void add_pe_state(Pe*);
+    static void add_pe(Pe*);
     
     static void free_recorded_pe();
     
