@@ -58,6 +58,11 @@ void Ec::svm_exception (mword reason)
             ret_user_vmrun();
 
         case 0x4e:          // #PF
+            if (current->regs.nst_on) {
+                current->regs.dst_portal = reason;
+                break;
+            }
+
             mword err = static_cast<mword>(current->regs.vmcb->exitinfo1);
             mword cr2 = static_cast<mword>(current->regs.vmcb->exitinfo2);
 
@@ -172,17 +177,20 @@ void Ec::handle_svm()
     switch (reason) {
 
         case 0x0 ... 0x1f:      // CR Access
-            svm_cr (reason);
+            if (!current->regs.nst_on) svm_cr (reason);
+            else break;
 
         case 0x40 ... 0x5f:     // Exception
             svm_exception (reason);
+            break;
 
         case 0x60:              // EXTINT
             asm volatile ("sti; nop; cli" : : : "memory");
             ret_user_vmrun();
 
         case 0x79:              // INVLPG
-            svm_invlpg();
+            if (!current->regs.nst_on) svm_invlpg();
+            else break;
     }
 
     current->regs.dst_portal = reason;

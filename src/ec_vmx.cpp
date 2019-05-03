@@ -58,6 +58,11 @@ void Ec::vmx_exception()
             ret_user_vmresume();
 
         case 0x30e:         // #PF
+            if (current->regs.nst_on) {
+                current->regs.dst_portal = 0x30e;
+                break;
+            }
+
             mword err = Vmcs::read (Vmcs::EXI_INTR_ERROR);
             mword cr2 = Vmcs::read (Vmcs::EXI_QUALIFICATION);
 
@@ -195,7 +200,9 @@ void Ec::handle_vmx()
     switch (reason) {
         case Vmcs::VMX_EXC_NMI:     vmx_exception();
         case Vmcs::VMX_EXTINT:      vmx_extint();
-        case Vmcs::VMX_INVLPG:      vmx_invlpg();
+        case Vmcs::VMX_INVLPG:
+            if (!current->regs.nst_on) vmx_invlpg();
+            else break;
         case Vmcs::VMX_CR:          vmx_cr();
         case Vmcs::VMX_EPT_VIOLATION:
             current->regs.nst_error = Vmcs::read (Vmcs::EXI_QUALIFICATION);
