@@ -42,7 +42,7 @@
 mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx, Ec::tscp_rcx1 = 0, Ec::tscp_rcx2 = 0;
 bool Ec::ec_debug = false, Ec::glb_debug = false, Ec::hardening_started = false, Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false, Ec::no_further_check = false, Ec::first_run_advanced = false;
 uint64 Ec::exc_counter = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::counter1 = 0, Ec::counter2 = 0, Ec::debug_compteur = 0, Ec::count_je = 0, Ec::nbInstr_to_execute = 0,
-        Ec::nb_inst_single_step = 0, Ec::second_run_instr_number = 0, Ec::first_run_instr_number = 0, Ec::single_step_number = 0, Ec::distance_instruction = 0;
+        Ec::nb_inst_single_step = 0, Ec::second_run_instr_number = 0, Ec::first_run_instr_number = 0, Ec::distance_instruction = 0;
        
 uint8 Ec::run_number = 0, Ec::launch_state = 0, Ec::step_reason = 0, Ec::debug_nb = 0, Ec::debug_type = 0, Ec::replaced_int3_instruction, Ec::replaced_int3_instruction2;
 uint64 Ec::tsc1 = 0, Ec::tsc2 = 0;
@@ -369,7 +369,17 @@ void Ec::ret_user_vmresume() {
         set_cr2(current->regs.cr2);
 //    trace(TRACE_VMX, "VMResume  GuestRip %lx Run %d", Vmcs::read(Vmcs::GUEST_RIP), run_number);   
 //    Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xb);
-//    enable_mtf();
+    if(Console::debug_started){
+        Paddr heip;
+        mword attr, eip = Vmcs::read (Vmcs::GUEST_RIP);
+        current->regs.vtlb->vtlb_lookup(eip, heip, attr);
+        mword *ptr = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, heip)) + (heip & PAGE_MASK)/sizeof(mword);
+        char buffer[80];
+        instruction_in_hex(*ptr, buffer);
+        debug_started_trace(0, "Geip %lx heip %lx, %p, %lx instr %s", eip, heip, ptr, *ptr, buffer);
+    }
+    if(step_reason == SR_DBG)
+        enable_mtf();
     asm volatile ("mov %2," EXPAND(PREG(sp);)
                 EXPAND(SAVE_GPR)
                 "movb $0x0, %0;"
@@ -749,9 +759,7 @@ void Ec::rollback() {
         fpu->roll_back();
     Cow_elt::rollback();
     if (!utcb) {
-        regs.vmcs->clear();
-        memcpy(regs.vmcs, Vmcs::vmcs0, Vmcs::basic.size);
-        regs.vmcs->make_current();
+        vmx_rollback();
     }
 }
 
@@ -861,6 +869,26 @@ void Ec::vmx_restore_state1() {
             reinterpret_cast<Virtual_apic_page*> (Buddy::phys_to_ptr(virtual_apic_page_phys));
     memcpy(virtual_apic_page2, cur_virtual_apic_page, PAGE_SIZE);
     memcpy(cur_virtual_apic_page, virtual_apic_page1, PAGE_SIZE);
+}
+
+
+void Ec::vmx_rollback() {
+    regs.vmcs->clear();
+    memcpy(regs.vmcs, Vmcs::vmcs0, Vmcs::basic.size);
+    regs.vmcs->make_current();
+
+    mword host_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
+    Msr_area *cur_host_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(host_msr_area_phys));
+    memcpy(cur_host_msr_area, host_msr_area0, PAGE_SIZE);
+
+    mword guest_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_ST_ADDR);
+    Msr_area *cur_guest_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(guest_msr_area_phys));
+    memcpy(cur_guest_msr_area, guest_msr_area0, PAGE_SIZE);
+
+    mword virtual_apic_page_phys = Vmcs::read(Vmcs::APIC_VIRT_ADDR);
+    Virtual_apic_page *cur_virtual_apic_page =
+            reinterpret_cast<Virtual_apic_page*> (Buddy::phys_to_ptr(virtual_apic_page_phys));
+    memcpy(cur_virtual_apic_page, virtual_apic_page0, PAGE_SIZE);
 }
 
 mword Ec::get_regsRIP() {

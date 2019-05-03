@@ -57,16 +57,17 @@ public:
 
     static void resolve_cow_fault(Vtlb*, Hpt*, mword virt, Paddr phys, mword attr);
     static bool is_mapped_elsewhere(Paddr, Cow_elt*);
-    static void copy_frame(Cow_elt*, mword);
+    static void copy_frame(Cow_elt*, void*);
 
     static bool is_empty() {
         return !cow_elts.head();
     }
     static void restore_state();
-    static bool compare_and_commit();
+    static bool compare();
+    static void commit();
     static void restore_state1();
     static void rollback();
-
+    
 private:
     Page_type type;
     mword page_addr = {}; // if VM, this will hold the gla, else hold page addr

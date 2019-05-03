@@ -112,7 +112,7 @@ public:
         asm volatile ("mov %0, %%cr3" : : "r" (val | pcid) : "memory");
     }
     
-    bool sync_from(Quota &quota, Hpt, mword, mword, mword = 0);
+    bool sync_from(Quota &quota, Hpt, mword, mword);
 
     void sync_master_range(Quota &quota, mword, mword);
 
@@ -138,7 +138,8 @@ public:
     
     bool is_cow_fault(Quota &quota, mword, mword);
     
-    void print_table(Quota &quota, mword); static inline void cow_flush() { flush();}
+    void print_table(Quota &quota, mword); 
+    static inline void cow_flush() { flush();}
         
     Paddr replace_cow(Quota &quota, mword, mword);
     void replace_cow_n(Quota &quota, mword, int, mword);

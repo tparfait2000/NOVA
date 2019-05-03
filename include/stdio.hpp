@@ -36,6 +36,16 @@ do {                                                                \
     }                                                               \
 } while (0)
 
+#define debug_started_trace(T,format,...)                                         \
+do {                                                                \
+    if (EXPECT_FALSE ((trace_mask & (T)) == (T)) && Console::debug_started) {                 \
+        mword __esp;                                                \
+        Console::print ("[%2ld] " format,                           \
+                static_cast<long>(((reinterpret_cast<mword>(&__esp) - 1) & ~PAGE_MASK) ==     \
+                CPU_LOCAL_STCK ? Cpu::id : ~0UL), ## __VA_ARGS__);  \
+    }                                                               \
+} while (0)
+
 /*
  * Definition of trace events
  */
@@ -74,7 +84,7 @@ unsigned const trace_mask =
 #ifdef DEBUG
 //                            TRACE_OOM       |
 //                            TRACE_APIC      |
-//                            TRACE_KEYB      |
+                            TRACE_KEYB      |
                             TRACE_VMX       |
                             TRACE_SVM       |
                             TRACE_HARDEN    |

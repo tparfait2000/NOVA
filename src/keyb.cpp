@@ -63,7 +63,8 @@ void Keyb::interrupt()
                 Io::out<uint8>(0xcf9, 0x6);
                 break;
             case 0x20:              // d
-                Ec::dump_pe(true);
+                Pe::dump(true);
+                Pe_state::dump();
                 break;
             case 0x2e:              // c
                 Counter::dump();

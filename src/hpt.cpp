@@ -34,7 +34,7 @@
 //        print_walk(quota, v, l);
 //    }
 //}
-bool Hpt::sync_from(Quota &quota, Hpt src, mword v, mword o, mword err) {
+bool Hpt::sync_from(Quota &quota, Hpt src, mword v, mword o) {
     mword l = (bit_scan_reverse(v ^ o) - PAGE_BITS) / bpl();
 
     Hpt *s = static_cast<Hpt *> (src.walk(quota, v, l, false));
@@ -48,7 +48,7 @@ bool Hpt::sync_from(Quota &quota, Hpt src, mword v, mword o, mword err) {
         return false;
 
     d->val = s->val;
-    is_cow_fault(quota, v, err);
+//    is_cow_fault(quota, v, err);
     return true;
 }
 

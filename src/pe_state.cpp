@@ -80,7 +80,7 @@ void Pe_state::set_current_pe_sub_reason(mword sub_reason) {
         p->sub_reason = sub_reason;
 }
 
-void Pe_state::set_current_pe_diff_reason(int reason){
+void Pe_state::set_current_pe_diff_reason(mword reason){
     Pe_state *p = pe_state.tail();
     if(p)
         pe_state.tail()->diff_reason = reason;    

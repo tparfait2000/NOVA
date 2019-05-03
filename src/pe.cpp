@@ -19,6 +19,8 @@ Slab_cache Pe::cache(sizeof (Pe), 32);
 size_t Pe::number = 0;
 bool Pe::inState1 = false;
 bool Pe::pmi_pending = false;
+mword Pe::missmatch_addr;
+
 Queue<Pe> Pe::pes;
 unsigned Pe::ipi[2][NUM_IPI];
 unsigned Pe::msi[2][NUM_MSI];

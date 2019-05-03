@@ -72,4 +72,6 @@ class Console
 
         FORMAT (1,2) NORETURN
         static void panic (char const *, ...);
+        
+        static bool debug_started;
 };

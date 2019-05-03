@@ -68,6 +68,7 @@ public:
     static mword vmcsRIP[4], vmcsRSP[4], vmcsRIP_0, vmcsRIP_1, vmcsRIP_2, vmcsRSP_0, vmcsRSP_1, vmcsRSP_2;
     static bool inState1;
     static bool pmi_pending;
+    static mword missmatch_addr;
     /**
      * 
      * @param ec

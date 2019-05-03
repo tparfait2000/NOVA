@@ -250,22 +250,21 @@ void Ec::handle_exc_db(Exc_regs *r) {
                 return;
                 break;
             case SR_DBG:
-                if (nbInstr_to_execute > 0) {
-                    current->regs.REG(fl) |= Cpu::EFL_TF;
-                    debug_record_info();
-                    nbInstr_to_execute--;
-                    single_step_number++;
-                    return;
-                } else {
+                if (nb_inst_single_step > nbInstr_to_execute) {
                     if (run_number == 0) {
                         Console::print("Relaunching for the second run");
                         current->restore_state();
-                        nbInstr_to_execute = MAX_INSTRUCTION + counter2 - exc_counter2;
+                        nb_inst_single_step = 0;
                         run_number++;
                         check_exit();
                     } else {
-                        Console::panic("Finish");
+                        Console::panic("SR_DBG Finish");
                     }
+                } else {
+                    current->regs.REG(fl) |= Cpu::EFL_TF;
+                    debug_record_info(); // Change it to pe_states.add(new ...)
+                    nb_inst_single_step++;
+                    return;
                 }
                 break;
             case SR_EQU:
@@ -345,19 +344,17 @@ void Ec::handle_deterministic_exception(Exc_regs *r) {
 bool Ec::handle_exc_pf(Exc_regs *r) {
     mword addr = r->cr2;
 
-    //    if(((addr & ~PAGE_MASK) >= 0x9800000) && ((addr & ~PAGE_MASK) <= 0x9a00000))
-    //        Console::print("addr 0x9800000");
     if ((r->err & Hpt::ERR_U) && Pd::current->Space_mem::loc[Cpu::id].is_cow_fault(Pd::current->quota, addr, r->err))
         return true;
     if (r->cs & 3)
         check_memory(PES_PAGE_FAULT);
 
     if (r->err & Hpt::ERR_U)
-        return addr < USER_ADDR && Pd::current->Space_mem::loc[Cpu::id].sync_from(Pd::current->quota, Pd::current->Space_mem::hpt, addr, USER_ADDR, r->err);
+        return addr < USER_ADDR && Pd::current->Space_mem::loc[Cpu::id].sync_from(Pd::current->quota, Pd::current->Space_mem::hpt, addr, USER_ADDR);
 
     if (addr < USER_ADDR) {
 
-        if (Pd::current->Space_mem::loc[Cpu::id].sync_from(Pd::current->quota, Pd::current->Space_mem::hpt, addr, USER_ADDR, r->err))
+        if (Pd::current->Space_mem::loc[Cpu::id].sync_from(Pd::current->quota, Pd::current->Space_mem::hpt, addr, USER_ADDR))
             return true;
 
         if (fixup(r->REG(ip))) {
@@ -366,7 +363,7 @@ bool Ec::handle_exc_pf(Exc_regs *r) {
         }
     }
 
-    if (addr >= LINK_ADDR && addr < CPU_LOCAL && Pd::current->Space_mem::loc[Cpu::id].sync_from(Pd::current->quota, Hptp(reinterpret_cast<mword> (&PDBR)), addr, CPU_LOCAL, r->err))
+    if (addr >= LINK_ADDR && addr < CPU_LOCAL && Pd::current->Space_mem::loc[Cpu::id].sync_from(Pd::current->quota, Hptp(reinterpret_cast<mword> (&PDBR)), addr, CPU_LOCAL))
         return true;
 
     // Kernel fault in I/O space
@@ -438,17 +435,13 @@ void Ec::handle_exc(Exc_regs *r) {
  * @param from : where it is called from
  */
 void Ec::check_memory(PE_stopby from) {
-   //    if (is_idle())
-    //        Console::print("TCHA HOHO Must not be idle here, sth wrong. pmi: %d cowlist: %p Pd: %s", pmi, current->getPd()->cow_list, current->getPd()->get_name());
     if (Cow_elt::is_empty()) {
         launch_state = UNLAUNCHED;
         reset_all();
         return;
     }
-    
     Ec *ec = current;
     Pd *pd = ec->getPd();
-    //  Console::print("EIP = check_memory utcb %p run %d pmi %d counter %llx exc %lld rcx %lx eip %lx", ec->utcb, run_number, pmi, Lapic::read_instCounter(), exc_counter, current->regs.REG(cx), current->regs.REG(ip));
     switch (run_number) {
         case 0:
             prev_reason = from;
@@ -590,21 +583,32 @@ void Ec::check_memory(PE_stopby from) {
         {
             prepare_checking();    
             reg_diff = ec->compare_regs(from);
-            if (Cow_elt::compare_and_commit() ||reg_diff) {
+            if (Cow_elt::compare() ||reg_diff) {
                 Pe::print_current(ec->utcb ? false : true);
                 Pe_state::dump();
-                Console::panic("Checking failed : Ec %s  Pd: %s From: %d:%d launch_state: %d", ec->get_name(), pd->get_name(), prev_reason, from, launch_state);
+                Console::print("Checking failed : Ec %s  Pd: %s From: %d:%d launch_state: %d", ec->get_name(), pd->get_name(), prev_reason, from, launch_state);
+                uint64 nbInstr_to_execute_value = counter1 < Lapic::start_counter ? 
+                    MAX_INSTRUCTION + counter1 - exc_counter1 : counter1 - (Lapic::perf_max_count - MAX_INSTRUCTION);
+                assert(nbInstr_to_execute < Lapic::perf_max_count);
                 ec->rollback();
                 ec->reset_all();
                 ec->save_state();
-                //                    current->pd->cow_list = nullptr;
-                //                    run_number = 0;
-                //                    nbInstr_to_execute = first_run_instr_number;
-                //                    current->save_state();
-                //                    launch_state = Ec::IRET;
-                //                    current->enable_step_debug(SR_DBG);
-                check_exit();
+//              check_exit();
+                /*
+                 * This is for debugging the rollback part of the hardening program.
+                 * Before send in production, uncomment the previous check_exit();
+                 */ 
+                nbInstr_to_execute = nbInstr_to_execute_value;
+                if(ec->utcb){
+                    ec->enable_step_debug(SR_DBG);
+                    check_exit();
+                } else {
+                    Console::print("SR DBG launch in VMX nbInstr_to_execute %llx", nbInstr_to_execute);
+                    Console::debug_started = true;
+                    vmx_enable_single_step(SR_DBG);
+                }                
             } else {
+                Cow_elt::commit();
                 ++Counter::nb_pe;
                 launch_state = UNLAUNCHED;
                 reset_all();

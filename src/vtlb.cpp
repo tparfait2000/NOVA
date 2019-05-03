@@ -174,6 +174,15 @@ Vtlb::Reason Vtlb::miss (Exc_regs *regs, mword virt, mword &error)
         tlb->val = static_cast<typeof tlb->val>((host & ~((1UL << shift) - 1)) | attr | TLB_D | TLB_A);
 //        trace (TRACE_VTLB, "VTLB Miss SUCCESS CR3:%#010lx A:%#010lx P:%#010lx A:%#lx E:%#lx TLB:%#016llx GuestIP %#lx", 
 //                regs->cr3_shadow, virt, phys, attr, error, tlb->val, Vmcs::read(Vmcs::GUEST_RIP));
+//        Paddr r_phys, hpa;
+//        mword r_attr;
+//        size_t size_h, size_e; 
+//        size_h = Pd::current->Space_mem::loc[Cpu::id].lookup(virt, r_phys, r_attr);
+//
+//        mword ept_attr;
+//        size_e = Pd::current->ept.lookup (phys, hpa, ept_attr);
+//        trace(0, "COW_FAULT v: %lx tlb->addr: %lx attr %lx r_phys %lx r_attr %lx size_h %lx gpa %lx hpa %lx ept_attr %lx CR3:%#010lx size_e %lx ", 
+//                virt, tlb->addr(), tlb->attr(), r_phys, r_attr, size_h, phys, hpa, ept_attr, size_e, regs->cr3_shadow);
         return SUCCESS;
     }
 }
@@ -226,7 +235,7 @@ void Vtlb::flush (bool full)
     Counter::print<1,16> (++Counter::vtlb_flush, Console_vga::COLOR_LIGHT_RED, SPN_VFL);
 }
 
-bool Vtlb::is_cow(mword virt, mword error){
+bool Vtlb::is_cow(mword virt, mword gpa, mword error){
     if(!(error & ERR_W))
         return false;
     unsigned l = max();
@@ -246,11 +255,18 @@ bool Vtlb::is_cow(mword virt, mword error){
                 continue;            
         
         if(tlb->attr() & TLB_COW){
-            trace (TRACE_VTLB, "Cow fault A:%#010lx E:%#lx TLB:%#016llx GuestIP %#lx",             
-                virt, error, tlb->val, Vmcs::read(Vmcs::GUEST_RIP));
-            Counter::vtlb_cow++;   
-            Cow_elt::resolve_cow_fault(tlb, nullptr, virt, tlb->addr(), tlb->attr());
-            return true;
+            mword hpa, ept_attr;
+            size_t size = Pd::current->ept.lookup (gpa, hpa, ept_attr);
+//            trace(0, "is_cow v: %lx tlb->addr: %lx attr %lx gpa %lx hpa %lx size %lx", 
+//                virt, tlb->addr(), tlb->attr(), gpa, hpa, size);
+
+            if(size && (tlb->addr() == (hpa  & ~PAGE_MASK))){ 
+                Counter::vtlb_cow++;   
+                Cow_elt::resolve_cow_fault(tlb, nullptr, virt, tlb->addr(), tlb->attr());
+                return true;            
+            } else {
+                return false;
+            }
         } else {
             return false;
         }
@@ -288,5 +304,41 @@ size_t Vtlb::vtlb_lookup(mword v, Paddr &p, mword &a) {
         a = tlb->attr();
 
         return s;
+    }
+}
+
+size_t Vtlb::gla_to_gpa (Exc_regs *regs, mword gla, mword &gpa)
+{
+    if (EXPECT_FALSE (!(regs->cr0_shadow & Cpu::CR0_PG))) {
+        gpa = gla;
+        return ~0UL;
+    }
+
+    bool pse = regs->cr4_shadow & (Cpu::CR4_PSE | Cpu::CR4_PAE);
+    
+    unsigned lev = 2;
+
+    for (uint32 e, *pte= reinterpret_cast<uint32 *>(regs->cr3_shadow & ~PAGE_MASK);; pte = reinterpret_cast<uint32 *>(e & ~PAGE_MASK)) {
+
+        unsigned shift = --lev * 10 + PAGE_BITS;
+        pte += gla >> shift & ((1UL << 10) - 1);
+
+        if (User::peek (pte, e) != ~0UL) {
+            gpa = reinterpret_cast<Paddr>(pte);
+            return ~0UL;
+        }
+
+        if (EXPECT_FALSE (!(e & TLB_P)))
+            return 0;
+
+        if (lev && (!pse || !(e & TLB_S))) {
+            continue;
+        }
+
+        size_t size = 1UL << shift;
+
+        gpa = (e & ~PAGE_MASK) | (gla & (size - 1));
+
+        return size;
     }
 }

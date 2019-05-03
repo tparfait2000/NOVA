@@ -116,7 +116,7 @@ void Lapic::init(bool invariant_tsc)
                 freq_tsc  = static_cast<unsigned>(freq_bus * ratio);
             }
         }
-
+        
 //        send_ipi (0, 0, DLV_INIT, DSH_EXC_SELF);
 
         if (!freq_tsc) {
@@ -223,17 +223,13 @@ void Lapic::ipi_vector (unsigned vector){
  * Only used in case of virtualization
  */
 void Lapic::save_counter(){
-//    Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa); //unless we may face a pmi in the kernel
     unsigned bias = Pe::vmlaunch ? 44 : 10; // Pour calculer ces nombres, il faut activer le MTF (enable_mtf()).
     // le compteur contient alors le nombre d'instructions en mode privilegié + 1 instruction en machine virtuelle
     counter_read_value = Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0); 
     uint64 deduced_cmpteurValue = counter_read_value - bias;
-    if(Ec::step_reason == Ec::SR_NIL) {
-        counter = counter_read_value>start_counter? deduced_cmpteurValue : 
-            counter_read_value < bias ? perf_max_count + counter_read_value - bias : deduced_cmpteurValue; 
-    } else {
-        counter = counter_read_value - 10;         
-    }
+    counter = counter_read_value>start_counter? deduced_cmpteurValue : 
+        counter_read_value < bias ? perf_max_count + counter_read_value - bias : deduced_cmpteurValue; 
+    
     Msr::write(Msr::MSR_PERF_FIXED_CTR0, counter); //0x44 is the number of hypervisor's instruction for now
     Ec::last_rip = Vmcs::read(Vmcs::GUEST_RIP);
     Ec::last_rcx = Ec::current->get_regsRCX();

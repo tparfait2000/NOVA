@@ -18,6 +18,7 @@
 #include "queue.hpp"
 #include "console.hpp"
 #include "regs.hpp"
+#include "stdio.hpp"
 
 class Pe_state {
     friend class Queue<Pe_state>;
@@ -36,7 +37,7 @@ class Pe_state {
     mword instruction = 0;
     mword attr = 0; 
     mword sub_reason = 0;
-    int diff_reason = 0;
+    mword diff_reason = 0;
     
 public:
     
@@ -76,8 +77,8 @@ public:
     };
     
     void print(){
-        Console::print("%d, %#8lx %#8lx %#8lx %#8lx %#8lx %#8lx %#8lx %#8lx %#8lx %#8lx %#8lx %#8lx %#8lx %ld"
-        "%#8lx %#8lx %#8lx, %#12llx, %ld:%ld %d", run_no, rax, rbx, rcx, rdx, rbp, rdi, rsi, rsp, rip, r8, r9, 
+        trace(TRACE_PE, "%d, %#8lx %#8lx %#8lx %#8lx %#8lx %#8lx %#8lx %#8lx %#8lx %#8lx %#8lx %#8lx %#8lx %ld"
+        "%#8lx %#8lx %#8lx, %#12llx, %ld:%ld %lx", run_no, rax, rbx, rcx, rdx, rbp, rdi, rsi, rsp, rip, r8, r9, 
                 r10, r11, r12, r13, r14, r15, retirement_counter, int_no, sub_reason, diff_reason);
     }
 
@@ -89,7 +90,7 @@ public:
     
     static void set_current_pe_sub_reason(mword);
     
-    static void set_current_pe_diff_reason(int);
+    static void set_current_pe_diff_reason(mword);
     
     static void free_recorded_pe_state();
     
