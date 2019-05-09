@@ -146,6 +146,7 @@ public:
     static void print(char const *s, mword v);
     static void set_cow_page(mword virt, mword &entry);
     void cow_update(Paddr, mword, mword);
+    void reserve_stack(Quota &quota, mword);
     
 };
 

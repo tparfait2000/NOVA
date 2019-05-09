@@ -38,6 +38,7 @@
 #include "pe.hpp"
 #include "cow_elt.hpp"
 #include "pe_state.hpp"
+#include "pe_stack.hpp"
 
 mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx, Ec::tscp_rcx1 = 0, Ec::tscp_rcx2 = 0;
 bool Ec::ec_debug = false, Ec::glb_debug = false, Ec::hardening_started = false, Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false, Ec::no_further_check = false, Ec::first_run_advanced = false;
@@ -306,7 +307,7 @@ void Ec::ret_user_sysexit() {
         launch_state = Ec::SYSEXIT;
     }
 
-    debug_print("Sysreting");
+    debug_started_trace(0, "Sysreting");
     if (step_reason == SR_NIL) {
         asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : "memory");
     } else {
@@ -325,7 +326,7 @@ void Ec::ret_user_iret() {
         current->save_state();
         launch_state = Ec::IRET;
     }
-    debug_print("Ireting");
+    debug_started_trace(0, "Ireting");
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR LOAD_SEG RET_USER_EXC) : : "m" (current->regs) : "memory");
 
     UNREACHED;
@@ -369,15 +370,24 @@ void Ec::ret_user_vmresume() {
         set_cr2(current->regs.cr2);
 //    trace(TRACE_VMX, "VMResume  GuestRip %lx Run %d", Vmcs::read(Vmcs::GUEST_RIP), run_number);   
 //    Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xb);
-    if(Console::debug_started){
-        Paddr heip;
-        mword attr, eip = Vmcs::read (Vmcs::GUEST_RIP);
-        current->regs.vtlb->vtlb_lookup(eip, heip, attr);
-        mword *ptr = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, heip)) + (heip & PAGE_MASK)/sizeof(mword);
-        char buffer[80];
-        instruction_in_hex(*ptr, buffer);
-        debug_started_trace(0, "Geip %lx heip %lx, %p, %lx instr %s", eip, heip, ptr, *ptr, buffer);
-    }
+    Paddr heip, hpa, ept_hpa;
+    mword attr, gpeip, ept_attr, eip = Vmcs::read (Vmcs::GUEST_RIP);
+    current->regs.vtlb->vtlb_lookup(eip, heip, attr);
+    current->regs.vtlb->vtlb_lookup(Pe::missmatch_addr, hpa, attr);
+    mword *ptr1 = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, heip)) + (heip & PAGE_MASK)/sizeof(mword);
+    mword *ptr2 = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, hpa)) + (hpa & PAGE_MASK)/sizeof(mword);
+    size_t size_g = current->regs.vtlb->gla_to_gpa(&current->regs, eip, gpeip),
+            size_h = Pd::current->ept.lookup (gpeip, ept_hpa, ept_attr);
+
+    char buffer[80];
+    instruction_in_hex(*ptr1, buffer);
+    debug_started_trace(0, "Geip %lx heip %lx, *heip %lx instr %s hpa %lx *hpa %lx size_g %lx gpeip %lx size_h %lx ept_hpa %lx run %u", 
+            eip, heip, *ptr1, buffer, hpa, *ptr2, size_g, gpeip, size_h, ept_hpa, run_number);
+        
+//        if(heip && ept_hpa && (size_g != ~0UL) && !(*ptr1)){
+//            trace(0, "INSTR0 Geip %lx heip %lx, *heip %lx instr %s hpa %lx *hpa %lx size_g %lx gpeip %lx size_h %lx ept_hpa %lx run %u", 
+//                eip, heip, *ptr1, buffer, hpa, *ptr2, size_g, gpeip, size_h, ept_hpa, run_number);
+//        }
     if(step_reason == SR_DBG)
         enable_mtf();
     asm volatile ("mov %2," EXPAND(PREG(sp);)
@@ -453,7 +463,7 @@ void Ec::idle() {
         asm volatile ("sti; hlt; cli" : : : "memory");
         uint64 t2 = rdtsc();
 
-        Counter::dump();
+//        Counter::dump();
         Counter::cycles_idle += t2 - t1;
     }
 }
@@ -778,8 +788,10 @@ void Ec::save_state() {
     Fpu::dwc_save(); // If FPU activated, save fpu state
     if (fpu)         // If fpu defined, save it 
         fpu->save_data();
-    if(!utcb){
-        vmx_save_state();
+    if(utcb){
+        Pd::current->loc[Cpu::id].reserve_stack(Pd::current->quota, regs.REG(sp));
+    } else {
+        vmx_save_state();        
     }
     copy_string(Pe::current_ec, current->get_name());
     copy_string(Pe::current_pd, current->getPd()->get_name());
@@ -808,7 +820,19 @@ void Ec::vmx_save_state() {
     Pe::vmcsRIP_0 = Vmcs::read(Vmcs::GUEST_RIP);   
     Pe::vmcsRSP_0 = Vmcs::read(Vmcs::GUEST_RSP);   
     Pe::vmcsRIP[0] = Pe::vmcsRIP_0;     
-    Pe::vmcsRSP[0] = Pe::vmcsRSP_0;       
+    Pe::vmcsRSP[0] = Pe::vmcsRSP_0;   
+
+    if(Pe::in_recover_from_stack_fault_mode || Pe::in_debug_mode)
+        return;
+    // The stack must always be checked except in in_recover_from_stack_fault_mode on in_debug_mode
+    mword gpa, rsp = Vmcs::read (Vmcs::GUEST_RSP);
+    size_t s = Vtlb::gla_to_gpa(&regs, rsp, gpa);
+//    debug_started_trace(0, "rsp %lx size %lx gpa %lx", rsp, s, gpa);
+    if(rsp && s && (s != ~0UL)){
+        regs.vtlb->reserve_stack(gpa);
+    } else {
+        Pe_stack::stack = 0;        
+    }
 }
 
 void Ec::vmx_restore_state() {

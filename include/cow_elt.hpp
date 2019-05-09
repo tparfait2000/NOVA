@@ -57,7 +57,8 @@ public:
 
     static void resolve_cow_fault(Vtlb*, Hpt*, mword virt, Paddr phys, mword attr);
     static bool is_mapped_elsewhere(Paddr, Cow_elt*);
-    static void copy_frame(Cow_elt*, void*);
+    static void copy_frames(Cow_elt*, void*);
+    static void remove_cow(Vtlb*, Hpt*, mword virt, Paddr phys, mword attr);
 
     static bool is_empty() {
         return !cow_elts.head();

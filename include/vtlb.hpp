@@ -91,6 +91,7 @@ class Vtlb : public Pte<Vtlb, uint64, 3,  9, false>
         void cow_update(Paddr, mword);
         size_t vtlb_lookup(mword, Paddr&, mword&);
         static size_t gla_to_gpa(Exc_regs*, mword, mword&);
+        void reserve_stack(mword gpa);
         
         ALWAYS_INLINE
         static inline void *operator new (size_t, Quota &quota) { return Buddy::allocator.alloc (0, quota, Buddy::NOFILL); }

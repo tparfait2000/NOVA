@@ -202,28 +202,23 @@ void Ec::handle_vmx()
     Counter::vmi[reason]++;
     if(reason == Vmcs::VMX_EXTINT){
         unsigned vector = Vmcs::read (Vmcs::EXI_INTR_INFO) & 0xff;
-        debug_started_trace(TRACE_VMX, "VMExit reason %ld:%d Guest rip %lx run %d counter %llx:%llx rcx %lx", reason, vector, Vmcs::read (Vmcs::GUEST_RIP), run_number, Lapic::read_instCounter(), Lapic::counter_read_value, current->regs.REG(cx));
+        debug_started_trace(TRACE_VMX, "VMExit reason %ld:%d Guest rip %lx run %d counter %llx:%llx rsp %lx", reason, vector, Vmcs::read (Vmcs::GUEST_RIP), run_number, Lapic::read_instCounter(), Lapic::counter_read_value, Vmcs::read (Vmcs::GUEST_RSP));
     } 
     else if (reason == Vmcs::VMX_EXC_NMI){
         mword intr_info = Vmcs::read (Vmcs::EXI_INTR_INFO);
         if((intr_info & 0x7ff) == 0x30e) {       // #PF
             mword err = Vmcs::read (Vmcs::EXI_INTR_ERROR);
             mword cr2 = Vmcs::read (Vmcs::EXI_QUALIFICATION);
-//            if(cr2 == 0xc12e5ffc){
-//                Console::debug_started = true;
-//            }
-            debug_started_trace(TRACE_VMX, "VMExit reason %ld:%lx:%lx Guest rip %lx run %d counter %llx rcx %lx", reason, cr2, err, Vmcs::read (Vmcs::GUEST_RIP), run_number, Lapic::read_instCounter(), current->regs.REG(cx));    
+            debug_started_trace(TRACE_VMX, "VMExit reason %ld:%lx:%lx Guest rip %lx run %d counter %llx rsp %lx", reason, cr2, err, Vmcs::read (Vmcs::GUEST_RIP), run_number, Lapic::read_instCounter(), Vmcs::read (Vmcs::GUEST_RSP));    
         } 
     }
     else
-        debug_started_trace(TRACE_VMX, "VMExit reason %ld Guest rip %lx run %d counter %llx:%llx rcx %lx", reason, Vmcs::read (Vmcs::GUEST_RIP), run_number, Lapic::read_instCounter(), Lapic::counter_read_value, current->regs.REG(cx));
-    if(Console::debug_started){
-        Paddr hpa;
-        mword attr;
-        current->regs.vtlb->vtlb_lookup(Pe::missmatch_addr, hpa, attr);
-        mword *ptr = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, hpa)) + (hpa & PAGE_MASK)/sizeof(mword);
-        debug_started_trace(0, "Cow error miss %lx, %p, %lx", hpa, ptr, *ptr);
-    }
+        debug_started_trace(TRACE_VMX, "VMExit reason %ld Guest rip %lx run %d counter %llx:%llx rsp %lx", reason, Vmcs::read (Vmcs::GUEST_RIP), run_number, Lapic::read_instCounter(), Lapic::counter_read_value, Vmcs::read (Vmcs::GUEST_RSP));
+    
+//    if(reason == Vmcs::VMX_INTR_WINDOW){
+//        trace(0, "VMExit reason %ld Guest rip %lx counter %llx run %d", reason, 
+//                Vmcs::read (Vmcs::GUEST_RIP), Lapic::read_instCounter(), run_number);
+//    }
     Pe_state::add_pe_state(new(Pd::kern.quota) Pe_state(&current->regs, Lapic::read_instCounter(), run_number, reason));
 
     switch (reason) {

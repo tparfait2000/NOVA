@@ -27,6 +27,7 @@
 #include "ec.hpp"
 #include "hip.hpp"
 #include "cow_elt.hpp"
+#include "pe_stack.hpp"
 
 //void Hpt::print_table(Quota &quota, mword o) {
 //    for (mword v = 0; v <= o; v = v + PAGE_SIZE) {
@@ -115,7 +116,8 @@ void *Hpt::remap_cow(Quota &quota, Paddr phys, mword addr) {
 bool Hpt::is_cow_fault(Quota &quota, mword v, mword err) {
     Paddr phys;
     mword a;
-    if (lookup(v, phys, a) && (a & Hpt::HPT_COW) && (a & Hpt::HPT_U)) {
+    size_t s = lookup(v, phys, a);
+    if (s && (a & Hpt::HPT_COW) && (a & Hpt::HPT_U)) {
         //        Ec::cow_count++;
         Ec *ec = Ec::current;
         Pd *pd = ec->getPd();
@@ -161,23 +163,10 @@ bool Hpt::is_cow_fault(Quota &quota, mword v, mword err) {
                     }
                 }
                 
-                Hpt *e = walk(quota, v, 0);
+                Hpt *e = walk(quota, v, 0); // mword l = (bit_scan_reverse(v ^ USSER_ADDR) - PAGE_BITS) / bpl() = 3; but 3 doesnot work
+
                 assert(e);
                 Cow_elt::resolve_cow_fault(nullptr, e, v, phys, a);
-            
-//                Cow::cow_elt *ce = nullptr;
-//                if (!Cow::get_cow_list_elt(&ce)) //get new cow_elt
-//                    ec->die("Cow elt exhausted");
-//
-//                if (pd->is_mapped_elsewhere(phys & ~PAGE_MASK, ce) || Cow::subtitute(phys & ~PAGE_MASK, ce, v & ~PAGE_MASK)) {
-//                    ce->page_addr_or_gpa = v & ~PAGE_MASK;
-//                    ce->attr = a;
-//                } else // Cow::subtitute will fill cow's fields old_phys, new_phys and frame_index 
-//                    ec->die("Cow frame exhausted");
-//                pd->add_cow(ce);
-//                replace_cow(quota, v, ce->new_phys[0]->phys_addr | a | Hpt::HPT_W);
-//                cow_flush(v);
-//                Console::print("Cow error Ec: %p  v: %lx  phys: %lx  ce: %p  phys1: %lx  phys2: %lx", ec, v, phys, ce, ce->new_phys[0]->phys_addr, ce->new_phys[1]->phys_addr);
             }
             return true;
         } else
@@ -231,4 +220,21 @@ void Hpt::cow_update(Paddr phys, mword attr, mword v){
     mword new_val = phys | attr;
     do o = *e; while (o.val != new_val && !e->set (o.val, new_val));
     flush(v);    
+}
+
+void Hpt::reserve_stack(Quota &quota, mword v){
+    if(Pe::in_recover_from_stack_fault_mode || Pe::in_debug_mode)
+        return;
+    v &= ~PAGE_MASK; 
+    Paddr phys;
+    mword a;
+    if(lookup(v, phys, a) && (a & Hpt::HPT_COW)){
+        Hpt *e = walk(quota, v, 0);
+        assert(e);
+        Cow_elt::remove_cow(nullptr, e, v, phys, a);
+//        Pe_stack::remove_cow_for_detected_stacks(nullptr, this);
+    } else {
+        Pe_stack::stack = 0;
+//        trace(0, "Stack unmapped");
+    }
 }

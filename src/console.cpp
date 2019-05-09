@@ -371,4 +371,13 @@ void Console::panic (char const *format, ...)
     shutdown();
 }
 
+void Console::print_page(void* page_addr){
+    uint32* uint32_page_addr = reinterpret_cast<uint32*>(page_addr);
+    for(int i = 0; i< 0x100; i++){
+        print("%p: %0#10x %0#10x %0#10x %0#10x", uint32_page_addr, *uint32_page_addr, *(uint32_page_addr+1), *(uint32_page_addr+2), *(uint32_page_addr+3));
+        uint32_page_addr+=4;
+    }
+    print("=====================================================");
+}
+
 extern "C" NORETURN void __cxa_pure_virtual() { UNREACHED; }

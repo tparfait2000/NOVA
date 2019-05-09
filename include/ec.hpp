@@ -290,6 +290,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
             PES_VMX_RDTSC       = 23,
             PES_VMX_RDTSCP      = 24,
             PES_VMX_IO          = 25,
+            PES_COW_IN_STACK    = 26,
         };
         
         enum Debug_type {

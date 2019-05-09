@@ -57,9 +57,4 @@
 
 #define COW_ADDR        (LINK_ADDR - 0x40000000)   //0xde000000    0xFFFFFFFF80000000
 #define LOCAL_IOP_REMAP (COW_ADDR - 0x1000000)          //0xdd000000    0xFFFFFFFF7F000000
-#define NB_COW_FRAME_ORDER    12  // means 2¹⁴ = 16 * 1024 frames
-#define NB_COW_FRAME    (0x26UL << NB_COW_FRAME_ORDER)  // (384-32)*1024/4 car une page = 4Ko
-#define NB_COW_ELT      (NB_COW_FRAME)
-#define NB_TS_ELT       10000
-#define NB_BLOCK_ELT    20
 #define END_SPACE_LIM   (~0UL + 1)

@@ -30,6 +30,7 @@
 #include "gsi.hpp"
 #include "pending_int.hpp"
 #include "cow_elt.hpp"
+#include "pe_stack.hpp"
 
 void Ec::load_fpu() {
     if (!Cmdline::fpu_eager && !utcb)
@@ -435,13 +436,12 @@ void Ec::handle_exc(Exc_regs *r) {
  * @param from : where it is called from
  */
 void Ec::check_memory(PE_stopby from) {
-    if (Cow_elt::is_empty()) {
+    if (Cow_elt::is_empty() && !Pe::in_recover_from_stack_fault_mode && !Pe::in_debug_mode) {
         launch_state = UNLAUNCHED;
         reset_all();
         return;
     }
     Ec *ec = current;
-    Pd *pd = ec->getPd();
     switch (run_number) {
         case 0:
             prev_reason = from;
@@ -539,10 +539,10 @@ void Ec::check_memory(PE_stopby from) {
                     Console::panic("PMI not served early counter2 %llx \nMust be dug deeper", counter2);
                 } 
                 distance_instruction = distance(first_run_instr_number, second_run_instr_number);
-                if(!ec->utcb)
-                    trace(0, "restoring %d count1 %llx count2 %llx counter %llx", distance_instruction <= 2 ? 0 : 
-                        first_run_instr_number > second_run_instr_number ? 2 : 1, first_run_instr_number, 
-                        second_run_instr_number, Lapic::read_instCounter());
+//                if(!ec->utcb)
+//                    trace(0, "restoring %d count1 %llx count2 %llx counter %llx", distance_instruction <= 2 ? 0 : 
+//                        first_run_instr_number > second_run_instr_number ? 2 : 1, first_run_instr_number, 
+//                        second_run_instr_number, Lapic::read_instCounter());
                 if (distance_instruction <= 2) {
                     if (ec->compare_regs_mute()) {
                         nbInstr_to_execute = distance_instruction + 1;
@@ -584,27 +584,49 @@ void Ec::check_memory(PE_stopby from) {
             prepare_checking();    
             reg_diff = ec->compare_regs(from);
             if (Cow_elt::compare() ||reg_diff) {
-                Pe::print_current(ec->utcb ? false : true);
-                Pe_state::dump();
-                Console::print("Checking failed : Ec %s  Pd: %s From: %d:%d launch_state: %d", ec->get_name(), pd->get_name(), prev_reason, from, launch_state);
+                if(Pe::in_recover_from_stack_fault_mode){
+                    Pd *pd = ec->getPd();
+                    Pe::print_current(ec->utcb ? false : true);
+                    Pe_state::dump();
+                    Console::print("Checking failed : Ec %s  Pd: %s From: %d:%d launch_state: %d ", 
+                            ec->get_name(), pd->get_name(), prev_reason, from, launch_state);
+                }
+                /**
+                 * Following instructions must come in this order.
+                 * At this point, may be the failing check comes from guest stack change
+                 * First, we save PE system values
+                 */
                 uint64 nbInstr_to_execute_value = counter1 < Lapic::start_counter ? 
                     MAX_INSTRUCTION + counter1 - exc_counter1 : counter1 - (Lapic::perf_max_count - MAX_INSTRUCTION);
                 assert(nbInstr_to_execute < Lapic::perf_max_count);
+//                Console::debug_started = true;
+                int from_value = from;
+                int prev_reason_value = prev_reason;
                 ec->rollback();
                 ec->reset_all();
                 ec->save_state();
-//              check_exit();
+                /* Try recovering from stack change check failing.
+                 * Re-inforce this by !utcb, when we will be sure that stack Fail check is only related to guest OS
+                 */ 
+                if((from_value == prev_reason_value) && (!reg_diff) && (!Pe::in_recover_from_stack_fault_mode)){
+                    debug_started_trace(0, "Rollback started %d", launch_state);  
+                    Pe::in_recover_from_stack_fault_mode = true;
+                    check_exit();
+                }
+                Pe::in_recover_from_stack_fault_mode = false;
                 /*
+                 * If we get here, it means that we have a bug or when in production, we have an SEU
                  * This is for debugging the rollback part of the hardening program.
                  * Before send in production, uncomment the previous check_exit();
                  */ 
+//                    check_exit();   In production, we meust check_exit() to start the second redundancy round            
                 nbInstr_to_execute = nbInstr_to_execute_value;
+                Pe::in_debug_mode = true;
                 if(ec->utcb){
                     ec->enable_step_debug(SR_DBG);
                     check_exit();
                 } else {
                     Console::print("SR DBG launch in VMX nbInstr_to_execute %llx", nbInstr_to_execute);
-                    Console::debug_started = true;
                     vmx_enable_single_step(SR_DBG);
                 }                
             } else {
@@ -653,6 +675,7 @@ void Ec::reset_all() {
     no_further_check = false;
     Pending_int::exec_pending_interrupt();
     Pe_state::free_recorded_pe_state();
+    Pe_stack::free_detected_stacks();
 }
 
 void Ec::start_debugging(Debug_type dt) {

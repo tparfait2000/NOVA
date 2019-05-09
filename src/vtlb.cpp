@@ -25,6 +25,8 @@
 #include "vtlb.hpp"
 #include "vmx.hpp"
 #include "cow_elt.hpp"
+#include "ec.hpp"
+#include "pe_stack.hpp"
 
 size_t Vtlb::gwalk (Exc_regs *regs, mword gla, mword &gpa, mword &attr, mword &error)
 {
@@ -257,10 +259,10 @@ bool Vtlb::is_cow(mword virt, mword gpa, mword error){
         if(tlb->attr() & TLB_COW){
             mword hpa, ept_attr;
             size_t size = Pd::current->ept.lookup (gpa, hpa, ept_attr);
-//            trace(0, "is_cow v: %lx tlb->addr: %lx attr %lx gpa %lx hpa %lx size %lx", 
-//                virt, tlb->addr(), tlb->attr(), gpa, hpa, size);
+            debug_started_trace(0, "is_cow v: %lx tlb->addr: %lx attr %lx gpa %lx hpa %lx size %lx", 
+                virt, tlb->addr(), tlb->attr(), gpa, hpa, size);
 
-            if(size && (tlb->addr() == (hpa  & ~PAGE_MASK))){ 
+            if(size && (tlb->addr() == (hpa & ~PAGE_MASK))){ 
                 Counter::vtlb_cow++;   
                 Cow_elt::resolve_cow_fault(tlb, nullptr, virt, tlb->addr(), tlb->attr());
                 return true;            
@@ -341,4 +343,48 @@ size_t Vtlb::gla_to_gpa (Exc_regs *regs, mword gla, mword &gpa)
 
         return size;
     }
+}
+/**
+ * This method checks if the guest stack is mapped in EPT and in this case, 
+ * make it writable so that it will not triggers cow fault.
+ * @param gpa
+ */
+void Vtlb::reserve_stack(mword gpa){
+    unsigned l = max();
+    unsigned b = bpl();
+    unsigned shift = --l * b + PAGE_BITS;
+    Vtlb *tlb = static_cast<Vtlb *> (this) ;
+    mword rsp = Vmcs::read(Vmcs::GUEST_RSP);
+    mword a;
+    tlb += rsp >> shift & ((1UL << b) - 1);
+
+    for (;; tlb = static_cast<Vtlb *> (Buddy::phys_to_ptr(tlb->addr())) + (rsp >> (--l * b + PAGE_BITS) & ((1UL << b) - 1))) {
+        if (EXPECT_FALSE(!tlb->val))
+            break;
+       
+        if (EXPECT_FALSE(l && !tlb->super()))
+                continue; 
+        
+        size_t s = 1UL << (l * b + tlb->order());
+
+        if(!s)
+            break;
+        
+        a = tlb->attr();
+
+        if(a & TLB_COW){
+            
+            mword hpa, ept_attr;
+            size_t size = Pd::current->ept.lookup (gpa, hpa, ept_attr);
+
+//            debug_started_trace(0, "save_guest_stack rsp: %lx tlb->addr: %lx attr %lx gpa %lx hpa %lx size %lx", 
+//                rsp, tlb->addr(), a, gpa, hpa, size);
+            if(size && (tlb->addr() == (hpa & ~PAGE_MASK))){ 
+                Cow_elt::remove_cow(tlb, nullptr, rsp, tlb->addr(), tlb->attr());    
+            }
+        }
+//        Pe_stack::remove_cow_for_detected_stacks(this, nullptr);
+        return;
+    }
+    Pe_stack::stack = 0;
 }

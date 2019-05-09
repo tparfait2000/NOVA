@@ -74,4 +74,6 @@ class Console
         static void panic (char const *, ...);
         
         static bool debug_started;
+        
+        static void print_page(void *);
 };
