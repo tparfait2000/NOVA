@@ -31,7 +31,7 @@ private:
         mword cr3;
         asm volatile ("mov %%cr3, %0; mov %0, %%cr3" : "=&r" (cr3));
     }
-
+    
 public:
     ALWAYS_INLINE
     static inline void flush (mword addr)
@@ -133,16 +133,13 @@ public:
     static bool iter_loc_lev(unsigned l, mword) { return l > 3; }
 
     static void *remap_cow(Quota &quota, Paddr, mword addr = 0);
-
-    static inline void cow_flush(mword v) { flush(v); }
     
     bool is_cow_fault(Quota &quota, mword, mword);
     
     void print_table(Quota &quota, mword); 
-    static inline void cow_flush() { flush();}
         
-    Paddr replace_cow(Quota &quota, mword, mword);
-    void replace_cow_n(Quota &quota, mword, int, mword);
+    Paddr replace_cow(Quota &quota, mword, mword, mword);
+    void replace_cow_n(Quota &quota, mword, int, mword, mword);
     static void print(char const *s, mword v);
     static void set_cow_page(mword virt, mword &entry);
     void cow_update(Paddr, mword, mword);

@@ -23,7 +23,7 @@
 class Pe_state {
     friend class Queue<Pe_state>;
     static Slab_cache cache;    
-    static Queue<Pe_state> pe_state;
+    static Queue<Pe_state> pe_states, log_pe_states;
     
     static size_t number;
     mword rax = 0, rbx = 0, rcx = 0, rdx = 0, rbp = 0, rdi = 0, rsi = 0, rsp = 0, rip = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, r13 = 0, r14 = 0, r15 = 0;
@@ -31,6 +31,7 @@ class Pe_state {
     uint64 retirement_counter = 0;
     uint8 run_no; 
     mword int_no;
+    bool is_vcpu;
     Pe_state* prev;
     Pe_state* next;
     size_t numero = 0;
@@ -48,8 +49,8 @@ public:
      * @param rip_value
      * @param counter
      */
-    Pe_state(Exc_regs*, uint64, uint8, mword); 
-    Pe_state(Cpu_regs*, uint64, uint8, mword); 
+    Pe_state(Exc_regs*, uint64, uint8, mword, bool = false); 
+    Pe_state(Cpu_regs*, uint64, uint8, mword, bool = false); 
     Pe_state &operator = (Pe_state const &);
     
     ALWAYS_INLINE
@@ -77,8 +78,8 @@ public:
     };
     
     void print(){
-        trace(TRACE_PE, "%d, %#8lx %#8lx %#8lx %#8lx %#8lx %#8lx %#8lx %#8lx %#8lx %#8lx %#8lx %#8lx %#8lx %ld"
-        "%#8lx %#8lx %#8lx, %#12llx, %ld:%ld %lx", run_no, rax, rbx, rcx, rdx, rbp, rdi, rsi, rsp, rip, r8, r9, 
+        trace(0, "%d, A %010lx B %010lx C %010lx D %010lx S %010lx D %010lx B %010lx S %010lx I %010lx R8 %010lx %010lx %010lx %010lx %010lx "
+        "%010lx %010lx %010lx, %0#12llx, %ld:%ld %lx", run_no, rax, rbx, rcx, rdx, rbp, rdi, rsi, rsp, rip, r8, r9, 
                 r10, r11, r12, r13, r14, r15, retirement_counter, int_no, sub_reason, diff_reason);
     }
 
@@ -93,6 +94,8 @@ public:
     static void set_current_pe_diff_reason(mword);
     
     static void free_recorded_pe_state();
+    static void free_recorded_log_pe_state();
     
     static void dump();
+    static void dump_log();
 };

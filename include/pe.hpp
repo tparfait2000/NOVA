@@ -18,6 +18,7 @@
 #include "queue.hpp"
 #include "console.hpp"
 #include "regs.hpp"
+#include "stdio.hpp"
 
 class Pe {
     friend class Queue<Pe>;
@@ -27,12 +28,20 @@ class Pe {
     static size_t number;
     char ec[MAX_STR_LENGTH];
     char pd[MAX_STR_LENGTH];
-    Cpu_regs regs;
+    char type[MAX_STR_LENGTH];
+    mword rip;
+    mword cr3;
+    unsigned pe_number;
     Pe* prev;
     Pe* next;
     size_t numero = 0;
     bool marked = false;
     mword attr = 0; 
+    mword val = 0;
+    mword ss_val = 0;
+    int from1 = 0, from2 = 0;
+    mword mmio_v = 0;
+    Paddr mmio_p = 0;
     
 public:
     /**
@@ -75,7 +84,7 @@ public:
      * @param pd
      * @param counter
      */
-    Pe(const char* ec, const char* pd, Cpu_regs);
+    Pe(const char* , const char*, mword, mword, unsigned, const char*);
     Pe &operator = (Pe const &);
 
     ALWAYS_INLINE
@@ -157,7 +166,7 @@ public:
 
     void mark();
     void print(){
-        
+        trace(0,"%s PD: %s EC %s rip %lx *v %lx:%lx from %d:%d mmio %lx:%lx cr3 %lx nb_pe %u", type, pd, ec, rip, val, ss_val, from1, from2, mmio_v, mmio_p, cr3, pe_number);        
     };
     
     bool is_marked() { return marked; }
@@ -176,4 +185,11 @@ public:
     
     static void counter(char*);
     
+    static void set_val(mword);
+
+    static void set_ss_val(mword);
+    
+    static void set_froms(int, int);
+    
+    static void set_mmio(mword, Paddr);
 };

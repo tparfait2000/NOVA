@@ -124,9 +124,9 @@ class Space_mem : public Space
         }
 
         ALWAYS_INLINE
-        inline Paddr replace_cow (Quota &quota, mword v, Paddr p)
+        inline Paddr replace_cow (Quota &quota, mword v, Paddr p, mword a)
         {
-            return hpt.replace_cow (quota, v, p);
+            return hpt.replace_cow (quota, v, p, a);
         }
         
         INIT

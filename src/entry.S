@@ -88,7 +88,7 @@ INTRGATE                \DPL
                         SAVE_FLAGS
                         SAVE_GPR
                         mov     %REG(bx), %ARG_1
-                        call saveRegs
+                        call save_regs
                         LOAD_GPR
                         LOAD_FLAGS
 2:

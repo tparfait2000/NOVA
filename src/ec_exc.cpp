@@ -162,19 +162,10 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
     Console::print("GP Here: Ec: %s  Pd: %s ip %lx(%#lx) val: %s Lapic::counter %llx user %s",
             ec->get_name(), ec->getPd()->get_name(), eip, r->ARG_IP, buff, Lapic::read_instCounter(), r->user() ? "true" : "false");
     Counter::dump();
+    Pe::print_current(false);
     Pe::dump(true);
+    Pe_state::dump_log();
     ec->start_debugging(Debug_type::STORE_RUN_STATE);
-    if (!ec->utcb) {
-        mword inst_addr = Vmcs::read(Vmcs::GUEST_RIP);
-        mword inst_off = inst_addr & PAGE_MASK;
-        uint64 entry = 0;
-        if (!current->regs.vtlb_lookup(inst_addr, entry)) {
-            Console::print("Instr_addr not found %lx", inst_addr);
-        }
-        uint8 *ptr = reinterpret_cast<uint8 *> (Hpt::remap_cow(Pd::kern.quota, entry & ~PAGE_MASK));
-        uint64 *inst_val = reinterpret_cast<uint64 *> (ptr + inst_off);
-        Console::print("VMip: %lx VMcx %lx val %llx", inst_addr, ec->regs.REG(cx), *inst_val);
-    }
     return false;
 }
 
@@ -184,7 +175,7 @@ void Ec::handle_exc_db(Exc_regs *r) {
         mword *p = reinterpret_cast<mword*> (0x18028);
         Paddr physical_addr;
         mword attribut;
-        size_t is_mapped = current->getPd()->loc[Cpu::id].lookup(0x18028, physical_addr, attribut);
+        size_t is_mapped = Pd::current->Space_mem::loc[Cpu::id].lookup(0x18028, physical_addr, attribut);
         if (is_mapped)
             Console::print("Debug breakpoint at value phys %lx 18028:%lx", physical_addr, *p);
         return;
@@ -251,19 +242,27 @@ void Ec::handle_exc_db(Exc_regs *r) {
                 return;
                 break;
             case SR_DBG:
-                if (nb_inst_single_step > nbInstr_to_execute) {
-                    if (run_number == 0) {
-                        Console::print("Relaunching for the second run");
-                        current->restore_state();
-                        nb_inst_single_step = 0;
-                        run_number++;
-                        check_exit();
-                    } else {
-                        Console::panic("SR_DBG Finish");
+//                if (nb_inst_single_step > nbInstr_to_execute) {
+//                    if (run_number == 0) {
+//                        Console::print("Relaunching for the second run");
+//                        current->restore_state();
+//                        nb_inst_single_step = 0;
+//                        run_number++;
+//                        check_exit();
+//                    } else {
+//                        Console::panic("SR_DBG Finish");
+//                    }
+//                } else 
+                {
+                    mword *ptr = reinterpret_cast<mword*>(0x21000);
+                    Paddr phys;
+                    mword attr;
+                    size_t size = Pd::current->Space_mem::loc[Cpu::id].lookup(0x21000, phys, attr);
+                    if(size){
+                        Pe_state::set_current_pe_sub_reason(phys);
+                        Pe_state::set_current_pe_diff_reason(*ptr);
                     }
-                } else {
                     current->regs.REG(fl) |= Cpu::EFL_TF;
-                    debug_record_info(); // Change it to pe_states.add(new ...)
                     nb_inst_single_step++;
                     return;
                 }
@@ -631,7 +630,6 @@ void Ec::check_memory(PE_stopby from) {
                 }                
             } else {
                 Cow_elt::commit();
-                ++Counter::nb_pe;
                 launch_state = UNLAUNCHED;
                 reset_all();
                 return;
@@ -697,7 +695,6 @@ void Ec::debug_record_info() {
 
             break;
         case STORE_RUN_STATE:
-            current->take_snaphot();
             break;
         default:
             Console::panic("Undefined debug type %u", debug_type);

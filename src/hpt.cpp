@@ -108,7 +108,7 @@ void *Hpt::remap(Quota &quota, Paddr phys) {
 void *Hpt::remap_cow(Quota &quota, Paddr phys, mword addr) {
     Hptp hpt(current());
     addr += COW_ADDR;
-    hpt.replace_cow(quota, addr, phys | Hpt::HPT_W | Hpt::HPT_P);
+    hpt.replace_cow(quota, addr, phys, Hpt::HPT_W | Hpt::HPT_P);
 //    Hpt::cow_flush(addr);
     return reinterpret_cast<void *> (addr);
 }
@@ -122,28 +122,14 @@ bool Hpt::is_cow_fault(Quota &quota, mword v, mword err) {
         Ec *ec = Ec::current;
         Pd *pd = ec->getPd();
         if (!(a & Hpt::HPT_P) && (a & Hpt::PTE_COW_IO)) { //Memory mapped IO
-//      if (Ec::current->ec_debug) {
-//          Console::print("Cow error in IO: v: %lx  phys: %lx, attr: %lx",
-//                                        v, phys, a);
-//          Ec::current->ec_debug = false;
-//      }
             ec->check_memory(Ec::PES_MMIO);
-            ++Counter::mmio;
-            ++Counter::io;
-            replace_cow(quota, v, phys | a | Hpt::HPT_P); // the old frame may have been released; so we have to retain it
-//            cow_flush(v);
-            //            Console::print("Read MMIO");
-                ec->enable_step_debug(Ec::SR_MMIO, v, phys, a);
+            replace_cow(quota, v, phys, a | Hpt::HPT_P); 
+            ec->enable_step_debug(Ec::SR_MMIO, v, phys, a);
             return true;
         } else if ((err & Hpt::ERR_W) && !(a & Hpt::HPT_W)) {
-            //            if (Ec::current->ec_debug) {
-            //                Console::print("Cow error in Memory: v: %p  phys: %08p, attr: %08p",
-            //                        v, phys, a);
-            //                Ec::current->ec_debug = false;
-            //            }
             if (v >= USER_ADDR) {
-                //Normally, this must not happen since this is not a user space here but...                
-                replace_cow(quota, v, phys | a | Hpt::HPT_W);
+                Console::panic("Normally, this must not happen since this is not a user space here but..");               
+                replace_cow(quota, v, phys, a | Hpt::HPT_W);
                 //              Console::print("Cow Error above USER_ADDR");
             } else {
                 if (Ec::step_reason && (Ec::step_reason != Ec::SR_DBG) && (Ec::step_reason != Ec::SR_GP)) {//Cow error in single stepping : why this? we don't know; qemu oddities
@@ -153,8 +139,7 @@ bool Hpt::is_cow_fault(Quota &quota, mword v, mword err) {
                     Pe::print_current(false);
                     Pe_state::dump();
                     if (ec->is_io_exc()) {
-                        replace_cow(quota, v, phys | a | Hpt::HPT_W);
-//                        cow_flush(v);
+                        replace_cow(quota, v, phys, a | Hpt::HPT_W);
                         return true;
                     } else {// IO instruction already executed but still in single stepping
                         ec->disable_step_debug();
@@ -175,19 +160,23 @@ bool Hpt::is_cow_fault(Quota &quota, mword v, mword err) {
         return false;
 }
 
-Paddr Hpt::replace_cow(Quota &quota, mword v, mword p) {
+Paddr Hpt::replace_cow(Quota &quota, mword v, Paddr p, mword a) {
+    v &= ~PAGE_MASK; 
+    p &= ~PAGE_MASK; 
+    a &= ~HPT_NX;
+    assert((a & ~PAGE_MASK) == 0);
     Hpt o, *e = walk(quota, v, 0);
     if(!e) return 0;
-    
+    p |= a;
     do o = *e; while (o.val != p && !e->set(o.val, p));
 
     flush(v);
     return e->addr();
 }
 
-void Hpt::replace_cow_n(Quota &quota, mword v, int n, mword p) {
+void Hpt::replace_cow_n(Quota &quota, mword v, int n, Paddr p, mword a) {
     for (int i = 0; i< n; i++)
-        replace_cow(quota, v+i*PAGE_SIZE, p+i*PAGE_SIZE);
+        replace_cow(quota, v+i*PAGE_SIZE, p+i*PAGE_SIZE, a);
 }
 
 void Hpt::print(char const *s, mword v){

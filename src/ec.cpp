@@ -568,8 +568,8 @@ void Ec::die(char const *reason, Exc_regs *r) {
     bool const show = current->pd == &Pd::kern || current->pd == &Pd::root;
     bool const pf_in_kernel = str_equal(reason, "#PF (kernel)");
 //    prepare_checking();    
-    Pe::print_current(current->utcb ? false : true);
-    Pe_state::dump();
+//    Pe::print_current(current->utcb ? false : true);
+    Pe::dump(true);
     if (current->utcb || show || pf_in_kernel) {
 //        if (show || !strmatch(reason, "PT not found", 12))
             trace(0, "Killed EC:%s SC:%p V:%#lx CS:%#lx IP:%#lx(%#lx) CR2:%#lx ERR:%#lx (%s) %s",
@@ -707,8 +707,8 @@ void Ec::disable_step_debug() {
     switch (step_reason) {
         case SR_MMIO:
             //            Console::print("MMIO read");
-            Pd::current->loc[Cpu::id].replace_cow(Pd::current->quota, io_addr, io_phys | (io_attr & ~Hpt::HPT_P));
-            Hpt::cow_flush(io_addr);
+            Pd::current->Space_mem::loc[Cpu::id].replace_cow(Pd::current->quota, io_addr, io_phys, io_attr & ~Hpt::HPT_P);
+//            Hpt::cow_flush(io_addr);
             break;
         case SR_PIO:
             //            Console::print("PIO read");
@@ -773,7 +773,7 @@ void Ec::rollback() {
     }
 }
 
-void Ec::saveRegs(Exc_regs *r) {
+void Ec::save_regs(Exc_regs *r) {
     last_rip = r->REG(ip);
     last_rcx = r->REG(cx);
     exc_counter++;
@@ -789,7 +789,7 @@ void Ec::save_state() {
     if (fpu)         // If fpu defined, save it 
         fpu->save_data();
     if(utcb){
-        Pd::current->loc[Cpu::id].reserve_stack(Pd::current->quota, regs.REG(sp));
+        Pd::current->Space_mem::loc[Cpu::id].reserve_stack(Pd::current->quota, regs.REG(sp));
     } else {
         vmx_save_state();        
     }
@@ -797,6 +797,8 @@ void Ec::save_state() {
     copy_string(Pe::current_pd, current->getPd()->get_name());
     Pe::c_regs[0] = regs_0;
     Pe::inState1 = false;
+//    Pe_state::free_recorded_log_pe_state();
+    Counter::nb_pe++;
 }
 
 void Ec::vmx_save_state() {
@@ -1244,11 +1246,6 @@ void Ec::mark_pe_tail(){
     Pe *tail = Queue<Pe>::tail();        
     assert(tail);
     tail->mark(); 
-}
-
-void Ec::take_snaphot(){
-    Pe* pe = new(Pd::kern.quota) Pe(current->get_name(), current->getPd()->get_name(), regs);
-    Queue<Pe>::enqueue(pe);
 }
 
 void Ec::count_interrupt(mword vector){

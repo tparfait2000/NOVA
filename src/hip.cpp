@@ -341,8 +341,8 @@ void Hip::add_buddy (Hip_mem *&mem, Hip * hip)
 }
 
 bool Hip::is_mmio(const Paddr phys){
-    if (phys < 0x1000UL)
-        return true;
+//    if (phys < 0x1000UL)
+//        return true;
     Hip *h = hip();
     mword const mem_cnt = (h->length - h->mem_offs) / h->mem_size;
     for (uint32 i = 0; i < mem_cnt; i++){
@@ -351,7 +351,6 @@ bool Hip::is_mmio(const Paddr phys){
             phys >= align_up(mem.addr, PAGE_SIZE) &&                 // Core rounds the start to the upper page boundary
             phys <= align_dn(mem.addr + mem.size, PAGE_SIZE))
                 return false;
-        
     }
     return true;
 }

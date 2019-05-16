@@ -47,9 +47,10 @@ Cpu_regs Pe::c_regs[];
 mword Pe::vmcsRIP[], Pe::vmcsRSP[], Pe::vmcsRIP_0, Pe::vmcsRIP_1, Pe::vmcsRIP_2, 
         Pe::vmcsRSP_0, Pe::vmcsRSP_1, Pe::vmcsRSP_2;
 
-Pe::Pe(const char* ec_name, const char* pd_name, Cpu_regs cpu_regs) : regs(cpu_regs), prev(nullptr), next(nullptr){
+Pe::Pe(const char* pd_name, const char* ec_name, mword eip, mword cr, unsigned n, const char* t) : rip(eip), cr3(cr), pe_number(n), prev(nullptr), next(nullptr){
     copy_string(ec, ec_name);
     copy_string(pd, pd_name);  
+    copy_string(type, t);
     numero = number;
     number++;
 };
@@ -135,4 +136,33 @@ void Pe::counter(char* str){
             n = Console::sprint(s, "vmi%u %u %u ", j, vmi[0][j], vmi[0][j]);
             strcat(str, s, n);
         }
+}
+
+void Pe::set_val(mword v){
+    Pe *p = pes.tail();
+    if(p)
+        p->val = v;
+}
+
+
+void Pe::set_ss_val(mword v){
+    Pe *p = pes.tail();
+    if(p)
+        p->ss_val = v;
+}
+
+void Pe::set_froms(int f1, int f2){
+     Pe *p = pes.tail();
+    if(p){
+        p->from1 = f1;
+        p->from2 = f2;
+    }
+}
+
+void Pe::set_mmio(mword v, Paddr p){
+    Pe *pe = pes.tail();
+    if(pe){
+        pe->mmio_v = v;
+        pe->mmio_p = p;
+    }
 }

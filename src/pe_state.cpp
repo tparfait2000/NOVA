@@ -18,10 +18,10 @@
 #include "vmx.hpp"
 Slab_cache Pe_state::cache(sizeof (Pe_state), 32);
 size_t Pe_state::number = 0;
-Queue<Pe_state> Pe_state::pe_state;
+Queue<Pe_state> Pe_state::pe_states, Pe_state::log_pe_states;
 
-Pe_state::Pe_state(Exc_regs* r, uint64 inst_count, uint8 run_number, mword int_number) : 
-    retirement_counter(inst_count), run_no(run_number), int_no(int_number), prev(nullptr), next(nullptr) {
+Pe_state::Pe_state(Exc_regs* r, uint64 inst_count, uint8 run_number, mword int_number, bool vcpu) : 
+    retirement_counter(inst_count), run_no(run_number), int_no(int_number), is_vcpu(vcpu), prev(nullptr), next(nullptr) {
     rax = r->REG(ax);
     rbx = r->REG(bx);
     rcx = r->REG(cx);
@@ -29,8 +29,13 @@ Pe_state::Pe_state(Exc_regs* r, uint64 inst_count, uint8 run_number, mword int_n
     rsi = r->REG(si);
     rdi = r->REG(di);
     rbp = r->REG(bp);
-    rsp = r->REG(sp);
-    rip = r->REG(ip);
+    if(is_vcpu){
+        rsp = Vmcs::read(Vmcs::GUEST_RSP);
+        rip = Vmcs::read(Vmcs::GUEST_RIP);
+    } else {
+        rsp = r->REG(sp);
+        rip = r->REG(ip);
+    }
     r8  = r->r8;
     r9  = r->r9;
     r10 = r->r10;
@@ -43,8 +48,8 @@ Pe_state::Pe_state(Exc_regs* r, uint64 inst_count, uint8 run_number, mword int_n
     number++;
 };
 
-Pe_state::Pe_state(Cpu_regs* cpu_regs, uint64 inst_count, uint8 run_number, mword int_number) : 
-    retirement_counter(inst_count), run_no(run_number), int_no(int_number), prev(nullptr), next(nullptr) {
+Pe_state::Pe_state(Cpu_regs* cpu_regs, uint64 inst_count, uint8 run_number, mword int_number, bool vcpu) : 
+    retirement_counter(inst_count), run_no(run_number), int_no(int_number), is_vcpu(vcpu), prev(nullptr), next(nullptr) {
     rax = cpu_regs->REG(ax);
     rbx = cpu_regs->REG(bx);
     rcx = cpu_regs->REG(cx);
@@ -52,8 +57,13 @@ Pe_state::Pe_state(Cpu_regs* cpu_regs, uint64 inst_count, uint8 run_number, mwor
     rsi = cpu_regs->REG(si);
     rdi = cpu_regs->REG(di);
     rbp = cpu_regs->REG(bp);
-    rsp = Vmcs::read(Vmcs::GUEST_RSP);
-    rip = Vmcs::read(Vmcs::GUEST_RIP);
+    if(is_vcpu){
+        rsp = Vmcs::read(Vmcs::GUEST_RSP);
+        rip = Vmcs::read(Vmcs::GUEST_RIP);
+    } else {
+        rsp = cpu_regs->REG(sp);
+        rip = cpu_regs->REG(ip);
+    }
     r8  = cpu_regs->r8;
     r9  = cpu_regs->r9;
     r10 = cpu_regs->r10;
@@ -66,35 +76,84 @@ Pe_state::Pe_state(Cpu_regs* cpu_regs, uint64 inst_count, uint8 run_number, mwor
     number++;
 };
 
+Pe_state::Pe_state(const Pe_state& orig) : retirement_counter(orig.retirement_counter), 
+        run_no(orig.run_no), int_no(orig.int_no), is_vcpu(orig.is_vcpu), prev(nullptr), next(nullptr){
+    rax = orig.rax;
+    rbx = orig.rbx;
+    rcx = orig.rcx;
+    rdx = orig.rdx;
+    rsi = orig.rsi;
+    rdi = orig.rdi;
+    rbp = orig.rbp;
+    rsp = orig.rsp;
+    rip = orig.rip;
+    r8  = orig.r8;
+    r9  = orig.r9;
+    r10 = orig.r10;
+    r11 = orig.r11;
+    r12 = orig.r12;
+    r13 = orig.r13;
+    r14 = orig.r14;
+    r15 = orig.r15;
+    numero = number;
+    number++;
+}
+
+
 Pe_state::~Pe_state() {
     number--;
 }
 
 void Pe_state::add_pe_state(Pe_state* pes){
-    pe_state.enqueue(pes);
+    pe_states.enqueue(pes);
+//    Pe_state *newPe_state = new(Pd::kern.quota)Pe_state(*pes);
+//    log_pe_states.enqueue(newPe_state);
 }
 
 void Pe_state::set_current_pe_sub_reason(mword sub_reason) {
-    Pe_state *p = pe_state.tail();
+    Pe_state *p = pe_states.tail()/*, *lp = log_pe_states.tail()*/;
+    
     if(p)
         p->sub_reason = sub_reason;
+//    if(lp)
+//        lp->sub_reason = sub_reason;
 }
 
 void Pe_state::set_current_pe_diff_reason(mword reason){
-    Pe_state *p = pe_state.tail();
+    Pe_state *p = pe_states.tail()/*, *lp = log_pe_states.tail()*/;
     if(p)
-        pe_state.tail()->diff_reason = reason;    
+        pe_states.tail()->diff_reason = reason;    
+//    if(lp)
+//        log_pe_states.tail()->diff_reason = reason;    
 }
 
 void Pe_state::free_recorded_pe_state() {
     Pe_state *pes = nullptr;
-    while (pe_state.dequeue(pes = pe_state.head())) {
+    while (pe_states.dequeue(pes = pe_states.head())) {
         Pe_state::destroy(pes, Pd::kern.quota);
     }
 }
 
+void Pe_state::free_recorded_log_pe_state() {
+    Pe_state *lpes = nullptr;
+    while (log_pe_states.dequeue(lpes = log_pe_states.head())) {
+        Pe_state::destroy(lpes, Pd::kern.quota);
+    }
+}
+
 void Pe_state::dump(){    
-    Pe_state *p = pe_state.head(), *head = pe_state.head(), *n = nullptr;
+    Pe_state *p = pe_states.head(), *head = pe_states.head(), *n = nullptr;
+    Console::print("RUN     RAX             RBX         RCX         RDX         RSI         RDI         RBP     "
+            "       RSP         RIP         R8          R9          R10         R11         R12         R13         R14         R15         Conter");
+    while(p) {
+        p->print();
+        n = p->next;
+        p = (p == n || n == head) ? nullptr : n;
+    }
+}
+
+void Pe_state::dump_log(){    
+    Pe_state *p = log_pe_states.head(), *head = log_pe_states.head(), *n = nullptr;
     Console::print("RUN     RAX             RBX         RCX         RDX         RSI         RDI         RBP     "
             "       RSP         RIP         R8          R9          R10         R11         R12         R13         R14         R15         Conter");
     while(p) {

@@ -32,7 +32,7 @@ private:
     char name[MAX_STR_LENGTH];
     bool to_be_cowed = false;
     static Slab_cache cache;
-    static const char *names[];
+    static const char *unprotected_pd_names[];
 
     WARN_UNUSED_RESULT
     mword clamp(mword, mword &, mword, mword);

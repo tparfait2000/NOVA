@@ -40,16 +40,19 @@ Cow_elt::~Cow_elt() {
 void Cow_elt::resolve_cow_fault(Vtlb* tlb, Hpt *hpt, mword virt, Paddr phys, mword attr) {
     phys &= ~PAGE_MASK; 
     virt &= ~PAGE_MASK; 
-    if(virt == (Pe_stack::stack & ~PAGE_MASK)){
-        trace(0, "virt == Pe::stack  v: %lx  phys: %lx attr %lx", virt, phys, attr);                
-        Cow_elt *c = cow_elts.head(), *head = cow_elts.head(), *n = nullptr;
-        while (c) {
-            trace(0, "Cow in stack  ce: %p  virt: %lx  phys2: %lx attr %lx", 
-                    c, c->page_addr, c->new_phys[1], c->attr);        
-            n = c->next;
-            c = (c == n || n == head) ? nullptr : n;
-        }
-    }
+    assert(virt != (Pe_stack::stack & ~PAGE_MASK));
+    
+//    For debugging purpose; in case the previous assert fails
+//    {
+//        trace(0, "virt == Pe::stack  v: %lx  phys: %lx attr %lx", virt, phys, attr);                
+//        Cow_elt *c = cow_elts.head(), *head = cow_elts.head(), *n = nullptr;
+//        while (c) {
+//            trace(0, "Cow in stack  ce: %p  virt: %lx  phys2: %lx attr %lx", 
+//                    c, c->page_addr, c->new_phys[1], c->attr);        
+//            n = c->next;
+//            c = (c == n || n == head) ? nullptr : n;
+//        }
+//    }
     Cow_elt *ce = new (Pd::kern.quota) Cow_elt(virt, phys, attr, Cow_elt::NORMAL);
     if(tlb){
         assert(!hpt);
@@ -80,14 +83,6 @@ void Cow_elt::resolve_cow_fault(Vtlb* tlb, Hpt *hpt, mword virt, Paddr phys, mwo
         a &= ~Hpt::HPT_COW;
         hpt->cow_update(ce->new_phys[0], a, ce->page_addr); 
     }
-    
-//    mword rsp = Vmcs::read(Vmcs::GUEST_RSP);
-//    debug_started_trace(0, "cow in stack v: %lx tlb->addr: %lx attr %lx rsp %lx stack %lx", 
-//            virt, phys, attr, rsp, Pe::stack);
-//    if((virt == (rsp & ~PAGE_MASK)) && (Pe::stack != 0)){
-//        assert(virt != Pe::stack);
-//        Pe_stack::add_detected_stack(virt, phys, attr, tlb, hpt);
-//    }
 }
 
 void Cow_elt::remove_cow(Vtlb* tlb, Hpt *hpt, mword virt, Paddr phys, mword attr){
@@ -257,16 +252,15 @@ void Cow_elt::rollback(){
     Cow_elt *c = cow_elts.head(), *head = cow_elts.head(), *n = nullptr;
     mword a;
     while (c) {
+        void *phys_to_ptr = Hpt::remap_cow(Pd::kern.quota, c->old_phys, 2*PAGE_SIZE);
+        copy_frames(c, phys_to_ptr);
         if(c->vtlb){
-            void *phys_to_ptr = Hpt::remap_cow(Pd::kern.quota, c->old_phys, 2*PAGE_SIZE);
-            copy_frames(c, phys_to_ptr);
             a = c->attr|Vtlb::TLB_W;
             a &= ~Vtlb::TLB_COW;
             c->vtlb->cow_update(c->new_phys[0], a);
 //            trace(0, "rollback v: %lx  phys: %lx attr %lx ce: %p  phys1: %lx  phys2: %lx", c->page_addr, c->old_phys, ca, ce, ce->new_phys[0], ce->new_phys[1]);        
         }
         if(c->hpt){
-            copy_frames(c, reinterpret_cast<void*> (c->page_addr));
             a= c->attr|Hpt::HPT_W;
             a &= ~Hpt::HPT_COW;
             c->hpt->cow_update(c->new_phys[0], a, c->page_addr);

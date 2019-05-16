@@ -573,7 +573,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
         REGPARM(1)
         static void vm_check_memory(int = 0);
         REGPARM(1)
-        static void saveRegs(Exc_regs *) asm ("saveRegs");
+        static void save_regs(Exc_regs *) asm ("save_regs");
 
         bool is_temporal_exc();
         bool is_io_exc(mword = 0);
@@ -664,7 +664,6 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
         void free_recorded_pe();
         static void dump_pe(bool = false);
         void mark_pe_tail();
-        void take_snaphot();
         static void count_interrupt(mword);
         static void check_instr_number_equals(int);
         void start_debugging(Debug_type);
