@@ -19,7 +19,7 @@
 #
 
 ARCH		?= x86_32
-CC		:= gcc
+CC		?= gcc
 ECHO		:= echo
 INSTALL		:= install
 LD		:= ld
@@ -60,6 +60,7 @@ AFLAGS		:= -m64 -march=core2 -mpreferred-stack-boundary=4 -mcmodel=kernel -mno-r
 else
 $(error $(ARCH) is not a valid architecture)
 endif
+AFLAGS      += -mgeneral-regs-only -fno-pie
 
 # Language options
 FFLAGS		:= -fdata-sections -ffunction-sections -fomit-frame-pointer -freg-struct-return -freorder-blocks -funit-at-a-time
@@ -71,7 +72,7 @@ FFLAGS		+= $(or $(call check,-std=gnu++11), $(call check,-std=gnu++0x), $(call c
 
 # Warning options
 WFLAGS		:= -Wall -Wextra -Waggregate-return -Wcast-align -Wcast-qual -Wconversion -Wdisabled-optimization -Wformat=2 -Wmissing-format-attribute -Wmissing-noreturn -Wpacked -Wpointer-arith -Wredundant-decls -Wshadow -Wwrite-strings
-WFLAGS		+= -Wabi -Wctor-dtor-privacy -Wno-non-virtual-dtor -Wold-style-cast -Woverloaded-virtual -Wsign-promo
+WFLAGS		+= -Wctor-dtor-privacy -Wno-non-virtual-dtor -Wold-style-cast -Woverloaded-virtual -Wsign-promo
 WFLAGS		+= -Weffc++
 ifeq ($(ARCH),x86_32)
 WFLAGS		+= $(call check,-Wframe-larger-than=96)

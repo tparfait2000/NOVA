@@ -77,6 +77,8 @@ void Ec::vmx_exception()
                     Vmcs::write (Vmcs::ENT_INTR_INFO,  intr_info & ~0x1000);
                     Vmcs::write (Vmcs::ENT_INTR_ERROR, err);
 
+                    [[fallthrough]];
+
                 case Vtlb::SUCCESS:
                     ret_user_vmresume();
             }

@@ -383,6 +383,8 @@ void Pd::xfer_items (Pd *src, Crd xlt, Crd del, Xfer *s, Xfer *d, unsigned long 
                 crd = *s;
                 set_as_del = 1;
 
+                [[fallthrough]];
+
             case 1: {
                 bool r = src == &root && s->flags() & 0x800;
                 del_crd (r? &kern : src, del, crd, (s->flags() >> 8) & (r ? 7 : 3), s->hotspot());
