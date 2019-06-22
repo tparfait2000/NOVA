@@ -41,7 +41,10 @@ class Counter
         static unsigned vtlb_hpf        CPULOCAL;
         static unsigned vtlb_fill       CPULOCAL;
         static unsigned vtlb_flush      CPULOCAL;
-        static unsigned vtlb_cow        CPULOCAL;
+        static unsigned vtlb_cow_fault  CPULOCAL;
+        static unsigned hpt_cow_fault   CPULOCAL;
+        static unsigned cow_fault       CPULOCAL;
+        static unsigned used_cows_in_old_cow_elts        CPULOCAL;
         static unsigned schedule        CPULOCAL;
         static unsigned helping         CPULOCAL;
         static unsigned rep_io          CPULOCAL;

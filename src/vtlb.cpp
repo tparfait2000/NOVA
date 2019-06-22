@@ -263,7 +263,7 @@ bool Vtlb::is_cow(mword virt, mword gpa, mword error){
                 virt, tlb->addr(), tlb->attr(), gpa, hpa, size);
 
             if(size && (tlb->addr() == (hpa & ~PAGE_MASK))){ 
-                Counter::vtlb_cow++;   
+                Counter::vtlb_cow_fault++;   
                 assert(virt != Pe_stack::stack); 
                 Cow_elt::resolve_cow_fault(tlb, nullptr, virt, tlb->addr(), tlb->attr());
                 return true;            
@@ -352,11 +352,11 @@ size_t Vtlb::gla_to_gpa (mword cr0_shadow, mword cr3_shadow, mword cr4_shadow, m
  */
 void Vtlb::reserve_stack(mword cr0_shadow, mword cr3_shadow, mword cr4_shadow){
     Pe_stack::stack = 0;
-    if(Pe::in_recover_from_stack_fault_mode || Pe::in_debug_mode)
-        return;
     // The stack must always be checked except in in_recover_from_stack_fault_mode on in_debug_mode
     mword gpa, rsp = Vmcs::read (Vmcs::GUEST_RSP);
-    size_t size_g = gla_to_gpa(cr0_shadow, cr3_shadow, cr4_shadow, rsp, gpa);
+   if(Pe::in_recover_from_stack_fault_mode || Pe::in_debug_mode || Cow_elt::would_have_been_cowed_in_place_phys0(rsp))
+        return;
+     size_t size_g = gla_to_gpa(cr0_shadow, cr3_shadow, cr4_shadow, rsp, gpa);
 //    debug_started_trace(0, "rsp %lx size %lx gpa %lx", rsp, s, gpa);
     if(rsp && size_g && (size_g != ~0UL)){
         unsigned l = max();

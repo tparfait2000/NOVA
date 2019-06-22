@@ -1,12 +1,6 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
-
 /* 
- * File:   Cow_elt.hpp
- * Author: parfait
+ * File:   cow_elt.hpp
+ * Author: Parfait Tokponnon <mahoukpego.tokponnon@uclouvain.be>
  *
  * Created on 7 octobre 2018, 21:29
  */
@@ -56,19 +50,21 @@ public:
 
     static void resolve_cow_fault(Vtlb*, Hpt*, mword virt, Paddr phys, mword attr);
     static Cow_elt* is_mapped_elsewhere(Paddr);
-    static void copy_frames(Cow_elt*, void*);
+    static void copy_frames(Paddr, Paddr, void*);
     static void remove_cow(Vtlb*, Hpt*, mword virt, Paddr phys, mword attr);
 
     static bool is_empty() {
+        if(!cow_elts.head())
+            assert(!current_ec_cow_elts_size);
         return !cow_elts.head();
     }
-    static void restore_state();
+    static void restore_state0();
     static bool compare();
     static void commit();
     static void restore_state1();
     static void rollback();
     static void place_phys0(bool);
-    static bool is_cowed(mword);
+    static bool would_have_been_cowed_in_place_phys0(mword);
     
 private:
     Page_type type;
@@ -76,6 +72,7 @@ private:
     Paddr old_phys = {};
     mword attr = {};
     Paddr new_phys[2];
+    Cow_elt* v_is_mapped_elsewhere = nullptr;
     /*---These should moved to Pe class when it will be used -----*/
     Vtlb *vtlb = nullptr;
     Hpt *hpt = nullptr;
@@ -83,5 +80,5 @@ private:
     void* linear_add = nullptr;
     Cow_elt *prev;
     Cow_elt *next;
-    static size_t number;
+    static size_t number, current_ec_cow_elts_size;
 };

@@ -46,7 +46,15 @@ char Pe::current_ec[], Pe::current_pd[];
 Cpu_regs Pe::c_regs[];
 mword Pe::vmcsRIP[], Pe::vmcsRSP[], Pe::vmcsRIP_0, Pe::vmcsRIP_1, Pe::vmcsRIP_2, 
         Pe::vmcsRSP_0, Pe::vmcsRSP_1, Pe::vmcsRSP_2;
-
+/**
+ * 
+ * @param pd_name
+ * @param ec_name
+ * @param eip
+ * @param cr
+ * @param n : 
+ * @param t
+ */
 Pe::Pe(const char* pd_name, const char* ec_name, mword eip, mword cr, unsigned n, const char* t) : rip(eip), cr3(cr), pe_number(n), prev(nullptr), next(nullptr){
     copy_string(ec, ec_name);
     copy_string(pd, pd_name);  
@@ -74,7 +82,8 @@ void Pe::free_recorded_pe() {
     }
 }
 
-void Pe::dump(bool all){    
+void Pe::dump(bool all){   
+    trace(0, "PE nb %lu", number);
     Pe *p = pes.head(), *head = pes.head(), *n = nullptr;
     while(p) {
         if(all || p->is_marked())

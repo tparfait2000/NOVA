@@ -6,6 +6,7 @@
  *
  * Copyright (C) 2012 Udo Steinberg, Intel Corporation.
  * Copyright (C) 2015 Alexander Boettcher, Genode Labs GmbH
+ * Copyright (C) 2016-2019 Parfait Tokponnon, UCLouvain.
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -26,13 +27,16 @@
 #include "space_mem.hpp"
 #include "space_obj.hpp"
 #include "space_pio.hpp"
+#include "cow_elt.hpp"
 
 class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, public Space_obj {
+    friend class Cow_elt;
 private:
     char name[MAX_STR_LENGTH];
     bool to_be_cowed = false;
     static Slab_cache cache;
     static const char *unprotected_pd_names[];
+    Queue<Cow_elt> cow_elts = {};
 
     WARN_UNUSED_RESULT
     mword clamp(mword, mword &, mword, mword);
@@ -145,7 +149,8 @@ public:
     ALWAYS_INLINE
     static inline Pd *remote (unsigned c)
     {
-        return *reinterpret_cast<volatile typeof current *>(reinterpret_cast<mword>(&current) - CPU_LOCAL_DATA + HV_GLOBAL_CPUS + c * PAGE_SIZE);
+        return *reinterpret_cast<volatile typeof current *>(reinterpret_cast<mword>(&current) - 
+                CPU_LOCAL_DATA + HV_GLOBAL_CPUS + c * PAGE_SIZE);
     }
 
     ALWAYS_INLINE
@@ -193,4 +198,7 @@ public:
         return to_be_cowed;
     }
     bool compare_memory_mute();
+    size_t get_cow_number() { return cow_elts.size(); }
+    bool is_cow_elts_empty() { return !cow_elts.head(); }
+    
 };

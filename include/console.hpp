@@ -54,6 +54,8 @@ class Console
         FORMAT (2,0)
         void vprintf (char const *, va_list);
         FORMAT (2,0)
+        void vprintf_no_newline (char const *, va_list);
+        FORMAT (2,0)
         void vsprintf (char const *, va_list, void *);
         
     protected:
@@ -66,6 +68,9 @@ class Console
     public:
         FORMAT (1,2)
         static void print (char const *, ...);
+
+        FORMAT (1,2)
+        static void print_no_newline (char const *, ...);
 
         FORMAT (2,3)
         static unsigned sprint (char *, char const *, ...);

@@ -7,6 +7,7 @@
  * Copyright (C) 2012-2013 Udo Steinberg, Intel Corporation.
  * Copyright (C) 2014 Udo Steinberg, FireEye, Inc.
  * Copyright (C) 2012-2018 Alexander Boettcher, Genode Labs GmbH.
+ * Copyright (C) 2016-2019 Parfait Tokponnon, UCLouvain.
  *
  * This file is part of the NOVA microhypervisor.
  *
@@ -40,28 +41,41 @@
 #include "pe_state.hpp"
 #include "pe_stack.hpp"
 
-mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx, Ec::tscp_rcx1 = 0, Ec::tscp_rcx2 = 0;
-bool Ec::ec_debug = false, Ec::glb_debug = false, Ec::hardening_started = false, Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false, Ec::no_further_check = false, Ec::first_run_advanced = false;
-uint64 Ec::exc_counter = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::counter1 = 0, Ec::counter2 = 0, Ec::debug_compteur = 0, Ec::count_je = 0, Ec::nbInstr_to_execute = 0,
-        Ec::nb_inst_single_step = 0, Ec::second_run_instr_number = 0, Ec::first_run_instr_number = 0, Ec::distance_instruction = 0;
+mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx,
+        Ec::tscp_rcx1 = 0, Ec::tscp_rcx2 = 0;
+bool Ec::ec_debug = false, Ec::glb_debug = false, Ec::hardening_started = false, 
+        Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false, Ec::no_further_check = false, 
+        Ec::first_run_advanced = false;
+uint64 Ec::exc_counter = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::counter1 = 0, 
+        Ec::counter2 = 0, Ec::debug_compteur = 0, Ec::count_je = 0, Ec::nbInstr_to_execute = 0,
+        Ec::nb_inst_single_step = 0, Ec::second_run_instr_number = 0, 
+        Ec::first_run_instr_number = 0, Ec::distance_instruction = 0;
        
-uint8 Ec::run_number = 0, Ec::launch_state = 0, Ec::step_reason = 0, Ec::debug_nb = 0, Ec::debug_type = 0, Ec::replaced_int3_instruction, Ec::replaced_int3_instruction2;
+uint8 Ec::run_number = 0, Ec::launch_state = 0, Ec::step_reason = 0, Ec::debug_nb = 0, 
+        Ec::debug_type = 0, Ec::replaced_int3_instruction, Ec::replaced_int3_instruction2;
 uint64 Ec::tsc1 = 0, Ec::tsc2 = 0;
 int Ec::prev_reason = 0, Ec::previous_ret = 0, Ec::nb_try = 0, Ec::reg_diff = 0;
-const char* Ec::regs_name_table[19] = {"N/A", "RAX", "RDX", "RCX", "RBX", "RBP", "RSI", "RDI", "R8", "R9", "R10", "R11", "R12", "R13", "R14", "R15", "RIP", "RFLAG", "RSP"};
+const char* Ec::regs_name_table[19] = {"N/A", "RAX", "RDX", "RCX", "RBX", "RBP", "RSI", "RDI", "R8", 
+"R9", "R10", "R11", "R12", "R13", "R14", "R15", "RIP", "RFLAG", "RSP"};
 Ec *Ec::current, *Ec::fpowner;
 // Constructors
 
 Cpu_regs Ec::regs_0, Ec::regs_1, Ec::regs_2;
 
-Msr_area *Ec::host_msr_area0 = new (Pd::kern.quota) Msr_area, *Ec::guest_msr_area0 = new (Pd::kern.quota) Msr_area,
-        *Ec::host_msr_area1 = new (Pd::kern.quota) Msr_area, *Ec::guest_msr_area1 = new (Pd::kern.quota) Msr_area,
-        *Ec::host_msr_area2 = new (Pd::kern.quota) Msr_area, *Ec::guest_msr_area2 = new (Pd::kern.quota) Msr_area;
+Msr_area *Ec::host_msr_area0 = new (Pd::kern.quota) Msr_area, 
+        *Ec::guest_msr_area0 = new (Pd::kern.quota) Msr_area,
+        *Ec::host_msr_area1 = new (Pd::kern.quota) Msr_area, 
+        *Ec::guest_msr_area1 = new (Pd::kern.quota) Msr_area,
+        *Ec::host_msr_area2 = new (Pd::kern.quota) Msr_area, 
+        *Ec::guest_msr_area2 = new (Pd::kern.quota) Msr_area;
 Virtual_apic_page *Ec::virtual_apic_page0 = new (Pd::kern.quota) Virtual_apic_page,
         *Ec::virtual_apic_page1 = new (Pd::kern.quota) Virtual_apic_page,
         *Ec::virtual_apic_page2 = new (Pd::kern.quota) Virtual_apic_page;
 
-Ec::Ec(Pd *own, void (*f)(), unsigned c, char const *nm) : Kobject(EC, static_cast<Space_obj *> (own)), cont(f), pd(own), partner(nullptr), prev(nullptr), next(nullptr), fpu(nullptr), cpu(static_cast<uint16> (c)), glb(true), evt(0), timeout(this), user_utcb(0), xcpu_sm(nullptr), pt_oom(nullptr) {
+Ec::Ec(Pd *own, void (*f)(), unsigned c, char const *nm) : 
+Kobject(EC, static_cast<Space_obj *> (own)), cont(f), pd(own), partner(nullptr), prev(nullptr), 
+        next(nullptr), fpu(nullptr), cpu(static_cast<uint16> (c)), glb(true), evt(0), timeout(this), 
+        user_utcb(0), xcpu_sm(nullptr), pt_oom(nullptr) {
     trace(TRACE_SYSCALL, "EC:%p created (PD:%p Kernel)", this, own);
     copy_string(name, nm);
     regs.vtlb = nullptr;
@@ -80,7 +94,11 @@ Ec::Ec(Pd *own, void (*f)(), unsigned c, char const *nm) : Kobject(EC, static_ca
  * @param u : user thread control block
  * @param s : stack pointer
  */
-Ec::Ec(Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u, mword s, Pt *oom, char const *nm) : Kobject(EC, static_cast<Space_obj *> (own), sel, 0xd, free, pre_free), cont(f), pd(p), partner(nullptr), prev(nullptr), next(nullptr), fpu(nullptr), cpu(static_cast<uint16> (c)), glb(!!f), evt(e), timeout(this), user_utcb(u), xcpu_sm(nullptr), pt_oom(oom) {
+Ec::Ec(Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u, mword s, Pt *oom, 
+        char const *nm) : Kobject(EC, static_cast<Space_obj *> (own), sel, 0xd, free, pre_free), 
+        cont(f), pd(p), partner(nullptr), prev(nullptr), next(nullptr), fpu(nullptr), 
+        cpu(static_cast<uint16> (c)), glb(!!f), evt(e), timeout(this), user_utcb(u), 
+        xcpu_sm(nullptr), pt_oom(oom) {
     // Make sure we have a PTAB for this CPU in the PD
     pd->Space_mem::init(pd->quota, c);
     copy_string(name, nm);
@@ -106,11 +124,13 @@ Ec::Ec(Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u, 
 
         utcb = new (pd->quota) Utcb;
 
-        pd->Space_mem::insert(pd->quota, u, 0, Hpt::HPT_U | Hpt::HPT_W | Hpt::HPT_P, Buddy::ptr_to_phys(utcb), pd->get_to_be_cowed() ? true : false);
+        pd->Space_mem::insert(pd->quota, u, 0, Hpt::HPT_U | Hpt::HPT_W | Hpt::HPT_P, 
+                Buddy::ptr_to_phys(utcb), pd->get_to_be_cowed() ? true : false);
 
         regs.dst_portal = NUM_EXC - 2;
 
-        trace(TRACE_SYSCALL, "EC:%p created (PD:%p CPU:%#x UTCB:%#lx ESP:%lx EVT:%#x)", this, p, c, u, s, e);
+        trace(TRACE_SYSCALL, "EC:%p created (PD:%p CPU:%#x UTCB:%#lx ESP:%lx EVT:%#x)", this, p, c, 
+                u, s, e);
 
         if (pd == &Pd::root)
             pd->insert_utcb (pd->quota, pd->mdb_cache, u, Buddy::ptr_to_phys(utcb) >> 12);
@@ -150,20 +170,27 @@ Ec::Ec(Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u, 
             Vmcs::write(Vmcs::APIC_VIRT_ADDR, virtual_apic_page_phys);
             regs.vmcs->clear();
             cont = send_msg<ret_user_vmresume>;
-            trace(TRACE_SYSCALL, "EC:%p created (PD:%p VMCS:%p VTLB:%p)", this, p, regs.vmcs, regs.vtlb);
+            trace(TRACE_SYSCALL, "EC:%p created (PD:%p VMCS:%p VTLB:%p)", this, p, regs.vmcs, 
+                    regs.vtlb);
 
         } else if (Hip::feature() & Hip::FEAT_SVM) {
 
-            regs.REG(ax) = Buddy::ptr_to_phys(regs.vmcb = new (pd->quota) Vmcb(pd->quota, pd->Space_pio::walk(pd->quota), pd->npt.root(pd->quota)));
+            regs.REG(ax) = Buddy::ptr_to_phys(regs.vmcb = new (pd->quota) Vmcb(pd->quota, 
+                    pd->Space_pio::walk(pd->quota), pd->npt.root(pd->quota)));
 
             regs.nst_ctrl<Vmcb>();
             cont = send_msg<ret_user_vmrun>;
-            trace(TRACE_SYSCALL, "EC:%p created (PD:%p VMCB:%p VTLB:%p)", this, p, regs.vmcb, regs.vtlb);
+            trace(TRACE_SYSCALL, "EC:%p created (PD:%p VMCB:%p VTLB:%p)", this, p, regs.vmcb, 
+                    regs.vtlb);
         }
     }
 }
 
-Ec::Ec(Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone, char const *nm) : Kobject(EC, static_cast<Space_obj *> (own), 0, 0xd, free, pre_free), cont(f), regs(clone->regs), rcap(clone), utcb(clone->utcb), pd(p), partner(nullptr), prev(nullptr), next(nullptr), fpu(clone->fpu), cpu(static_cast<uint16> (c)), glb(!!f), evt(clone->evt), timeout(this), user_utcb(0), xcpu_sm(clone->xcpu_sm), pt_oom(clone->pt_oom) {
+Ec::Ec(Pd *own, Pd *p, void (*f)(), unsigned c, Ec *clone, char const *nm) : 
+    Kobject(EC, static_cast<Space_obj *> (own), 0, 0xd, free, pre_free), cont(f), regs(clone->regs), 
+        rcap(clone), utcb(clone->utcb), pd(p), partner(nullptr), prev(nullptr), next(nullptr), 
+        fpu(clone->fpu), cpu(static_cast<uint16> (c)), glb(!!f), evt(clone->evt), timeout(this), 
+        user_utcb(0), xcpu_sm(clone->xcpu_sm), pt_oom(clone->pt_oom) {
     // Make sure we have a PTAB for this CPU in the PD
     pd->Space_mem::init(pd->quota, c);
     copy_string(name, nm);
@@ -209,11 +236,13 @@ Ec::~Ec() {
         regs.vmcs->make_current();
 
         mword host_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
-        Msr_area *host_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(host_msr_area_phys));
+        Msr_area *host_msr_area = reinterpret_cast<Msr_area*> (
+                Buddy::phys_to_ptr(host_msr_area_phys));
         Msr_area::destroy(host_msr_area, pd->quota);
 
         mword guest_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_ST_ADDR);
-        Msr_area *guest_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(guest_msr_area_phys));
+        Msr_area *guest_msr_area = reinterpret_cast<Msr_area*> 
+                (Buddy::phys_to_ptr(guest_msr_area_phys));
         Msr_area::destroy(guest_msr_area, pd->quota);
 
         mword virtual_apic_page_phys = Vmcs::read(Vmcs::APIC_VIRT_ADDR);
@@ -294,7 +323,8 @@ void Ec::handle_hazard(mword hzd, void (*func)()) {
 
 void Ec::ret_user_sysexit() {
     if (is_idle()) {
-        mword hzd = (Cpu::hazard | current->regs.hazard()) & (HZD_RECALL | HZD_STEP | HZD_RCU | HZD_FPU | HZD_DS_ES | HZD_SCHED);
+        mword hzd = (Cpu::hazard | current->regs.hazard()) & (HZD_RECALL | HZD_STEP | HZD_RCU | 
+                HZD_FPU | HZD_DS_ES | HZD_SCHED);
         if (EXPECT_FALSE(hzd))
             handle_hazard(hzd, ret_user_sysexit);
 
@@ -303,15 +333,17 @@ void Ec::ret_user_sysexit() {
             send_msg<Ec::ret_user_sysexit>();
         }
 
-        current->save_state();
+        current->save_state0();
         launch_state = Ec::SYSEXIT;
     }
 
     debug_started_trace(0, "Sysreting");
     if (step_reason == SR_NIL) {
-        asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : "memory");
+        asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : 
+                    "memory");
     } else {
-        asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP_SS) : : "m" (current->regs) : "memory");
+        asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP_SS) : : "m" (current->regs) :
+                    "memory");
     }
     UNREACHED;
 }
@@ -319,15 +351,17 @@ void Ec::ret_user_sysexit() {
 void Ec::ret_user_iret() {
     if (is_idle()) {
         // No need to check HZD_DS_ES because IRET will reload both anyway
-        mword hzd = (Cpu::hazard | current->regs.hazard()) & (HZD_RECALL | HZD_STEP | HZD_RCU | HZD_FPU | HZD_SCHED);
+        mword hzd = (Cpu::hazard | current->regs.hazard()) & (HZD_RECALL | HZD_STEP | HZD_RCU | 
+                HZD_FPU | HZD_SCHED);
         if (EXPECT_FALSE(hzd))
             handle_hazard(hzd, ret_user_iret);
 
-        current->save_state();
+        current->save_state0();
         launch_state = Ec::IRET;
     }
     debug_started_trace(0, "Ireting");
-    asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR LOAD_SEG RET_USER_EXC) : : "m" (current->regs) : "memory");
+    asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR LOAD_SEG RET_USER_EXC) : : "m" (current->regs)
+    : "memory");
 
     UNREACHED;
 }
@@ -335,8 +369,8 @@ void Ec::ret_user_iret() {
 void Ec::chk_kern_preempt() {
     if (!Cpu::preemption)
         return;
-
-    if (is_idle() && Cpu::hazard & HZD_SCHED) { // this may leak from the kernel without terminating a double_running.
+    // this may leak from the kernel without terminating a double_running.
+    if (is_idle() && Cpu::hazard & HZD_SCHED) { 
         Cpu::preempt_disable();
         Sc::schedule();
     }
@@ -345,13 +379,14 @@ void Ec::chk_kern_preempt() {
 void Ec::ret_user_vmresume() {
     //    Console::print("VMRun is_idle %d", is_idle());
     if (is_idle()) {
-        mword hzd = (Cpu::hazard | current->regs.hazard()) & (HZD_RECALL | HZD_TSC | HZD_RCU | HZD_SCHED);
+        mword hzd = (Cpu::hazard | current->regs.hazard()) & (HZD_RECALL | HZD_TSC | HZD_RCU | 
+                HZD_SCHED);
         if (EXPECT_FALSE(hzd))
             handle_hazard(hzd, ret_user_vmresume);
 
         current->regs.vmcs->make_current();
 
-        current->save_state();
+        current->save_state0();
         launch_state = Ec::VMRESUME;
         Lapic::program_pmi();
     } else {
@@ -374,19 +409,24 @@ void Ec::ret_user_vmresume() {
     mword attr, gpeip, ept_attr, eip = Vmcs::read (Vmcs::GUEST_RIP);
     current->regs.vtlb->vtlb_lookup(eip, heip, attr);
     current->regs.vtlb->vtlb_lookup(Pe::missmatch_addr, hpa, attr);
-    mword *ptr1 = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, heip)) + (heip & PAGE_MASK)/sizeof(mword);
-    mword *ptr2 = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, hpa)) + (hpa & PAGE_MASK)/sizeof(mword);
-    mword cr0_shadow = current->regs.cr0_shadow, cr3_shadow = current->regs.cr3_shadow, cr4_shadow = current->regs.cr4_shadow; 
+    mword *ptr1 = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, heip)) + 
+            (heip & PAGE_MASK)/sizeof(mword);
+    mword *ptr2 = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, hpa)) + 
+            (hpa & PAGE_MASK)/sizeof(mword);
+    mword cr0_shadow = current->regs.cr0_shadow, cr3_shadow = current->regs.cr3_shadow, cr4_shadow = 
+            current->regs.cr4_shadow; 
     size_t size_g = current->regs.vtlb->gla_to_gpa(cr0_shadow, cr3_shadow, cr4_shadow, eip, gpeip),
             size_h = Pd::current->ept.lookup (gpeip, ept_hpa, ept_attr);
 
     char buffer[80];
     instruction_in_hex(*ptr1, buffer);
-    debug_started_trace(0, "Geip %lx heip %lx, *heip %lx instr %s hpa %lx *hpa %lx size_g %lx gpeip %lx size_h %lx ept_hpa %lx run %u", 
+    debug_started_trace(0, "Geip %lx heip %lx, *heip %lx instr %s hpa %lx *hpa %lx size_g %lx gpeip"
+            " %lx size_h %lx ept_hpa %lx run %u", 
             eip, heip, *ptr1, buffer, hpa, *ptr2, size_g, gpeip, size_h, ept_hpa, run_number);
         
 //        if(heip && ept_hpa && (size_g != ~0UL) && !(*ptr1)){
-//            trace(0, "INSTR0 Geip %lx heip %lx, *heip %lx instr %s hpa %lx *hpa %lx size_g %lx gpeip %lx size_h %lx ept_hpa %lx run %u", 
+//            trace(0, "INSTR0 Geip %lx heip %lx, *heip %lx instr %s hpa %lx *hpa %lx size_g %lx "
+//              "gpeip %lx size_h %lx ept_hpa %lx run %u", 
 //                eip, heip, *ptr1, buffer, hpa, *ptr2, size_g, gpeip, size_h, ept_hpa, run_number);
 //        }
     if(step_reason == SR_DBG)
@@ -412,7 +452,8 @@ void Ec::ret_user_vmresume() {
                 "lea %1," EXPAND(PREG(sp); LOAD_GPR)
                 "vmlaunch;"
                 "mov %2," EXPAND(PREG(sp);)
-                : "=m" (Pe::vmlaunch) : "m" (current->regs), "i" (CPU_LOCAL_STCK + PAGE_SIZE), "i" (CPU_LOCAL_STCK + PAGE_SIZE - 0x80) : "memory");
+                : "=m" (Pe::vmlaunch) : "m" (current->regs), "i" (CPU_LOCAL_STCK + PAGE_SIZE), "i" 
+                (CPU_LOCAL_STCK + PAGE_SIZE - 0x80) : "memory");
 
     trace(0, "VM entry failed with error %#lx", Vmcs::read(Vmcs::VMX_INST_ERROR));
 
@@ -421,7 +462,8 @@ void Ec::ret_user_vmresume() {
 
 void Ec::ret_user_vmrun() {
     if (is_idle()) {
-        mword hzd = (Cpu::hazard | current->regs.hazard()) & (HZD_RECALL | HZD_TSC | HZD_RCU | HZD_SCHED);
+        mword hzd = (Cpu::hazard | current->regs.hazard()) & (HZD_RECALL | HZD_TSC | HZD_RCU | 
+                HZD_SCHED);
         if (EXPECT_FALSE(hzd))
             handle_hazard(hzd, ret_user_vmrun);
 
@@ -448,12 +490,14 @@ void Ec::ret_user_vmrun() {
                 "cli;"
                 "stgi;"
                 "jmp svm_handler;"
-                : : "m" (current->regs), "m" (Vmcb::root), "i" (CPU_LOCAL_STCK + PAGE_SIZE) : "memory");
+                : : "m" (current->regs), "m" (Vmcb::root), "i" (CPU_LOCAL_STCK + PAGE_SIZE) : 
+                    "memory");
 
     UNREACHED;
 }
 
 void Ec::idle() {
+    Pe::dump(true);
     for (;;) {
 
         mword hzd = Cpu::hazard & (HZD_RCU | HZD_SCHED);
@@ -479,7 +523,8 @@ void Ec::root_invoke()
     assert(ok);
 
     Eh *e = static_cast<Eh *>(Hpt::remap (Pd::kern.quota, Hip::root_addr));
-    if (!Hip::root_addr || e->ei_magic != 0x464c457f || e->ei_class != ELF_CLASS || e->ei_data != 1 || e->type != 2 || e->machine != ELF_MACHINE)
+    if (!Hip::root_addr || e->ei_magic != 0x464c457f || e->ei_class != ELF_CLASS || e->ei_data != 1 
+            || e->type != 2 || e->machine != ELF_MACHINE)
         die("No ELF");
 
     unsigned count = e->ph_count;
@@ -487,7 +532,8 @@ void Ec::root_invoke()
     current->regs.set_ip(e->entry);
     current->regs.set_sp(USER_ADDR - PAGE_SIZE);
 
-    ELF_PHDR *p = static_cast<ELF_PHDR *> (Hpt::remap(Pd::kern.quota, Hip::root_addr + e->ph_offset));
+    ELF_PHDR *p = static_cast<ELF_PHDR *> (Hpt::remap(Pd::kern.quota, 
+            Hip::root_addr + e->ph_offset));
 
     for (unsigned i = 0; i < count; i++, p++) {
 
@@ -505,12 +551,14 @@ void Ec::root_invoke()
             mword size = align_up(p->f_size, PAGE_SIZE);
 
             for (unsigned long o; size; size -= 1UL << o, phys += 1UL << o, virt += 1UL << o)
-                Pd::current->delegate<Space_mem>(&Pd::kern, phys >> PAGE_BITS, virt >> PAGE_BITS, (o = min(max_order(phys, size), max_order(virt, size))) - PAGE_BITS, attr);
+                Pd::current->delegate<Space_mem>(&Pd::kern, phys >> PAGE_BITS, virt >> PAGE_BITS, 
+                        (o = min(max_order(phys, size), max_order(virt, size))) - PAGE_BITS, attr);
         }
     }
 
     // Map hypervisor information page
-    Pd::current->delegate<Space_mem>(&Pd::kern, reinterpret_cast<Paddr> (&FRAME_H) >> PAGE_BITS, (USER_ADDR - PAGE_SIZE) >> PAGE_BITS, 0, 1);
+    Pd::current->delegate<Space_mem>(&Pd::kern, reinterpret_cast<Paddr> (&FRAME_H) >> PAGE_BITS, 
+            (USER_ADDR - PAGE_SIZE) >> PAGE_BITS, 0, 1);
 
     Space_obj::insert_root(Pd::kern.quota, Pd::current);
     Space_obj::insert_root(Pd::kern.quota, Ec::current);
@@ -574,15 +622,19 @@ void Ec::die(char const *reason, Exc_regs *r) {
     if (current->utcb || show || pf_in_kernel) {
 //        if (show || !strmatch(reason, "PT not found", 12))
             trace(0, "Killed EC:%s SC:%p V:%#lx CS:%#lx IP:%#lx(%#lx) CR2:%#lx ERR:%#lx (%s) %s",
-                current->name, Sc::current, r->vec, r->cs, r->REG(ip), r->ARG_IP, r->cr2, r->err, reason, current->pd == &Pd::root ? "Pd::root" : current->pd == &Pd::kern ? "Pd::kern" : "");
+                current->name, Sc::current, r->vec, r->cs, r->REG(ip), r->ARG_IP, r->cr2, r->err, 
+                    reason, current->pd == &Pd::root ? "Pd::root" : current->pd == &Pd::kern ? 
+                        "Pd::kern" : "");
     } else
         trace(0, "Killed EC:%s SC:%p V:%#lx CR0:%#lx CR3:%#lx CR4:%#lx (%s) Pd: %s Ec: %s",
-            current->name, Sc::current, r->vec, r->cr0_shadow, r->cr3_shadow, r->cr4_shadow, reason, Pd::current->get_name(), Ec::current->get_name());
+            current->name, Sc::current, r->vec, r->cr0_shadow, r->cr3_shadow, r->cr4_shadow, reason, 
+                Pd::current->get_name(), Ec::current->get_name());
 
     Ec *ec = current->rcap;
 
     if (ec)
-        ec->cont = ec->cont == ret_user_sysexit ? static_cast<void (*)()> (sys_finish<Sys_regs::COM_ABT>) : dead;
+        ec->cont = ec->cont == ret_user_sysexit ? 
+            static_cast<void (*)()> (sys_finish<Sys_regs::COM_ABT>) : dead;
 
     reply(dead);
 }
@@ -628,7 +680,8 @@ bool Ec::is_io_exc(mword eip) {
     /*TODO
      * Firstly we must ensure that the port the process is trying to access is 
      * within its I/O port space
-     * We must also deal with the REP prefix: solved because rep prefix makes instr code = 6cf3, 6df3 e4f3 ...
+     * We must also deal with the REP prefix: solved because rep prefix makes instr code = 6cf3, 
+     * 6df3 e4f3 ...
      */
     mword v = eip ? eip : regs.REG(ip);
     uint8 *ptr = reinterpret_cast<uint8 *> (v);
@@ -661,13 +714,8 @@ void Ec::resolve_PIO_execption() {
     Ec::current->enable_step_debug(SR_PIO, SPC_LOCAL_IOP, 0, 0);
 }
 
-//void Ec::resolve_temp_exception() {
-//    //    Console::print("Read TSC Ec: %p, is_idle(): %d  IP: %p", current, is_idle(), current->regs.REG(ip));
-//    set_cr4(get_cr4() & ~Cpu::CR4_TSD);
-//    Ec::current->enable_step_debug(0, 0, 0, Step_reason::RDTSC);
-//}
-
-void Ec::enable_step_debug(Step_reason reason, mword fault_addr, Paddr fault_phys, mword fault_attr) {
+void Ec::enable_step_debug(Step_reason reason, mword fault_addr, Paddr fault_phys, mword fault_attr) 
+{
     regs.REG(fl) |= Cpu::EFL_TF;
     step_reason = reason;
     switch (reason) {
@@ -677,18 +725,20 @@ void Ec::enable_step_debug(Step_reason reason, mword fault_addr, Paddr fault_phy
             io_addr = fault_addr;
             io_phys = fault_phys;
             io_attr = fault_attr;
-            launch_state = Launch_type::IRET; // to ensure that this will finished before any other thread is scheduled
+            // Ensure that this will finished before any other thread is scheduled
+            launch_state = Launch_type::IRET; 
             break;
         case SR_RDTSC:
             set_cr4(get_cr4() & ~Cpu::CR4_TSD);
-            launch_state = Launch_type::IRET; // to ensure that this will finished before any other thread is scheduled
+            launch_state = Launch_type::IRET;
             break;
         case SR_PMI:
         case SR_EQU:
         {
             uint8 *ptr = reinterpret_cast<uint8 *> (end_rip);
             if (*ptr == 0xf3 || *ptr == 0xf2) {
-                Console::print("Rep prefix detected: Step reason %d addr %lx rcx %lx", reason, fault_addr, current->regs.REG(cx));
+                Console::print("Rep prefix detected: Step reason %d addr %lx rcx %lx", reason, 
+                        fault_addr, current->regs.REG(cx));
                 in_rep_instruction = true;
                 Cpu::disable_fast_string();
             }
@@ -708,7 +758,8 @@ void Ec::disable_step_debug() {
     switch (step_reason) {
         case SR_MMIO:
             //            Console::print("MMIO read");
-            Pd::current->Space_mem::loc[Cpu::id].replace_cow(Pd::current->quota, io_addr, io_phys, io_attr & ~Hpt::HPT_P);
+            Pd::current->Space_mem::loc[Cpu::id].replace_cow(Pd::current->quota, io_addr, io_phys, 
+                    io_attr & ~Hpt::HPT_P);
 //            Hpt::cow_flush(io_addr);
             break;
         case SR_PIO:
@@ -716,7 +767,8 @@ void Ec::disable_step_debug() {
             reinterpret_cast<Space_pio*> (pd->subspace(Crd::PIO))->disable_pio(pd->quota);
             break;
         case SR_RDTSC:
-            //            Console::print("TSC read Ec: %p, is_idle(): %d  IP: %p", current, is_idle(), current->regs.REG(ip));
+// Console::print("TSC read Ec: %p, is_idle(): %d  IP: %p", current, is_idle(), 
+//            current->regs.REG(ip));
             set_cr4(get_cr4() | Cpu::CR4_TSD);
             break;
         case SR_PMI:
@@ -736,10 +788,10 @@ void Ec::disable_step_debug() {
     step_reason = SR_NIL;
 }
 
-void Ec::restore_state() {
+void Ec::restore_state0() {
     regs_1 = regs;
     regs = regs_0;
-    Cow_elt::restore_state();
+    Cow_elt::restore_state0();
     Fpu::dwc_restore();
     if (fpu)
         fpu->restore_data();
@@ -763,6 +815,9 @@ void Ec::restore_state1() {
     }
 }
 
+/**
+ * cancel the double execution effects
+ */
 void Ec::rollback() {
     regs = regs_0;
     Fpu::dwc_rollback();
@@ -779,40 +834,70 @@ void Ec::save_regs(Exc_regs *r) {
     last_rcx = r->REG(cx);
     exc_counter++;
     count_interrupt(r->vec);
-    Pe_state::add_pe_state(new(Pd::kern.quota) Pe_state(r, Lapic::read_instCounter(), 
-            run_number, r->vec));
+//    Pe_state::add_pe_state(new(Pd::kern.quota) Pe_state(r, Lapic::read_instCounter(), 
+//            run_number, r->vec));
     return;
 }
 
-void Ec::save_state() {
+/**
+ * save state before starting the PE double execution
+ */
+void Ec::save_state0() {
     regs_0 = regs;
-//    Cow_elt::place_phys0(!utcb);
+    Cow_elt::place_phys0(!utcb);
+    Pe::add_pe(new (Pd::kern.quota)Pe(current->get_name(), current->getPd()->get_name(), 
+            regs.REG(ip), 0, 0, ""));
     Fpu::dwc_save(); // If FPU activated, save fpu state
     if (fpu)         // If fpu defined, save it 
         fpu->save_data();
     if(utcb){
-        Pd::current->Space_mem::loc[Cpu::id].reserve_stack(Pd::current->quota, regs.REG(sp));
+// Ce n'est pas optimal car avec ceci on ne peut plus profiter des PE dont le cow_elts est vide
+//        Pd::current->Space_mem::loc[Cpu::id].reserve_stack(Pd::current->quota, regs.REG(sp));
     } else {
-        mword cr0_shadow = current->regs.cr0_shadow, cr3_shadow = current->regs.cr3_shadow, cr4_shadow = current->regs.cr4_shadow; 
-        regs.vtlb->reserve_stack(cr0_shadow, cr3_shadow, cr4_shadow);
+//        mword cr0_shadow = current->regs.cr0_shadow, cr3_shadow = current->regs.cr3_shadow, 
+//              cr4_shadow = current->regs.cr4_shadow; 
+//        regs.vtlb->reserve_stack(cr0_shadow, cr3_shadow, cr4_shadow);
         vmx_save_state();        
     }
     copy_string(Pe::current_ec, current->get_name());
     copy_string(Pe::current_pd, current->getPd()->get_name());
     Pe::c_regs[0] = regs_0;
     Pe::inState1 = false;
-//    Pe_state::free_recorded_log_pe_state();
-    Counter::nb_pe++;
+}
+
+/**
+ * called after rollback to relauch the double execution
+ */
+void Ec::restore_state0_data() {
+    regs_0 = regs;
+    Fpu::dwc_save(); // If FPU activated, save fpu state
+    if (fpu)         // If fpu defined, save it 
+        fpu->save_data();
+    if(utcb){
+// Ce n'est pas optimal car avec ceci on ne peut plus profiter des PE dont le cow_elts est vide
+//        Pd::current->Space_mem::loc[Cpu::id].reserve_stack(Pd::current->quota, regs.REG(sp));
+    } else {
+//        mword cr0_shadow = current->regs.cr0_shadow, cr3_shadow = current->regs.cr3_shadow, 
+//          cr4_shadow = current->regs.cr4_shadow; 
+//        regs.vtlb->reserve_stack(cr0_shadow, cr3_shadow, cr4_shadow);
+        vmx_save_state();        
+    }
+    copy_string(Pe::current_ec, current->get_name());
+    copy_string(Pe::current_pd, current->getPd()->get_name());
+    Pe::c_regs[0] = regs_0;
+    Pe::inState1 = false;
 }
 
 void Ec::vmx_save_state() {
    //    save_vm_stack();
     mword host_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
-    Msr_area *cur_host_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(host_msr_area_phys));
+    Msr_area *cur_host_msr_area = reinterpret_cast<Msr_area*> 
+            (Buddy::phys_to_ptr(host_msr_area_phys));
     memcpy(host_msr_area0, cur_host_msr_area, PAGE_SIZE);
 
     mword guest_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_ST_ADDR);
-    Msr_area *cur_guest_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(guest_msr_area_phys));
+    Msr_area *cur_guest_msr_area = reinterpret_cast<Msr_area*> 
+            (Buddy::phys_to_ptr(guest_msr_area_phys));
     memcpy(guest_msr_area0, cur_guest_msr_area, PAGE_SIZE);
 
     mword virtual_apic_page_phys = Vmcs::read(Vmcs::APIC_VIRT_ADDR);
@@ -846,12 +931,14 @@ void Ec::vmx_restore_state() {
     Pe::vmcsRSP[2] = Vmcs::read(Vmcs::GUEST_RSP);
     
     mword host_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
-    Msr_area *cur_host_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(host_msr_area_phys));
+    Msr_area *cur_host_msr_area = reinterpret_cast<Msr_area*> 
+            (Buddy::phys_to_ptr(host_msr_area_phys));
     memcpy(host_msr_area1, cur_host_msr_area, PAGE_SIZE);
     memcpy(cur_host_msr_area, host_msr_area0, PAGE_SIZE);
 
     mword guest_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_ST_ADDR);
-    Msr_area *cur_guest_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(guest_msr_area_phys));
+    Msr_area *cur_guest_msr_area = reinterpret_cast<Msr_area*> 
+            (Buddy::phys_to_ptr(guest_msr_area_phys));
     memcpy(guest_msr_area1, cur_guest_msr_area, PAGE_SIZE);
     memcpy(cur_guest_msr_area, guest_msr_area0, PAGE_SIZE);
 
@@ -873,12 +960,14 @@ void Ec::vmx_restore_state1() {
     regs.vmcs->make_current();
 
     mword host_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
-    Msr_area *cur_host_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(host_msr_area_phys));
+    Msr_area *cur_host_msr_area = 
+            reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(host_msr_area_phys));
     memcpy(host_msr_area2, cur_host_msr_area, PAGE_SIZE);
     memcpy(cur_host_msr_area, host_msr_area1, PAGE_SIZE);
 
     mword guest_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_ST_ADDR);
-    Msr_area *cur_guest_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(guest_msr_area_phys));
+    Msr_area *cur_guest_msr_area = 
+            reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(guest_msr_area_phys));
     memcpy(guest_msr_area2, cur_guest_msr_area, PAGE_SIZE);
     memcpy(cur_guest_msr_area, guest_msr_area1, PAGE_SIZE);
 
@@ -896,11 +985,13 @@ void Ec::vmx_rollback() {
     regs.vmcs->make_current();
 
     mword host_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
-    Msr_area *cur_host_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(host_msr_area_phys));
+    Msr_area *cur_host_msr_area = 
+            reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(host_msr_area_phys));
     memcpy(cur_host_msr_area, host_msr_area0, PAGE_SIZE);
 
     mword guest_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_ST_ADDR);
-    Msr_area *cur_guest_msr_area = reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(guest_msr_area_phys));
+    Msr_area *cur_guest_msr_area = 
+            reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(guest_msr_area_phys));
     memcpy(cur_guest_msr_area, guest_msr_area0, PAGE_SIZE);
 
     mword virtual_apic_page_phys = Vmcs::read(Vmcs::APIC_VIRT_ADDR);
@@ -918,7 +1009,8 @@ mword Ec::get_regsRCX() {
 }
 
 void regs_missmatch_print(char const *reg_name, mword reg_0, mword reg_1, mword reg) {
-    Console::print("REGS does not match %s : reg_0 %lx reg_1 %lx reg %lx", reg_name, reg_0, reg_1, reg);
+    Console::print("REGS does not match %s : reg_0 %lx reg_1 %lx reg %lx", reg_name, reg_0, reg_1, 
+            reg);
 }
 
 int Ec::compare_regs(int reason) {
@@ -992,7 +1084,8 @@ int Ec::compare_regs(int reason) {
         return 16;
     if (Fpu::dwc_check())
         return 17;
-    if (reason == PES_SYS_ENTER || !utcb) // following checks are not valid if reason is Sysenter or current is vCPU
+    // following checks are not valid if reason is Sysenter or current is vCPU
+    if (reason == PES_SYS_ENTER || !utcb) 
         return 0;
     if ((regs_2.REG(ip) != regs_1.REG(ip))) {
         regs_missmatch_print("RIP", regs_0.REG(ip), regs_1.REG(ip), regs_2.REG(ip));
@@ -1000,8 +1093,8 @@ int Ec::compare_regs(int reason) {
     }
 //    if ((regs_2.REG(fl) != regs_1.REG(fl)) && ((regs_2.REG(fl) | (1u << 16)) != regs_1.REG(fl))) {
 //        regs_missmatch_print("RFLAGS", regs_0.REG(fl), regs_1.REG(fl), regs_2.REG(fl));
-//        // resume flag may be set if reason is step-mode but it is curious why this flag is set in regs_1 and not in regs_2.
-//        // the contrary would be understandable. Must be fixed later
+//        resume flag may be set if reason is step-mode but it is curious why this flag is set in
+//        regs_1 and not in regs_2. The contrary would be understandable. Must be fixed later
 //        return 19;
 //    }
     if (regs_2.REG(sp) != regs_1.REG(sp)) {
@@ -1053,7 +1146,9 @@ void Ec::debug_func(const char* source) {
         rip = current->regs.REG(cx);
     else
         rip = current->regs.REG(ip);
-    Console::print("%s PD: %s EC %s EIP %lx rcx %lx counter %llx exc %lld", source, Pd::current->get_name(), current->get_name(), rip, current->regs.REG(cx), Lapic::read_instCounter(), exc_counter);
+    Console::print("%s PD: %s EC %s EIP %lx rcx %lx counter %llx exc %lld", source, 
+            Pd::current->get_name(), current->get_name(), rip, current->regs.REG(cx), 
+            Lapic::read_instCounter(), exc_counter);
 }
 
 void Ec::debug_print(const char* source) {
@@ -1306,11 +1401,14 @@ void Ec::check_instr_number_equals(int from){
     Pe::counter(to_print);
     long nb_run_diff = nb_run1 < nb_run2 ? nb_run2 - nb_run1 : -(nb_run1 - nb_run2);
     if(nb_run_diff != 0){
-        Console::print("%s %d: ec %s pd %s nb_run1 %llu nb_run2 %llu nb_run_diff %ld counter1 %llu counter2 %llu %s ss %llu ",
-        instr_number_comp, from, current->get_name(), current->getPd()->get_name(), nb_run1, nb_run2,  nb_run_diff, counter1, counter2, to_print, nb_inst_single_step);
+        Console::print("%s %d: ec %s pd %s nb_run1 %llu nb_run2 %llu nb_run_diff %ld counter1 %llu "
+        "counter2 %llu %s ss %llu ",
+        instr_number_comp, from, current->get_name(), current->getPd()->get_name(), nb_run1, 
+                nb_run2,  nb_run_diff, counter1, counter2, to_print, nb_inst_single_step);
     }else{
         Console::print("%s %d: ec %s pd %s counter1 %llu counter2 %llu %s ss %llu ",
-        instr_number_comp, from, current->get_name(), current->getPd()->get_name(), counter1, counter2, to_print, nb_inst_single_step);
+        instr_number_comp, from, current->get_name(), current->getPd()->get_name(), counter1,
+                counter2, to_print, nb_inst_single_step);
     }
     current->dump_pe();
 }

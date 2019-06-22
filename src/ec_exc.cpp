@@ -6,7 +6,8 @@
  *
  * Copyright (C) 2012 Udo Steinberg, Intel Corporation.
  * Copyright (C) 2013-2018 Alexander Boettcher, Genode Labs GmbH.
- *
+ * Copyright (C) 2016-2019 Parfait Tokponnon, UCLouvain.
+ * 
  * This file is part of the NOVA microhypervisor.
  *
  * NOVA is free software: you can redistribute it and/or modify it
@@ -80,6 +81,9 @@ void Ec::transfer_fpu(Ec *ec) {
     assert(ok);
 }
 
+/**
+ * Handle device (floating point unit) not available exception
+ */
 void Ec::handle_exc_nm() {
     if (Cmdline::fpu_eager)
         die("FPU fault");
@@ -118,18 +122,12 @@ bool Ec::handle_exc_ts(Exc_regs *r) {
     return true;
 }
 
+/**
+ * Handle General Protection fault
+ * @param r
+ * @return true if the kernel can handle this
+ */
 bool Ec::handle_exc_gp(Exc_regs *r) {
-    mword eip = r->REG(ip);
-    //    if(r->user() && !fixup (r->REG(ip)) && !current->is_temporal_exc() && !current->is_io_exc()){
-    //        if(step_reason == SR_NIL){
-    //            Console::print("GP_DB End %lx %lx", eip, r->REG(ax));
-    //            step_reason = SR_GP;
-    //            current->regs.REG(fl) |= Cpu::EFL_TF;
-    //        }else{
-    //            step_reason = SR_NIL;
-    //            current->regs.REG(fl) &= ~Cpu::EFL_TF;            
-    //        }
-    //    }
     if (Cpu::hazard & HZD_TR) {
         Cpu::hazard &= ~HZD_TR;
         Gdt::unbusy_tss();
@@ -154,13 +152,19 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
         }
     }
 
+    /**
+     * If we get here, something went seriously wrong
+     * The following are for debugging purpose
+     */
+    mword eip = r->REG(ip);
     Console::print("eip0: %lx(%#lx)  rax_0: %lx", regs_0.REG(ip), regs_0.REG(cx), regs_0.REG(ax));
     Console::print("eip1: %lx(%#lx)  rax_1: %lx", regs_1.REG(ip), regs_1.REG(cx), regs_1.REG(ax));
     Console::print("eip2: %lx(%#lx)  rax_2: %lx", regs_2.REG(ip), regs_2.REG(cx), regs_2.REG(ax));
     char buff[MAX_STR_LENGTH];
     instruction_in_hex(*(reinterpret_cast<mword *> (eip)), buff);
     Console::print("GP Here: Ec: %s  Pd: %s ip %lx(%#lx) val: %s Lapic::counter %llx user %s",
-            ec->get_name(), ec->getPd()->get_name(), eip, r->ARG_IP, buff, Lapic::read_instCounter(), r->user() ? "true" : "false");
+            ec->get_name(), ec->getPd()->get_name(), eip, r->ARG_IP, buff, 
+            Lapic::read_instCounter(), r->user() ? "true" : "false");
     Counter::dump();
     Pe::print_current(false);
     Pe::dump(true);
@@ -169,13 +173,19 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
     return false;
 }
 
+/**
+ * 
+ * @param r
+ */
 void Ec::handle_exc_db(Exc_regs *r) {
     if (get_dr6() & 0x1) { // debug register 0
-        Console::print("Debug register 0 Ec %s Pd %s eip %lx", current->get_name(), current->getPd()->get_name(), current->regs.REG(ip));
+        Console::print("Debug register 0 Ec %s Pd %s eip %lx", current->get_name(), 
+                current->getPd()->get_name(), current->regs.REG(ip));
         mword *p = reinterpret_cast<mword*> (0x18028);
         Paddr physical_addr;
         mword attribut;
-        size_t is_mapped = Pd::current->Space_mem::loc[Cpu::id].lookup(0x18028, physical_addr, attribut);
+        size_t is_mapped = Pd::current->Space_mem::loc[Cpu::id].lookup(0x18028, physical_addr, 
+                attribut);
         if (is_mapped)
             Console::print("Debug breakpoint at value phys %lx 18028:%lx", physical_addr, *p);
         return;
@@ -187,12 +197,14 @@ void Ec::handle_exc_db(Exc_regs *r) {
             case SR_RDTSC:
                 //                        Console::print("EXC_DB step_reason: %d", step_reason);
                 if (not_nul_cowlist && step_reason != SR_PIO) {
-                    Console::print("cow_list not null was noticed Pd: %s", current->getPd()->get_name());
+                    Console::print("cow_list not null was noticed Pd: %s", 
+                            current->getPd()->get_name());
                     not_nul_cowlist = false;
                 }
                 if (!Cow_elt::is_empty()) {
                     if (step_reason != SR_PIO)
-                        Console::print("cow_list not null, noticed! Pd: %s", current->getPd()->get_name());
+                        Console::print("cow_list not null, noticed! Pd: %s", 
+                                current->getPd()->get_name());
                     else {
                         not_nul_cowlist = true;
                     }
@@ -210,11 +222,14 @@ void Ec::handle_exc_db(Exc_regs *r) {
                 if (prev_rip == current->regs.REG(ip)) { // Rep Prefix
                     nb_inst_single_step--;
                     nbInstr_to_execute++; // Re-adjust the number of instruction                  
-                    // Console::print("EIP: %lx  prev_rip: %lx MSR_PERF_FIXED_CTR0: %lld instr: %lx", 
-                    // current->regs.REG(ip), prev_rip, Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), *reinterpret_cast<mword *>(current->regs.REG(ip)));
+                    // Console::print("EIP: %lx  prev_rip: %lx MSR_PERF_FIXED_CTR0: %lld 
+                    // instr: %lx", current->regs.REG(ip), prev_rip, 
+                    // Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), 
+                    // *reinterpret_cast<mword *>(current->regs.REG(ip)));
+                    
                     // It may happen that this is the final instruction
                     if (!current->compare_regs_mute()) {
-                        //                                check_instr_number_equals(1);
+                        // check_instr_number_equals(1);
                         current->disable_step_debug();
                         check_memory(PES_SINGLE_STEP);
                         return;
@@ -275,11 +290,14 @@ void Ec::handle_exc_db(Exc_regs *r) {
                 if (prev_rip == current->regs.REG(ip)) { // Rep Prefix
                     nb_inst_single_step--;
                     nbInstr_to_execute++; // Re-adjust the number of instruction                  
-                    // Console::print("EIP: %lx  prev_rip: %lx MSR_PERF_FIXED_CTR0: %lld instr: %lx", 
-                    // current->regs.REG(ip), prev_rip, Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), *reinterpret_cast<mword *>(current->regs.REG(ip)));
+                    // Console::print("EIP: %lx  prev_rip: %lx MSR_PERF_FIXED_CTR0: %lld 
+                    // instr: %lx", current->regs.REG(ip), prev_rip, 
+                    // Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), 
+                    // *reinterpret_cast<mword *>(current->regs.REG(ip)));
+                    
                     // It may happen that this is the final instruction
                     if (!current->compare_regs_mute()) {
-                        //                                check_instr_number_equals(3);
+                        // check_instr_number_equals(3);
                         current->disable_step_debug();
                         check_memory(PES_SINGLE_STEP);
                         return;
@@ -287,12 +305,13 @@ void Ec::handle_exc_db(Exc_regs *r) {
                 }
                 //here, single stepping 2nd run should be ok
                 if (!current->compare_regs_mute()) {// if ok?
-                    //                            check_instr_number_equals(4);
+                    // check_instr_number_equals(4);
                     current->disable_step_debug();
                     check_memory(PES_SINGLE_STEP);
                     return;
                 } else {
-                    if (nbInstr_to_execute == 0) { // single stepping the first run with 2 credits instructions
+                    // single stepping the first run with 2 credits instructions
+                    if (nbInstr_to_execute == 0) { 
                         current->restore_state1();
                         nbInstr_to_execute = distance_instruction + nb_inst_single_step + 1;
                         nb_inst_single_step = 0;
@@ -313,48 +332,55 @@ void Ec::handle_exc_db(Exc_regs *r) {
     }
 }
 
-void Ec::handle_deterministic_exception(Exc_regs *r) {
-    if (r->user() && ((r->vec == Cpu::EXC_NM) || (r->vec == Cpu::EXC_TS) ||
-            (r->vec == Cpu::EXC_GP) || (r->vec == Cpu::EXC_AC) || (r->vec == Cpu::EXC_MC))) {
-        PE_stopby check_reason = PES_DEFAULT;
-        switch (r->vec) {
-            case Cpu::EXC_NM:
-                check_reason = PES_DEV_NOT_AVAIL;
-                break;
-            case Cpu::EXC_TS:
-                check_reason = PES_INVALID_TSS;
-                break;
-            case Cpu::EXC_GP:
-                check_reason = PES_GP_FAULT;
-                break;
-            case Cpu::EXC_AC:
-                check_reason = PES_ALIGNEMENT_CHECK;
-                break;
-            case Cpu::EXC_MC:
-                check_reason = PES_MACHINE_CHECK;
-                break;
-            default :
-                Console::panic("Check reason not handled");
-        }
-        check_memory(check_reason);
+/**
+ * 
+ * @param vec
+ * @return check_reason : PE_stopby, the deterministic cause of the this exception, 0, if not 
+ * deterministic
+ */
+bool Ec::handle_deterministic_exception(mword vec, PE_stopby &stop_reason) {
+    switch (vec) {
+        case Cpu::EXC_NM:
+            return (stop_reason = PES_DEV_NOT_AVAIL);
+        case Cpu::EXC_TS:
+            return (stop_reason = PES_INVALID_TSS);
+        case Cpu::EXC_GP:
+            return (stop_reason = PES_GP_FAULT);
+        case Cpu::EXC_AC:
+            return (stop_reason = PES_ALIGNEMENT_CHECK);
+        case Cpu::EXC_MC:
+            return (stop_reason = PES_MACHINE_CHECK);
+        default :
+            return (stop_reason = PES_DEFAULT);
     }
-
 }
 
+/**
+ * Handle page fault exections
+ * @param r
+ * @return 
+ */
 bool Ec::handle_exc_pf(Exc_regs *r) {
     mword addr = r->cr2;
 
-    if ((r->err & Hpt::ERR_U) && Pd::current->Space_mem::loc[Cpu::id].is_cow_fault(Pd::current->quota, addr, r->err))
+    // Is this page fault due to our hardenning code?
+    if ((r->err & Hpt::ERR_U) && 
+            Pd::current->Space_mem::loc[Cpu::id].is_cow_fault(Pd::current->quota, addr, r->err))
         return true;
-    if (r->cs & 3)
+    // From here, this is a native page fault. Nova got to resolve this.
+    if (r->cs & 3){ // if page fault is user space one
+        // So we stop the PE here only if the page fault comes from user space.
         check_memory(PES_PAGE_FAULT);
-
+    }
     if (r->err & Hpt::ERR_U)
-        return addr < USER_ADDR && Pd::current->Space_mem::loc[Cpu::id].sync_from(Pd::current->quota, Pd::current->Space_mem::hpt, addr, USER_ADDR);
+        return addr < USER_ADDR && 
+                Pd::current->Space_mem::loc[Cpu::id].sync_from(Pd::current->quota, 
+                Pd::current->Space_mem::hpt, addr, USER_ADDR);
 
     if (addr < USER_ADDR) {
 
-        if (Pd::current->Space_mem::loc[Cpu::id].sync_from(Pd::current->quota, Pd::current->Space_mem::hpt, addr, USER_ADDR))
+        if (Pd::current->Space_mem::loc[Cpu::id].sync_from(Pd::current->quota, 
+                Pd::current->Space_mem::hpt, addr, USER_ADDR))
             return true;
 
         if (fixup(r->REG(ip))) {
@@ -363,7 +389,9 @@ bool Ec::handle_exc_pf(Exc_regs *r) {
         }
     }
 
-    if (addr >= LINK_ADDR && addr < CPU_LOCAL && Pd::current->Space_mem::loc[Cpu::id].sync_from(Pd::current->quota, Hptp(reinterpret_cast<mword> (&PDBR)), addr, CPU_LOCAL))
+    if (addr >= LINK_ADDR && addr < CPU_LOCAL && 
+            Pd::current->Space_mem::loc[Cpu::id].sync_from(Pd::current->quota, 
+            Hptp(reinterpret_cast<mword> (&PDBR)), addr, CPU_LOCAL))
         return true;
 
     // Kernel fault in I/O space
@@ -379,33 +407,47 @@ bool Ec::handle_exc_pf(Exc_regs *r) {
     }
     die("#PF (kernel)", r);
 }
-
+/**
+ * 
+ * @param r : pointer to the faulty process registers and error code
+ */
 void Ec::handle_exc(Exc_regs *r) {
     Counter::exc[r->vec]++;
 
-    handle_deterministic_exception(r);
+    // Deterministic? May this exception be replayed or not
+    PE_stopby check_reason = PES_DEFAULT;
+    if(r->user() && handle_deterministic_exception(r->vec, check_reason)){
+        check_memory(check_reason);        
+    }
     switch (r->vec) {
+        // Debug exception
         case Cpu::EXC_DB:
             handle_exc_db(r);
             return;
+        
+        // Non Maskable Interrupt
         case Cpu::EXC_NMI:
             Console::panic("NMI not handled yet");
             return;
 
+        // Device not available
         case Cpu::EXC_NM:
             handle_exc_nm();
             return;
-
+        
+        // Invalid Task Segment Selector
         case Cpu::EXC_TS:
             if (handle_exc_ts(r))
                 return;
             break;
-
+           
+        // If General Protection fault
         case Cpu::EXC_GP:
             if (handle_exc_gp(r))
                 return;
             break;
 
+        // if page fault
         case Cpu::EXC_PF:
             if (handle_exc_pf(r))
                 return;
@@ -414,6 +456,7 @@ void Ec::handle_exc(Exc_regs *r) {
         case Cpu::EXC_AC:
             Console::print("Alignement check exception");
 
+        // Machine check exception
         case Cpu::EXC_MC:
             Mca::vector();
             break;
@@ -431,40 +474,46 @@ void Ec::handle_exc(Exc_regs *r) {
     die("EXC", r);
 }
 /**
- * This function is called at the end of every processing element
- * @param from : where it is called from
+ * This function is called at the end of every processing element to save the first and second run
+ * states and also to make the states comparison and commitment if everythins went fine
+ * @param from : where it is called from. Must be different from 0
  */
 void Ec::check_memory(PE_stopby from) {
+    assert(from);
+    // Is cow_elts empty? If yes, and if we are not in recovering from stack fault or debuging our 
+    // code, no memory to check
     if (Cow_elt::is_empty() && !Pe::in_recover_from_stack_fault_mode && !Pe::in_debug_mode) {
         launch_state = UNLAUNCHED;
         reset_all();
         return;
     }
-//    trace(0, "check_memory run %d from %d name %s qce %lu:%lu count %llx", run_number, from, current->get_name(), Cow_elt::get_number(), current->get_cow_number(), Lapic::read_instCounter());     
     Ec *ec = current;
     switch (run_number) {
-        case 0:
+        case 0: // First run
             prev_reason = from;
-            ec->restore_state();
-            counter1 = Lapic::read_instCounter(); // to be removed after we found the cause of "Attention : reason >< prevreason 1:22 counter1 160e7b counter2 ffffffffffbd "
+            ec->restore_state0();
+            counter1 = Lapic::read_instCounter();
             if (from == PES_PMI) {
                 end_rip = last_rip;
                 end_rcx = last_rcx;
                 exc_counter1 = exc_counter;
                 counter1 = Lapic::read_instCounter();
                 /*
-                 * Here we assume that Lapic::start_counter = (Lapic::perf_max_count - MAX_INSTRUCTION) ie 0xFFFFFFF00000
-                 * So when counter overflows, counter1 will NEVER be > Lapic::start_counter.
+                 * Here we assume that Lapic::start_counter = (Lapic::perf_max_count - 
+                 * MAX_INSTRUCTION) ie 0xFFFFFFF00000. So when counter overflows, counter1 will 
+                 * NEVER be > Lapic::start_counter.
                  */
                 first_run_instr_number = counter1 < Lapic::start_counter ? 
-                    MAX_INSTRUCTION + counter1 - exc_counter1 : counter1 - (Lapic::perf_max_count - MAX_INSTRUCTION);
+                    MAX_INSTRUCTION + counter1 - exc_counter1 : counter1 - (Lapic::perf_max_count - 
+                        MAX_INSTRUCTION);
                 assert(first_run_instr_number < Lapic::perf_max_count);
                 if (current->utcb) {
                     uint8 *ptr = reinterpret_cast<uint8 *> (end_rip);
                     if (*ptr == 0xf3 || *ptr == 0xf2) {
                         char buff[MAX_STR_LENGTH];
                         instruction_in_hex(*(reinterpret_cast<mword *> (end_rip)), buff);
-                        Console::print("Rep prefix in Run1 %lx: %s rcx %lx", end_rip, buff, end_rcx);
+                        Console::print("Rep prefix in Run1 %lx: %s rcx %lx", end_rip, buff, 
+                                end_rcx);
                         in_rep_instruction = true;
                         Cpu::disable_fast_string();
                     }
@@ -475,12 +524,14 @@ void Ec::check_memory(PE_stopby from) {
                         Console::print("Instr_addr not found %lx", end_rip);
                     }
                     mword inst_off = end_rip & PAGE_MASK;
-                    uint8 *ptr = reinterpret_cast<uint8 *> (Hpt::remap_cow(Pd::kern.quota, inst_phys & ~PAGE_MASK));  
+                    uint8 *ptr = reinterpret_cast<uint8 *> (Hpt::remap_cow(Pd::kern.quota, inst_phys 
+                        & ~PAGE_MASK));  
                     uint16 *inst_val = reinterpret_cast<uint16 *>(ptr + inst_off);
                     if (*inst_val == 0xf3 || *inst_val == 0xf2) {
                         char buff[MAX_STR_LENGTH];
                         instruction_in_hex(*(reinterpret_cast<mword *> (end_rip)), buff);
-                        Console::print("VMX Rep prefix in Run1 %lx: %s rcx %lx", end_rip, buff, end_rcx);
+                        Console::print("VMX Rep prefix in Run1 %lx: %s rcx %lx", end_rip, buff, 
+                            end_rcx);
                         in_rep_instruction = true;
                         Cpu::disable_fast_string();
                     }
@@ -490,7 +541,8 @@ void Ec::check_memory(PE_stopby from) {
                  * must be dug deeper
                  */
                 if(first_run_instr_number > (MAX_INSTRUCTION + 300)){
-                    Console::panic("PMI not served early counter1 %llx \nMust be dug deeper", counter1);
+                    Console::panic("PMI not served early counter1 %llx \nMust be dug deeper", 
+                            counter1);
                     Lapic::program_pmi2(first_run_instr_number);
                 } 
                 Lapic::program_pmi();
@@ -501,7 +553,7 @@ void Ec::check_memory(PE_stopby from) {
             exc_counter = 0;
             check_exit();
             break;
-        case 1:
+        case 1: // Second run
             /* If from is not PES_PMI nor PES_SINGLE_STEP and prev_reason == PES_PMI, 
              * surely the second run exceeds the first in a way the second run 
              * encounter an exception not found during the first run. So we have to 
@@ -510,39 +562,42 @@ void Ec::check_memory(PE_stopby from) {
              */
             if (from == PES_PMI || (prev_reason == PES_PMI && from != PES_SINGLE_STEP)) {
                 if (prev_reason != PES_PMI) {
-                    /* This means that the second run lasts more than the first. 
-                     * It may also result from a simultaneous PMI with another exception which was prioritized
+                    /* This means that the second run lasts more than the first. It may also result 
+                     * from a simultaneous PMI with another exception which was prioritized
                      * In this case, current pmi does not matter. Just go on with the second run.*/
                     
-                    // If simulatneous PMI and exception, Lapic::read_instCounter() must be 0xFFFFFFF00001
+                    // If simulatneous PMI and exception, Lapic::read_instCounter() must be 
+                    // 0xFFFFFFF00001
                     if(Lapic::read_instCounter() == Lapic::perf_max_count - MAX_INSTRUCTION + 1)
                         check_exit();
                     
                     Pe::print_current(ec->utcb ? false : true);
                     Pe_state::dump();
-                    Console::print("Attention : from >< prevreason %d:%d counter1 %llx counter2 %llx ", 
-                        prev_reason, from, counter1, Lapic::read_instCounter());
-                    
-                    
+                    Console::print("Attention : from >< prevreason %d:%d counter1 %llx "
+                    "counter2 %llx", prev_reason, from, counter1, Lapic::read_instCounter());
                 }
                 exc_counter2 = exc_counter;
                 counter2 = Lapic::read_instCounter();
                 Lapic::cancel_pmi();
                 /*
-                 * Here we assume that Lapic::start_counter = (Lapic::perf_max_count - MAX_INSTRUCTION) ie 0xFFFFFFF00000
-                 * So when counter overflows, counter2 will NEVER be > Lapic::start_counter.
+                 * Here we assume that Lapic::start_counter = (Lapic::perf_max_count - 
+                 * MAX_INSTRUCTION) ie 0xFFFFFFF00000. So when counter overflows, counter2 will 
+                 * NEVER be > Lapic::start_counter.
                  */
                 second_run_instr_number = counter2 < Lapic::start_counter ? 
-                    MAX_INSTRUCTION + counter2 - exc_counter2 : counter2 - (Lapic::perf_max_count - MAX_INSTRUCTION);
+                    MAX_INSTRUCTION + counter2 - exc_counter2 : counter2 - (Lapic::perf_max_count - 
+                        MAX_INSTRUCTION);
                 assert(second_run_instr_number < Lapic::perf_max_count);
                 if(second_run_instr_number > (MAX_INSTRUCTION + 300)){
-                    Console::panic("PMI not served early counter2 %llx \nMust be dug deeper", counter2);
+                    Console::panic("PMI not served early counter2 %llx \nMust be dug deeper", 
+                            counter2);
                 } 
                 distance_instruction = distance(first_run_instr_number, second_run_instr_number);
 //                if(!ec->utcb)
-//                    trace(0, "restoring %d count1 %llx count2 %llx counter %llx", distance_instruction <= 2 ? 0 : 
-//                        first_run_instr_number > second_run_instr_number ? 2 : 1, first_run_instr_number, 
-//                        second_run_instr_number, Lapic::read_instCounter());
+//                    trace(0, "restoring %d count1 %llx count2 %llx counter %llx", 
+//                      distance_instruction <= 2 ? 0 : first_run_instr_number > 
+//                      second_run_instr_number ? 2 : 1, first_run_instr_number, 
+//                      second_run_instr_number, Lapic::read_instCounter());
                 if (distance_instruction <= 2) {
                     if (ec->compare_regs_mute()) {
                         nbInstr_to_execute = distance_instruction + 1;
@@ -597,18 +652,22 @@ void Ec::check_memory(PE_stopby from) {
                  * First, we save PE system values
                  */
                 uint64 nbInstr_to_execute_value = counter1 < Lapic::start_counter ? 
-                    MAX_INSTRUCTION + counter1 - exc_counter1 : counter1 - (Lapic::perf_max_count - MAX_INSTRUCTION);
+                    MAX_INSTRUCTION + counter1 - exc_counter1 : counter1 - (Lapic::perf_max_count - 
+                        MAX_INSTRUCTION);
                 assert(nbInstr_to_execute < Lapic::perf_max_count);
 //                Console::debug_started = true;
                 int from_value = from;
                 int prev_reason_value = prev_reason;
                 ec->rollback();
                 ec->reset_all();
-                ec->save_state();
+                ec->restore_state0_data();
+                Console::debug_started = true;
                 /* Try recovering from stack change check failing.
-                 * Re-inforce this by !utcb, when we will be sure that stack Fail check is only related to guest OS
+                 * Re-inforce this by !utcb, when we will be sure that stack Fail check is only 
+                 * related to guest OS
                  */ 
-                if((from_value == prev_reason_value) && (!reg_diff) && (!Pe::in_recover_from_stack_fault_mode)){
+                if((from_value == prev_reason_value) && (!reg_diff) && 
+                        (!Pe::in_recover_from_stack_fault_mode)){
                     debug_started_trace(0, "Rollback started %d", launch_state);  
                     Pe::in_recover_from_stack_fault_mode = true;
                     check_exit();
@@ -619,18 +678,24 @@ void Ec::check_memory(PE_stopby from) {
                  * This is for debugging the rollback part of the hardening program.
                  * Before send in production, uncomment the previous check_exit();
                  */ 
-//                    check_exit();   In production, we meust check_exit() to start the second redundancy round            
+//              check_exit();   In production, we meust check_exit() to start the second redundancy 
+//              round            
                 nbInstr_to_execute = nbInstr_to_execute_value;
                 Pe::in_debug_mode = true;
                 if(ec->utcb){
                     ec->enable_step_debug(SR_DBG);
                     check_exit();
                 } else {
-                    Console::print("SR DBG launch in VMX nbInstr_to_execute %llx", nbInstr_to_execute);
+                    Console::print("SR DBG launch in VMX nbInstr_to_execute %llx", 
+                            nbInstr_to_execute);
                     vmx_enable_single_step(SR_DBG);
                 }                
             } else {
+//                size_t cow_elt_number = Cow_elt::get_number();
                 Cow_elt::commit();
+//                trace(0, "check_memory run %d from %d name %s qce %lu:%u:%u count %llx", 
+//                run_number, from, current->get_name(), cow_elt_number, Counter::cow_fault, 
+//                Counter::used_cows_in_old_cow_elts, Lapic::read_instCounter());     
                 launch_state = UNLAUNCHED;
                 reset_all();
                 return;
@@ -641,6 +706,9 @@ void Ec::check_memory(PE_stopby from) {
     }
 }
 
+/**
+ * To return to userspace by the right exit chosen among Iret, Sysret and VMResume
+ */
 void Ec::check_exit() {
     switch (launch_state) {
         case SYSEXIT:
@@ -660,23 +728,34 @@ void Ec::check_exit() {
     }
 }
 
+/**
+ * Reset all counters used during the processing Element execution
+ */ 
 void Ec::reset_counter() {
     exc_counter = counter1 = counter2 = exc_counter1 = exc_counter2 = nb_inst_single_step = 0;
     distance_instruction = first_run_instr_number = second_run_instr_number = 0;
+    Counter::cow_fault = 0;
+    Counter::used_cows_in_old_cow_elts = 0;
     Pe::reset_counter();
     Lapic::program_pmi();
 }
-
+/**
+ * Reset state data and counters
+ */
 void Ec::reset_all() {
     run_number = 0;
     reset_counter();
     prev_reason = 0;
     no_further_check = false;
     Pending_int::exec_pending_interrupt();
-    Pe_state::free_recorded_pe_state();
-    Pe_stack::free_detected_stacks();
+//    Pe_state::free_recorded_pe_state();
+//    Pe_stack::free_detected_stacks();
 }
 
+/**
+ * For debugging purpose
+ * @param dt
+ */
 void Ec::start_debugging(Debug_type dt) {
     debug_type = dt;
     rollback();
@@ -684,12 +763,15 @@ void Ec::start_debugging(Debug_type dt) {
     //                check_exit();
     run_number = 0;
     nbInstr_to_execute = first_run_instr_number;
-    save_state();
+    restore_state0_data();
     launch_state = Ec::IRET;
     enable_step_debug(SR_DBG);
     check_exit();
 }
 
+/**
+ * For debugging purpose
+ */
 void Ec::debug_record_info() {
     switch (debug_type) {
         case CMP_TWO_RUN:
@@ -702,6 +784,9 @@ void Ec::debug_record_info() {
     }
 }
 
+/**
+ * For debugging purpose, and to update current thread register after each run
+ */
 void Ec::prepare_checking(){
     Cpu_regs regs = current->regs;
     if (Pe::inState1){
