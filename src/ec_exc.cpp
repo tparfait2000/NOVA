@@ -440,6 +440,7 @@ void Ec::check_memory(PE_stopby from) {
         reset_all();
         return;
     }
+//    trace(0, "check_memory run %d from %d name %s qce %lu:%lu count %llx", run_number, from, current->get_name(), Cow_elt::get_number(), current->get_cow_number(), Lapic::read_instCounter());     
     Ec *ec = current;
     switch (run_number) {
         case 0:

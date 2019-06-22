@@ -18,7 +18,6 @@
 #include "queue.hpp"
 #include "vtlb.hpp"
 #include "hpt.hpp"
-#include "pd.hpp"
 
 class Cow_elt {
     friend class Queue<Cow_elt>;
@@ -53,10 +52,10 @@ public:
 
     Cow_elt &operator=(Cow_elt const &);
 
-    static size_t get_number() { return number; }
+    static size_t get_number() { return cow_elts.size(); }
 
     static void resolve_cow_fault(Vtlb*, Hpt*, mword virt, Paddr phys, mword attr);
-    static bool is_mapped_elsewhere(Paddr, Cow_elt*);
+    static Cow_elt* is_mapped_elsewhere(Paddr);
     static void copy_frames(Cow_elt*, void*);
     static void remove_cow(Vtlb*, Hpt*, mword virt, Paddr phys, mword attr);
 
@@ -68,6 +67,8 @@ public:
     static void commit();
     static void restore_state1();
     static void rollback();
+    static void place_phys0(bool);
+    static bool is_cowed(mword);
     
 private:
     Page_type type;

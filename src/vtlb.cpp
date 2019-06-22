@@ -264,6 +264,7 @@ bool Vtlb::is_cow(mword virt, mword gpa, mword error){
 
             if(size && (tlb->addr() == (hpa & ~PAGE_MASK))){ 
                 Counter::vtlb_cow++;   
+                assert(virt != Pe_stack::stack); 
                 Cow_elt::resolve_cow_fault(tlb, nullptr, virt, tlb->addr(), tlb->attr());
                 return true;            
             } else {
@@ -309,18 +310,18 @@ size_t Vtlb::vtlb_lookup(mword v, Paddr &p, mword &a) {
     }
 }
 
-size_t Vtlb::gla_to_gpa (Exc_regs *regs, mword gla, mword &gpa)
+size_t Vtlb::gla_to_gpa (mword cr0_shadow, mword cr3_shadow, mword cr4_shadow, mword gla, mword &gpa)
 {
-    if (EXPECT_FALSE (!(regs->cr0_shadow & Cpu::CR0_PG))) {
+    if (EXPECT_FALSE (!(cr0_shadow & Cpu::CR0_PG))) {
         gpa = gla;
         return ~0UL;
     }
 
-    bool pse = regs->cr4_shadow & (Cpu::CR4_PSE | Cpu::CR4_PAE);
+    bool pse = cr4_shadow & (Cpu::CR4_PSE | Cpu::CR4_PAE);
     
     unsigned lev = 2;
 
-    for (uint32 e, *pte= reinterpret_cast<uint32 *>(regs->cr3_shadow & ~PAGE_MASK);; pte = reinterpret_cast<uint32 *>(e & ~PAGE_MASK)) {
+    for (uint32 e, *pte= reinterpret_cast<uint32 *>(cr3_shadow & ~PAGE_MASK);; pte = reinterpret_cast<uint32 *>(e & ~PAGE_MASK)) {
 
         unsigned shift = --lev * 10 + PAGE_BITS;
         pte += gla >> shift & ((1UL << 10) - 1);
@@ -349,42 +350,50 @@ size_t Vtlb::gla_to_gpa (Exc_regs *regs, mword gla, mword &gpa)
  * make it writable so that it will not triggers cow fault.
  * @param gpa
  */
-void Vtlb::reserve_stack(mword gpa){
-    unsigned l = max();
-    unsigned b = bpl();
-    unsigned shift = --l * b + PAGE_BITS;
-    Vtlb *tlb = static_cast<Vtlb *> (this) ;
-    mword rsp = Vmcs::read(Vmcs::GUEST_RSP);
-    mword a;
-    tlb += rsp >> shift & ((1UL << b) - 1);
-
-    for (;; tlb = static_cast<Vtlb *> (Buddy::phys_to_ptr(tlb->addr())) + (rsp >> (--l * b + PAGE_BITS) & ((1UL << b) - 1))) {
-        if (EXPECT_FALSE(!tlb->val))
-            break;
-       
-        if (EXPECT_FALSE(l && !tlb->super()))
-                continue; 
-        
-        size_t s = 1UL << (l * b + tlb->order());
-
-        if(!s)
-            break;
-        
-        a = tlb->attr();
-
-        if(a & TLB_COW){
-            
-            mword hpa, ept_attr;
-            size_t size = Pd::current->ept.lookup (gpa, hpa, ept_attr);
-
-//            debug_started_trace(0, "save_guest_stack rsp: %lx tlb->addr: %lx attr %lx gpa %lx hpa %lx size %lx", 
-//                rsp, tlb->addr(), a, gpa, hpa, size);
-            if(size && (tlb->addr() == (hpa & ~PAGE_MASK))){ 
-                Cow_elt::remove_cow(tlb, nullptr, rsp, tlb->addr(), tlb->attr());    
-            }
-        }
-//        Pe_stack::remove_cow_for_detected_stacks(this, nullptr);
-        return;
-    }
+void Vtlb::reserve_stack(mword cr0_shadow, mword cr3_shadow, mword cr4_shadow){
     Pe_stack::stack = 0;
+    if(Pe::in_recover_from_stack_fault_mode || Pe::in_debug_mode)
+        return;
+    // The stack must always be checked except in in_recover_from_stack_fault_mode on in_debug_mode
+    mword gpa, rsp = Vmcs::read (Vmcs::GUEST_RSP);
+    size_t size_g = gla_to_gpa(cr0_shadow, cr3_shadow, cr4_shadow, rsp, gpa);
+//    debug_started_trace(0, "rsp %lx size %lx gpa %lx", rsp, s, gpa);
+    if(rsp && size_g && (size_g != ~0UL)){
+        unsigned l = max();
+        unsigned b = bpl();
+        unsigned shift = --l * b + PAGE_BITS;
+        Vtlb *tlb = static_cast<Vtlb *> (this) ;
+        mword a;
+        tlb += rsp >> shift & ((1UL << b) - 1);
+
+        for (;; tlb = static_cast<Vtlb *> (Buddy::phys_to_ptr(tlb->addr())) + (rsp >> (--l * b + PAGE_BITS) & ((1UL << b) - 1))) {
+            if (EXPECT_FALSE(!tlb->val))
+                break;
+
+            if (EXPECT_FALSE(l && !tlb->super()))
+                    continue; 
+
+            size_t s = 1UL << (l * b + tlb->order());
+
+            if(!s)
+                break;
+
+            a = tlb->attr();
+
+            if(a & TLB_COW){
+
+                mword hpa, ept_attr;
+                size_t size = Pd::current->ept.lookup (gpa, hpa, ept_attr);
+
+    //            debug_started_trace(0, "save_guest_stack rsp: %lx tlb->addr: %lx attr %lx gpa %lx hpa %lx size %lx", 
+    //                rsp, tlb->addr(), a, gpa, hpa, size);
+                if(size && (tlb->addr() == (hpa & ~PAGE_MASK))){ 
+                    Pe_stack::stack = rsp & ~PAGE_MASK;                
+                    Cow_elt::resolve_cow_fault(tlb, nullptr, rsp, tlb->addr(), tlb->attr());    
+                }
+            }
+            return;
+        }
+    }
+    return;
 }

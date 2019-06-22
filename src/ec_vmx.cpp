@@ -43,9 +43,10 @@ void Ec::vmx_exception()
 
     mword intr_info = Vmcs::read (Vmcs::EXI_INTR_INFO);
     Pe_state::set_current_pe_sub_reason(intr_info & 0x7ff);
+    mword cr0_shadow = current->regs.cr0_shadow, cr3_shadow = current->regs.cr3_shadow, cr4_shadow = current->regs.cr4_shadow; 
     mword gpa;
     if((intr_info & 0x7ff) == 0x30e && // Page fault
-            Vtlb::gla_to_gpa(&current->regs, Vmcs::read (Vmcs::EXI_QUALIFICATION), gpa) &&
+            Vtlb::gla_to_gpa(cr0_shadow, cr3_shadow, cr4_shadow, Vmcs::read (Vmcs::EXI_QUALIFICATION), gpa) &&
             current->regs.vtlb->is_cow(Vmcs::read (Vmcs::EXI_QUALIFICATION), gpa, Vmcs::read (Vmcs::EXI_INTR_ERROR))){
         ret_user_vmresume();
     } else {

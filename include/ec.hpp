@@ -38,6 +38,7 @@
 #include "vmx.hpp"
 #include "pe.hpp"
 #include "pe_state.hpp"
+#include "cow_elt.hpp"
 
 class Utcb;
 class Sm;
@@ -48,7 +49,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
     friend class Queue<Ec>;
     friend class Sc;
     friend class Pt;
-
+    friend class Cow_elt;
     private:
         void        (*cont)() ALIGNED (16);
         Cpu_regs    regs { };
@@ -73,6 +74,8 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
 
         char name[MAX_STR_LENGTH];
 
+        Queue<Cow_elt> cow_elts = {};
+        
         unsigned const evt;
         Timeout_hypercall timeout;
         mword user_utcb;
@@ -670,6 +673,7 @@ class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe>
         static void  debug_record_info();
         static void step_debug();
         static void prepare_checking();
+        size_t get_cow_number() { return cow_elts.size(); }
 
 //        void dump_regs();
 };

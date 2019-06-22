@@ -376,7 +376,8 @@ void Ec::ret_user_vmresume() {
     current->regs.vtlb->vtlb_lookup(Pe::missmatch_addr, hpa, attr);
     mword *ptr1 = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, heip)) + (heip & PAGE_MASK)/sizeof(mword);
     mword *ptr2 = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, hpa)) + (hpa & PAGE_MASK)/sizeof(mword);
-    size_t size_g = current->regs.vtlb->gla_to_gpa(&current->regs, eip, gpeip),
+    mword cr0_shadow = current->regs.cr0_shadow, cr3_shadow = current->regs.cr3_shadow, cr4_shadow = current->regs.cr4_shadow; 
+    size_t size_g = current->regs.vtlb->gla_to_gpa(cr0_shadow, cr3_shadow, cr4_shadow, eip, gpeip),
             size_h = Pd::current->ept.lookup (gpeip, ept_hpa, ept_attr);
 
     char buffer[80];
@@ -687,7 +688,7 @@ void Ec::enable_step_debug(Step_reason reason, mword fault_addr, Paddr fault_phy
         {
             uint8 *ptr = reinterpret_cast<uint8 *> (end_rip);
             if (*ptr == 0xf3 || *ptr == 0xf2) {
-                Console::print("Rep prefix detected %lx: rcx %lx", fault_addr, current->regs.REG(cx));
+                Console::print("Rep prefix detected: Step reason %d addr %lx rcx %lx", reason, fault_addr, current->regs.REG(cx));
                 in_rep_instruction = true;
                 Cpu::disable_fast_string();
             }
@@ -785,12 +786,15 @@ void Ec::save_regs(Exc_regs *r) {
 
 void Ec::save_state() {
     regs_0 = regs;
+//    Cow_elt::place_phys0(!utcb);
     Fpu::dwc_save(); // If FPU activated, save fpu state
     if (fpu)         // If fpu defined, save it 
         fpu->save_data();
     if(utcb){
         Pd::current->Space_mem::loc[Cpu::id].reserve_stack(Pd::current->quota, regs.REG(sp));
     } else {
+        mword cr0_shadow = current->regs.cr0_shadow, cr3_shadow = current->regs.cr3_shadow, cr4_shadow = current->regs.cr4_shadow; 
+        regs.vtlb->reserve_stack(cr0_shadow, cr3_shadow, cr4_shadow);
         vmx_save_state();        
     }
     copy_string(Pe::current_ec, current->get_name());
@@ -823,18 +827,6 @@ void Ec::vmx_save_state() {
     Pe::vmcsRSP_0 = Vmcs::read(Vmcs::GUEST_RSP);   
     Pe::vmcsRIP[0] = Pe::vmcsRIP_0;     
     Pe::vmcsRSP[0] = Pe::vmcsRSP_0;   
-
-    if(Pe::in_recover_from_stack_fault_mode || Pe::in_debug_mode)
-        return;
-    // The stack must always be checked except in in_recover_from_stack_fault_mode on in_debug_mode
-    mword gpa, rsp = Vmcs::read (Vmcs::GUEST_RSP);
-    size_t s = Vtlb::gla_to_gpa(&regs, rsp, gpa);
-//    debug_started_trace(0, "rsp %lx size %lx gpa %lx", rsp, s, gpa);
-    if(rsp && s && (s != ~0UL)){
-        regs.vtlb->reserve_stack(gpa);
-    } else {
-        Pe_stack::stack = 0;        
-    }
 }
 
 void Ec::vmx_restore_state() {

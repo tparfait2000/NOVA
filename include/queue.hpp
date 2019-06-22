@@ -72,4 +72,17 @@ class Queue
 
             return true;
         }
+        
+        ALWAYS_INLINE
+        inline uint32 size ()
+        {
+            T *c = headptr, *n = nullptr;
+            uint32 count = 0;
+            while(c) {
+                count++;
+                n = c->next;
+                c = (c == n || n == headptr) ? nullptr : n;
+            }
+            return count;
+        }
 };

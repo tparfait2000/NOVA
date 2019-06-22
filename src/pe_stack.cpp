@@ -50,12 +50,12 @@ void Pe_stack::remove_cow_for_detected_stacks(Vtlb* tlb, Hpt* hpt){
         if(hpt){
             assert(!tlb);
             Hpt *e = ps->hpt;
-            Cow_elt::remove_cow(nullptr, e, v, phys, a);       
+            Cow_elt::resolve_cow_fault(nullptr, e, v, phys, a);       
         }
         if(tlb){
             assert(!hpt);
             Vtlb *t = ps->tlb;
-            Cow_elt::remove_cow(t, nullptr, v, phys, a);                   
+            Cow_elt::resolve_cow_fault(t, nullptr, v, phys, a);                   
         }
         Pe_stack::destroy(ps, Pd::kern.quota);
     }

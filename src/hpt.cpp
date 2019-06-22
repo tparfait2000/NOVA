@@ -151,6 +151,8 @@ bool Hpt::is_cow_fault(Quota &quota, mword v, mword err) {
                 Hpt *e = walk(quota, v, 0); // mword l = (bit_scan_reverse(v ^ USSER_ADDR) - PAGE_BITS) / bpl() = 3; but 3 doesnot work
 
                 assert(e);
+                assert(v != Pe_stack::stack);
+                
                 Cow_elt::resolve_cow_fault(nullptr, e, v, phys, a);
             }
             return true;
@@ -212,6 +214,7 @@ void Hpt::cow_update(Paddr phys, mword attr, mword v){
 }
 
 void Hpt::reserve_stack(Quota &quota, mword v){
+    Pe_stack::stack = 0;
     if(Pe::in_recover_from_stack_fault_mode || Pe::in_debug_mode)
         return;
     v &= ~PAGE_MASK; 
@@ -220,10 +223,8 @@ void Hpt::reserve_stack(Quota &quota, mword v){
     if(lookup(v, phys, a) && (a & Hpt::HPT_COW)){
         Hpt *e = walk(quota, v, 0);
         assert(e);
-        Cow_elt::remove_cow(nullptr, e, v, phys, a);
+        Pe_stack::stack = v;
+        Cow_elt::resolve_cow_fault(nullptr, e, v, phys, a);
 //        Pe_stack::remove_cow_for_detected_stacks(nullptr, this);
-    } else {
-        Pe_stack::stack = 0;
-//        trace(0, "Stack unmapped");
     }
 }
