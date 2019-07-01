@@ -497,7 +497,7 @@ void Ec::ret_user_vmrun() {
 }
 
 void Ec::idle() {
-    Pe::dump(true);
+    Pe::dump(false);
     for (;;) {
 
         mword hzd = Cpu::hazard & (HZD_RCU | HZD_SCHED);
@@ -844,8 +844,8 @@ void Ec::save_regs(Exc_regs *r) {
  */
 void Ec::save_state0() {
     regs_0 = regs;
-//    Pe::add_pe(new (Pd::kern.quota)Pe(current->get_name(), current->getPd()->get_name(), 
-//            regs.REG(ip), 0, 0, ""));
+    Pe::add_pe(new (Pd::kern.quota)Pe(current->get_name(), current->getPd()->get_name(), 
+            regs.REG(ip), 0, 0, ""));
     Cow_elt::place_phys0();
     Fpu::dwc_save(); // If FPU activated, save fpu state
     if (fpu)         // If fpu defined, save it 
@@ -1309,32 +1309,6 @@ bool Ec::single_step_finished() {
     return !(compare_regs_mute() || pd->compare_memory_mute());
 }
 
-void Ec::free_recorded_pe() {
-//    if(str_equal(current->get_name(), "fb_drv"))
-//        return;
-    Pe *pe = nullptr;
-    while (Queue<Pe>::dequeue(pe = Queue<Pe>::head())) {
-        Pe::destroy(pe, Pd::kern.quota);
-    }
-}
-
-void Ec::dump_pe(bool all){
-    Pe *pe = current->Queue<Pe>::head();
-    if(!pe)
-        return;
-    do {
-        if(all || pe->is_marked())
-            pe->print_current();
-        pe = pe->get_next();
-    } while(pe != current->Queue<Pe>::head());
-}
-
-void Ec::mark_pe_tail(){
-    Pe *tail = Queue<Pe>::tail();        
-    assert(tail);
-    tail->mark(); 
-}
-
 void Ec::count_interrupt(mword vector){
     switch (vector) {
         case 0 ... VEC_GSI - 1:
@@ -1410,7 +1384,7 @@ void Ec::check_instr_number_equals(int from){
         instr_number_comp, from, current->get_name(), current->getPd()->get_name(), counter1,
                 counter2, to_print, nb_inst_single_step);
     }
-    current->dump_pe();
+    Pe::dump();
 }
 
 void Ec::step_debug(){

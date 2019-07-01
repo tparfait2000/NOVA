@@ -99,6 +99,17 @@ Pe_state::Pe_state(const Pe_state& orig) : retirement_counter(orig.retirement_co
     number++;
 }
 
+Pe_state::Pe_state(size_t c, int mm, mword pa, Paddr p0, Paddr p1, Paddr p2, mword pta, mword pti) : 
+    count(c), page_twin_index(pti), missmatch_addr(mm), page_addr(pa), page_twin_addr(pta), 
+        phys0(p0), phys1(p1), phys2(p2), prev(nullptr), next(nullptr){
+    type = PE_STATE_RESOLVE_COWFAULT;
+}
+
+Pe_state::Pe_state(mword addr, Paddr p0, Paddr p1, Paddr p2, mword ptap) : page_addr_placed(addr), 
+        page_twin_addr_placed(ptap), phys0_placed(p0), phys1_placed(p1), phys2_placed(p2),
+        prev(nullptr), next(nullptr){
+    type = PE_STATE_PLACE_PHYS0;    
+}
 
 Pe_state::~Pe_state() {
     number--;

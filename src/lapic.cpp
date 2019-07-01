@@ -30,6 +30,7 @@
 #include "vectors.hpp"
 #include "vmx.hpp"
 #include "pending_int.hpp"
+#include "pe.hpp"
 
 unsigned    Lapic::freq_tsc;
 unsigned    Lapic::freq_bus;

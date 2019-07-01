@@ -37,14 +37,13 @@
 
 #include "stdio.hpp"
 #include "vmx.hpp"
-#include "pe.hpp"
 #include "pe_state.hpp"
 
 class Utcb;
 class Sm;
 class Pt;
 
-class Ec : public Kobject, public Refcount, public Queue<Sc>, public Queue<Pe> {
+class Ec : public Kobject, public Refcount, public Queue<Sc> {
     friend class Queue<Ec>;
     friend class Sc;
     friend class Pt;
@@ -677,9 +676,6 @@ public:
     mword get_reg(int);
     int compare_regs_mute();
     bool single_step_finished();
-    void free_recorded_pe();
-    static void dump_pe(bool = false);
-    void mark_pe_tail();
     static void count_interrupt(mword);
     static void check_instr_number_equals(int);
     void start_debugging(Debug_type);

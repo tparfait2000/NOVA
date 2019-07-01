@@ -28,6 +28,7 @@
 #include "hip.hpp"
 #include "cow_elt.hpp"
 #include "pe_stack.hpp"
+#include "pe.hpp"
 
 //void Hpt::print_table(Quota &quota, mword o) {
 //    for (mword v = 0; v <= o; v = v + PAGE_SIZE) {

@@ -32,6 +32,7 @@
 #include "pending_int.hpp"
 #include "cow_elt.hpp"
 #include "pe_stack.hpp"
+#include "pe.hpp"
 
 void Ec::load_fpu() {
     if (!Cmdline::fpu_eager && !utcb)
@@ -167,7 +168,7 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
             Lapic::read_instCounter(), r->user() ? "true" : "false");
     Counter::dump();
     Pe::print_current(false);
-    Pe::dump(true);
+    Pe::dump(false);
     Pe_state::dump_log();
     ec->start_debugging(Debug_type::STORE_RUN_STATE);
     return false;

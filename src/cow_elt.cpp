@@ -319,10 +319,14 @@ void Cow_elt::commit() {
 //        trace(0, "count %lu MM %x c %lx %lx %lx %lx ce %lx  index %lu", count, missmatch_addr, 
 //                c->page_addr, c->old_phys, c->new_phys[0], c->new_phys[1], reinterpret_cast<mword>(
 //                ce ? ce->page_addr : 0), reinterpret_cast<mword>(ce ? ce_index + count : 0));
+        Pe::add_pe_state(new(Pd::kern.quota) Pe_state(count, missmatch_addr, 
+                c->page_addr, c->old_phys, c->new_phys[0], c->new_phys[1], reinterpret_cast<mword>(
+                ce ? ce->page_addr : 0), reinterpret_cast<mword>(ce ? ce_index + count : 0)));
         count++;
     }
 //    trace(0, "============================================ Ec %s ec_cow_elts_size %lu", 
 //            Ec::current->get_name(), current_ec_cow_elts_size);
+    Pe::set_ss_val(current_ec_cow_elts_size);
     current_ec_cow_elts_size = 0;
     if (Pe::in_recover_from_stack_fault_mode) {
         Pe::in_recover_from_stack_fault_mode = false;
@@ -448,11 +452,14 @@ void Cow_elt::place_phys0() {
             Pd::current->cow_elts.dequeue(de);
             cow_elts.enqueue(de);
             current_ec_cow_elts_size++;
+            Pe::add_pe_state(new(Pd::kern.quota) Pe_state(d->page_addr, d->old_phys, d->new_phys[0], 
+                    d->new_phys[1], reinterpret_cast<mword>(de ? de->page_addr : 0)));
         }
 //        trace(0, "Placing %lu d %lx %lx %lx %lx de %lx", current_ec_cow_elts_size, 
 //                d->page_addr, d->old_phys, d->new_phys[0], d->new_phys[1], reinterpret_cast<mword>(
-//                de ? de->page_addr : 0));        
+//                de ? de->page_addr : 0)); 
     }
+    Pe::set_val(current_ec_cow_elts_size);
 }
 
 /**

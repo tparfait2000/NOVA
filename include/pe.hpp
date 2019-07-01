@@ -19,6 +19,7 @@
 #include "console.hpp"
 #include "regs.hpp"
 #include "stdio.hpp"
+#include "pe_state.hpp"
 
 class Pe {
     friend class Queue<Pe>;
@@ -35,13 +36,13 @@ class Pe {
     Pe* prev;
     Pe* next;
     size_t numero = 0;
-    bool marked = false;
     mword attr = 0; 
     mword val = 0;
     mword ss_val = 0;
     int from1 = 0, from2 = 0;
     mword mmio_v = 0;
     Paddr mmio_p = 0;
+    Queue<Pe_state> pe_states = {};
     
 public:
     /**
@@ -164,13 +165,19 @@ public:
         }
     }
 
-    void mark();
-    void print(){
-        trace(0,"%s PD: %s EC %s rip %lx *v %lx:%lx from %d:%d mmio %lx:%lx cr3 %lx numero %lu", type, pd, ec, rip, val, ss_val, from1, from2, mmio_v, mmio_p, cr3, numero);        
-    };
-    
-    bool is_marked() { return marked; }
-    
+    void print(bool from_head = false){
+        trace(0,"PD: %s EC %s rip %lx cow_elts_size %lx:%lx from %d:%d mmio %lx:%lx cr3 %lx numero %lu "
+                "pe_state %lu", pd, ec, rip, val, ss_val, from1, from2, mmio_v, mmio_p, cr3, 
+                numero, pe_states.size());        
+        Pe_state *pe_state = from_head ? pe_states.head() : pe_states.tail(), *end = from_head ? pe_states.head() : pe_states.tail(), 
+            *n = nullptr;
+        while(pe_state) {
+            pe_state->print();
+            n = from_head ? pe_state->next : pe_state->prev;
+            pe_state = (pe_state == n || n == end) ? nullptr : n;
+        }
+    }
+        
     static size_t get_number(){
         return number;
     }
@@ -179,7 +186,7 @@ public:
     
     static void free_recorded_pe();
     
-    static void dump(bool = false);
+    static void dump(bool = true);
     
     static void reset_counter();
     
@@ -192,4 +199,6 @@ public:
     static void set_froms(int, int);
     
     static void set_mmio(mword, Paddr);
+    
+    static void add_pe_state(Pe_state* p);
 };

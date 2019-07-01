@@ -25,6 +25,7 @@
 #include "vectors.hpp"
 #include "vmx.hpp"
 #include "vtlb.hpp"
+#include "pe.hpp"
 
 void Ec::vmx_exception()
 {

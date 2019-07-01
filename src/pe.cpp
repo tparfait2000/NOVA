@@ -67,10 +67,6 @@ Pe::~Pe() {
     number--;
 }
 
-void Pe::mark(){
-    marked = true;
-}
-
 void Pe::add_pe(Pe* pe){
     pes.enqueue(pe);
 }
@@ -82,14 +78,14 @@ void Pe::free_recorded_pe() {
     }
 }
 
-void Pe::dump(bool all){   
+void Pe::dump(bool from_head){   
     trace(0, "PE nb %lu", number);
-    Pe *p = pes.head(), *head = pes.head(), *n = nullptr;
+    Pe *p = from_head ? pes.head() : pes.tail(), *end = from_head ? pes.head() : pes.tail(), 
+            *n = nullptr;
     while(p) {
-        if(all || p->is_marked())
-            p->print();
-        n = p->next;
-        p = (p == n || n == head) ? nullptr : n;
+        p->print(from_head);
+        n = from_head ? p->next : p->prev;
+        p = (p == n || n == end) ? nullptr : n;
     }
 }
 
@@ -174,4 +170,10 @@ void Pe::set_mmio(mword v, Paddr p){
         pe->mmio_v = v;
         pe->mmio_p = p;
     }
+}
+
+void Pe::add_pe_state(Pe_state* pe_state){
+    Pe *p = pes.tail();
+    assert(p);
+    p->pe_states.enqueue(pe_state);  
 }
