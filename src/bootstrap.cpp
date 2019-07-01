@@ -52,7 +52,7 @@ void bootstrap()
         root_sc->remote_enqueue();
     }
 
-//    Lapic::activate_pmi();
+    Lapic::activate_pmi();
 //    Ec::step_debug();
     Sc::schedule();
 }

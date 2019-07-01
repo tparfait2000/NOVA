@@ -55,7 +55,8 @@ class Counter
         static unsigned pio             CPULOCAL;
         static unsigned mmio            CPULOCAL;
         static uint64   cycles_idle     CPULOCAL;
-
+        static unsigned init           CPULOCAL;
+        
         static void dump();
 
         ALWAYS_INLINE

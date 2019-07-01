@@ -312,7 +312,7 @@ public:
     static uint8 run_number, launch_state, step_reason, debug_nb, debug_type, 
     replaced_int3_instruction, replaced_int3_instruction2;
     static bool ec_debug, glb_debug, hardening_started, in_rep_instruction, not_nul_cowlist, 
-    no_further_check, first_run_advanced;
+    no_further_check, first_run_advanced, stop_optimisation;
     static int prev_reason, previous_ret, nb_try, reg_diff;
     static const char* regs_name_table[];
 

@@ -138,6 +138,7 @@ Cow_elt* Cow_elt::is_mapped_elsewhere(Paddr phys) {
             trace_no_newline(COW_FAULT, "Is already mapped in Cow_elts::cow_elts: "
                     "c->old_phys == phys : virt %lx Phys:%lx new_phys[0]:%lx new_phys[1]:%lx",
                     c->page_addr, c->old_phys, c->new_phys[0], c->new_phys[1]);
+            assert(!c->v_is_mapped_elsewhere);
             return c;
         }
         n = c->next;
@@ -315,11 +316,13 @@ void Cow_elt::commit() {
         if (c->hpt) {
             c->hpt->cow_update(old_phys, c->attr, c->page_addr);
         }
-        trace(0, "count %lu MM %x c %lx ce %lx index %lu", count, missmatch_addr, c->page_addr, 
-                reinterpret_cast<mword>(ce ? ce->page_addr : 0), reinterpret_cast<mword>(ce ? ce_index + count : 0));
+//        trace(0, "count %lu MM %x c %lx %lx %lx %lx ce %lx  index %lu", count, missmatch_addr, 
+//                c->page_addr, c->old_phys, c->new_phys[0], c->new_phys[1], reinterpret_cast<mword>(
+//                ce ? ce->page_addr : 0), reinterpret_cast<mword>(ce ? ce_index + count : 0));
         count++;
     }
-    trace(0, "============================================ Ec %s ec_cow_elts_size %lu",Ec::current->get_name(), current_ec_cow_elts_size);
+//    trace(0, "============================================ Ec %s ec_cow_elts_size %lu", 
+//            Ec::current->get_name(), current_ec_cow_elts_size);
     current_ec_cow_elts_size = 0;
     if (Pe::in_recover_from_stack_fault_mode) {
         Pe::in_recover_from_stack_fault_mode = false;
@@ -382,26 +385,73 @@ void Cow_elt::rollback() {
  * updating page table entries of previous COW with the allocated frame1
  * @param is_vcpu : true if VM, false ordinary process
  */
-void Cow_elt::place_phys0(bool is_vcpu) {
+void Cow_elt::place_phys0() {
     assert(is_empty());
-    if (str_equal("init", Pd::current->get_name())) {
-        trace(0, "INIT Pe_num %lu", Pe::get_number());
-    }
     Cow_elt *d = nullptr;
+//    if (str_equal("init", Pd::current->get_name())) {
+//        trace(0, "INIT Pe_num %lu", Pe::get_number());
+//        Counter::init++;
+//        if(Counter::init > 1)
+//            Ec::stop_optimisation = true;
+//    } 
+//    else {
+//        if(Ec::stop_optimisation){
+//            while (Pd::current->cow_elts.dequeue(d = Pd::current->cow_elts.head())) {
+//                destroy(d, Pd::kern.quota);
+//            }
+//            Ec::stop_optimisation = false;
+//            Counter::init = 0;
+//            return;
+//        }
+//    }
+//    if(Pe::get_number() == 5928){
+//        while (Pd::current->cow_elts.dequeue(d = Pd::current->cow_elts.head())) {
+//            if(d->page_addr == 0x4d000) { 
+//                mword a = d->attr | Hpt::HPT_W;
+//                a &= ~Hpt::HPT_COW;
+//                d->hpt->cow_update(d->new_phys[0], a, d->page_addr);
+//                cow_elts.enqueue(d);
+//                current_ec_cow_elts_size++;
+//            } else {
+//                destroy(d, Pd::kern.quota);
+//            }
+//        }
+//        return;        
+//    }
     while (Pd::current->cow_elts.dequeue(d = Pd::current->cow_elts.head())) {
-        if (is_vcpu) {
-            mword a = d->attr | Vtlb::TLB_W;
-            a &= ~Vtlb::TLB_COW;
-            d->vtlb->cow_update(d->new_phys[0], a);
-//            debug_started_trace(0, "Cow error  v: %lx  phys: %lx attr %lx ce: %p  phys1: 
-//            %lx  phys2: %lx", virt, phys, a, ce, ce->new_phys[0], ce->new_phys[1]);        
-        } else {
+        void *phys_to_ptr = Hpt::remap_cow(Pd::kern.quota, d->old_phys, 3 * PAGE_SIZE); 
+        copy_frames(d->new_phys[0], d->new_phys[1], phys_to_ptr);
+        if (d->hpt) {
             mword a = d->attr | Hpt::HPT_W;
             a &= ~Hpt::HPT_COW;
             d->hpt->cow_update(d->new_phys[0], a, d->page_addr);
         }
+        if (d->vtlb) { // virt is not mapped in the kernel page table
+            mword a = d->attr | Vtlb::TLB_W;
+            a &= ~Vtlb::TLB_COW;
+            d->vtlb->cow_update(d->new_phys[0], a);
+        }
         cow_elts.enqueue(d);
         current_ec_cow_elts_size++;
+        Cow_elt *de = d->v_is_mapped_elsewhere;
+        if (de) { 
+            if (de->hpt) {
+                mword a = de->attr | Hpt::HPT_W;
+                a &= ~Hpt::HPT_COW;
+                de->hpt->cow_update(de->new_phys[0], a, de->page_addr);
+            }
+            if (de->vtlb) { // virt is not mapped in the kernel page table
+                mword a = de->attr | Vtlb::TLB_W;
+                a &= ~Vtlb::TLB_COW;
+                de->vtlb->cow_update(de->new_phys[0], a);
+            }
+            Pd::current->cow_elts.dequeue(de);
+            cow_elts.enqueue(de);
+            current_ec_cow_elts_size++;
+        }
+//        trace(0, "Placing %lu d %lx %lx %lx %lx de %lx", current_ec_cow_elts_size, 
+//                d->page_addr, d->old_phys, d->new_phys[0], d->new_phys[1], reinterpret_cast<mword>(
+//                de ? de->page_addr : 0));        
     }
 }
 

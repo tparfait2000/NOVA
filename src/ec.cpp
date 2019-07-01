@@ -45,7 +45,7 @@ mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end
         Ec::tscp_rcx1 = 0, Ec::tscp_rcx2 = 0;
 bool Ec::ec_debug = false, Ec::glb_debug = false, Ec::hardening_started = false, 
         Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false, Ec::no_further_check = false, 
-        Ec::first_run_advanced = false;
+        Ec::first_run_advanced = false, Ec::stop_optimisation = false;
 uint64 Ec::exc_counter = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::counter1 = 0, 
         Ec::counter2 = 0, Ec::debug_compteur = 0, Ec::count_je = 0, Ec::nbInstr_to_execute = 0,
         Ec::nb_inst_single_step = 0, Ec::second_run_instr_number = 0, 
@@ -844,9 +844,9 @@ void Ec::save_regs(Exc_regs *r) {
  */
 void Ec::save_state0() {
     regs_0 = regs;
-    Cow_elt::place_phys0(!utcb);
-    Pe::add_pe(new (Pd::kern.quota)Pe(current->get_name(), current->getPd()->get_name(), 
-            regs.REG(ip), 0, 0, ""));
+//    Pe::add_pe(new (Pd::kern.quota)Pe(current->get_name(), current->getPd()->get_name(), 
+//            regs.REG(ip), 0, 0, ""));
+    Cow_elt::place_phys0();
     Fpu::dwc_save(); // If FPU activated, save fpu state
     if (fpu)         // If fpu defined, save it 
         fpu->save_data();
