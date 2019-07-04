@@ -239,13 +239,7 @@ public:
     mword io_addr = {}, io_attr = {};
     Paddr io_phys = {};
 
-    mword debug = 0;
-
-    enum Debug_scope {
-        private_debug = 1UL << 0,
-        pd_debug = 1UL << 1,
-        global_debug = 1UL << 2,
-    };
+    bool debug = false;
 
     enum Launch_type {
         UNLAUNCHED = 0,
@@ -310,7 +304,7 @@ public:
     first_run_instr_number, distance_instruction;
     static uint8 run_number, launch_state, step_reason, debug_nb, debug_type, 
     replaced_int3_instruction, replaced_int3_instruction2;
-    static bool ec_debug, glb_debug, hardening_started, in_rep_instruction, not_nul_cowlist, 
+    static bool hardening_started, in_rep_instruction, not_nul_cowlist, 
     no_further_check, first_run_advanced, stop_optimisation;
     static int prev_reason, previous_ret, nb_try, reg_diff;
     static const char* regs_name_table[];
@@ -685,6 +679,8 @@ public:
     //        size_t get_cow_number() { return cow_elts.size(); }
     //        bool is_cow_elts_empty() { return !cow_elts.head(); }
     //        void dump_regs();
+    static bool is_debug_requested_from_user_space() { return Console::log_on || 
+            current->pd->is_debug() || current->debug; }
 private:
     static bool handle_deterministic_exception(mword, PE_stopby&);
 };

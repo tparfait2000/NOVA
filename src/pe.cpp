@@ -15,6 +15,8 @@
 #include "pd.hpp"
 #include "string.hpp"
 #include "regs.hpp"
+#include "ec.hpp"
+#include "lapic.hpp"
 Slab_cache Pe::cache(sizeof (Pe), 32);
 size_t Pe::number = 0;
 bool Pe::inState1 = false, Pe::in_recover_from_stack_fault_mode = false, Pe::in_debug_mode = false;
@@ -55,7 +57,8 @@ mword Pe::vmcsRIP[], Pe::vmcsRSP[], Pe::vmcsRIP_0, Pe::vmcsRIP_1, Pe::vmcsRIP_2,
  * @param n : 
  * @param t
  */
-Pe::Pe(const char* pd_name, const char* ec_name, mword eip, mword cr, unsigned n, const char* t) : rip(eip), cr3(cr), pe_number(n), prev(nullptr), next(nullptr){
+Pe::Pe(const char* pd_name, const char* ec_name, mword eip, mword cr, unsigned n, const char* t) : 
+rip0(eip), cr3(cr), pe_number(n), prev(nullptr), next(nullptr){
     copy_string(ec, ec_name);
     copy_string(pd, pd_name);  
     copy_string(type, t);
@@ -67,7 +70,11 @@ Pe::~Pe() {
     number--;
 }
 
-void Pe::add_pe(Pe* pe){
+void Pe::add_pe(const char* pd_name, const char* ec_name, mword eip, mword cr, unsigned n, const 
+        char* t){
+    if(!Ec::current->is_debug_requested_from_user_space())
+        return;
+    Pe* pe = new (Pd::kern.quota)Pe(pd_name, ec_name, eip, cr, n, t);
     pes.enqueue(pe);
 }
 
@@ -83,7 +90,7 @@ void Pe::dump(bool from_head){
     Pe *p = from_head ? pes.head() : pes.tail(), *end = from_head ? pes.head() : pes.tail(), 
             *n = nullptr;
     while(p) {
-        p->print(from_head);
+        p->print(true);
         n = from_head ? p->next : p->prev;
         p = (p == n || n == end) ? nullptr : n;
     }
@@ -144,6 +151,8 @@ void Pe::counter(char* str){
 }
 
 void Pe::set_val(mword v){
+    if(!Ec::current->is_debug_requested_from_user_space())
+        return;    
     Pe *p = pes.tail();
     if(p)
         p->val = v;
@@ -151,20 +160,28 @@ void Pe::set_val(mword v){
 
 
 void Pe::set_ss_val(mword v){
-    Pe *p = pes.tail();
+    if(!Ec::current->is_debug_requested_from_user_space())
+        return;    
+     Pe *p = pes.tail();
     if(p)
         p->ss_val = v;
 }
 
-void Pe::set_froms(int f1, int f2){
-     Pe *p = pes.tail();
+void Pe::set_froms(uint8 run, int from){
+    if(!Ec::current->is_debug_requested_from_user_space())
+        return;    
+    Pe *p = pes.tail();
     if(p){
-        p->from1 = f1;
-        p->from2 = f2;
+        if (run) 
+            p->from1 = from;
+        else
+            p->from2 = from;
     }
 }
 
 void Pe::set_mmio(mword v, Paddr p){
+    if(!Ec::current->is_debug_requested_from_user_space())
+        return;    
     Pe *pe = pes.tail();
     if(pe){
         pe->mmio_v = v;
@@ -172,8 +189,47 @@ void Pe::set_mmio(mword v, Paddr p){
     }
 }
 
-void Pe::add_pe_state(Pe_state* pe_state){
+void Pe::add_pe_state(size_t c, int mm, mword pa, Paddr p0, Paddr p1, Paddr p2, mword pta,
+        mword pti){
+    if(!Ec::current->is_debug_requested_from_user_space())
+        return;    
     Pe *p = pes.tail();
     assert(p);
+    Pe_state* pe_state = new(Pd::kern.quota) Pe_state(c, mm, pa, p0, p1, p2, pta, pti);
     p->pe_states.enqueue(pe_state);  
+}
+
+void Pe::add_pe_state(mword addr, Paddr p0, Paddr p1, Paddr p2, mword ptap){
+    if(!Ec::current->is_debug_requested_from_user_space())
+        return;    
+    Pe *p = pes.tail();
+    assert(p);
+    Pe_state* pe_state = new(Pd::kern.quota) Pe_state(addr, p0, p1, p2, ptap);
+    p->pe_states.enqueue(pe_state);  
+}
+
+void Pe::add_pe_state(mword eip, uint8 run_number, mword interrupt_number){
+    if(!Ec::current->is_debug_requested_from_user_space())
+        return;    
+    Pe *p = pes.tail();
+    assert(p);
+    Pe_state* pe_state = new(Pd::kern.quota) Pe_state(eip, run_number, interrupt_number, 
+            Lapic::read_instCounter());
+    p->pe_states.enqueue(pe_state);  
+}
+
+void Pe::set_rip1(mword r){
+    if(!Ec::current->is_debug_requested_from_user_space())
+        return;    
+     Pe *p = pes.tail();
+    assert(p);
+    p->rip1 = r;
+}
+
+void Pe::set_rip2(mword r){
+    if(!Ec::current->is_debug_requested_from_user_space())
+        return;    
+     Pe *p = pes.tail();
+    assert(p);
+    p->rip2 = r;
 }

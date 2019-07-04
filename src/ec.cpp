@@ -43,9 +43,8 @@
 
 mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx,
         Ec::tscp_rcx1 = 0, Ec::tscp_rcx2 = 0;
-bool Ec::ec_debug = false, Ec::glb_debug = false, Ec::hardening_started = false, 
-        Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false, Ec::no_further_check = false, 
-        Ec::first_run_advanced = false, Ec::stop_optimisation = false;
+bool Ec::hardening_started = false, Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false, 
+        Ec::no_further_check = false, Ec::first_run_advanced = false, Ec::stop_optimisation = false;
 uint64 Ec::exc_counter = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::counter1 = 0, 
         Ec::counter2 = 0, Ec::debug_compteur = 0, Ec::count_je = 0, Ec::nbInstr_to_execute = 0,
         Ec::nb_inst_single_step = 0, Ec::second_run_instr_number = 0, 
@@ -618,7 +617,7 @@ void Ec::die(char const *reason, Exc_regs *r) {
     bool const pf_in_kernel = str_equal(reason, "#PF (kernel)");
 //    prepare_checking();    
 //    Pe::print_current(current->utcb ? false : true);
-    Pe::dump(true);
+    Pe::dump(false);
     if (current->utcb || show || pf_in_kernel) {
 //        if (show || !strmatch(reason, "PT not found", 12))
             trace(0, "Killed EC:%s SC:%p V:%#lx CS:%#lx IP:%#lx(%#lx) CR2:%#lx ERR:%#lx (%s) %s",
@@ -834,8 +833,7 @@ void Ec::save_regs(Exc_regs *r) {
     last_rcx = r->REG(cx);
     exc_counter++;
     count_interrupt(r->vec);
-//    Pe_state::add_pe_state(new(Pd::kern.quota) Pe_state(r, Lapic::read_instCounter(), 
-//            run_number, r->vec));
+//    Pe::add_pe_state(current->regs.REG(ip), run_number, r->vec);
     return;
 }
 
@@ -844,8 +842,7 @@ void Ec::save_regs(Exc_regs *r) {
  */
 void Ec::save_state0() {
     regs_0 = regs;
-    Pe::add_pe(new (Pd::kern.quota)Pe(current->get_name(), current->getPd()->get_name(), 
-            regs.REG(ip), 0, 0, ""));
+    Pe::add_pe(getPd()->get_name(), get_name(), regs.REG(ip), 0, 0, "");
     Cow_elt::place_phys0();
     Fpu::dwc_save(); // If FPU activated, save fpu state
     if (fpu)         // If fpu defined, save it 
@@ -1033,8 +1030,9 @@ int Ec::compare_regs(int reason) {
     if (regs_2.r11 != regs_1.r11) {
         // resume flag  or trap flag may be set if reason is step-mode
         // but it is unclear why. Must be fixed later
-        if (((regs_2.r11 | 1u << 16) == regs_1.r11) || (regs_2.r11 == (regs_1.r11 | 1u << 8)))
-            return 0;
+        if (((regs_2.r11 | 1u << 16) == regs_1.r11) || (regs_2.r11 == (regs_1.r11 | 1u << 8))){
+            // Nothing to do, just continue;
+        }
         else {
             regs_missmatch_print("R11", regs_0.r11, regs_1.r11, regs_2.r11);
             return 11;
@@ -1152,7 +1150,7 @@ void Ec::debug_func(const char* source) {
 }
 
 void Ec::debug_print(const char* source) {
-    if (current->getPd()->pd_debug || current->debug)
+    if (current->pd->is_debug() || current->debug)
         debug_func(source);
     return;
 

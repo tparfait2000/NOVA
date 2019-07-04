@@ -30,7 +30,7 @@ class Pe {
     char ec[MAX_STR_LENGTH];
     char pd[MAX_STR_LENGTH];
     char type[MAX_STR_LENGTH];
-    mword rip;
+    mword rip0, rip1 = 0, rip2 = 0;
     mword cr3;
     unsigned pe_number;
     Pe* prev;
@@ -166,10 +166,11 @@ public:
     }
 
     void print(bool from_head = false){
-        trace(0,"PD: %s EC %s rip %lx cow_elts_size %lx:%lx from %d:%d mmio %lx:%lx cr3 %lx numero %lu "
-                "pe_state %lu", pd, ec, rip, val, ss_val, from1, from2, mmio_v, mmio_p, cr3, 
-                numero, pe_states.size());        
-        Pe_state *pe_state = from_head ? pe_states.head() : pe_states.tail(), *end = from_head ? pe_states.head() : pe_states.tail(), 
+        trace(0,"PD: %s EC %s rip %lx rip1 %lx rip2 %lx cow_elts_size %lx:%lx numero %lu from %d:%d "
+                "mmio %lx:%lx cr3 %lx pe_state %lu", pd, ec, rip0, rip1, rip2, val, ss_val, numero, 
+                from1, from2, mmio_v, mmio_p, cr3, pe_states.size());        
+        Pe_state *pe_state = from_head ? pe_states.head() : pe_states.tail(), *end = from_head ? 
+            pe_states.head() : pe_states.tail(), 
             *n = nullptr;
         while(pe_state) {
             pe_state->print();
@@ -182,7 +183,7 @@ public:
         return number;
     }
     
-    static void add_pe(Pe*);
+    static void add_pe(const char*, const char*, mword, mword, unsigned, const char*);
     
     static void free_recorded_pe();
     
@@ -196,9 +197,14 @@ public:
 
     static void set_ss_val(mword);
     
-    static void set_froms(int, int);
+    static void set_froms(uint8, int);
     
     static void set_mmio(mword, Paddr);
     
-    static void add_pe_state(Pe_state* p);
+    static void add_pe_state(mword, Paddr, Paddr, Paddr, mword);
+    static void add_pe_state(size_t, int, mword, Paddr, Paddr, Paddr, mword, mword pti);
+    static void add_pe_state(mword, uint8, mword);
+    static void set_rip1(mword);
+
+    static void set_rip2(mword);
 };

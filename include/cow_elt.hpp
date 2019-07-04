@@ -60,7 +60,7 @@ public:
     }
     static void restore_state0();
     static bool compare();
-    static void commit();
+    static void commit(bool=false);
     static void restore_state1();
     static void rollback();
     static void place_phys0();

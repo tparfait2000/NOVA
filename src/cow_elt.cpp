@@ -244,7 +244,7 @@ bool Cow_elt::compare() {
  * Only called if everything went fine during comparison, 
  * We can now copy memories back to frame0, destroy cow_elts 
  */
-void Cow_elt::commit() {
+void Cow_elt::commit(bool keep_cow) {
     Cow_elt *c = nullptr;
     assert(Pd::current->is_cow_elts_empty());
     size_t count = 0;
@@ -267,11 +267,11 @@ void Cow_elt::commit() {
                 // if ce was also in previous PE
                 if(Pd::current->cow_elts.index_of(ce, ce_index) && ce_index + count < current_ec_cow_elts_size){
                     count++;
-                    if(missmatch_addr)
+                    if(keep_cow || missmatch_addr)
                         Counter::used_cows_in_old_cow_elts++;
                 }
                 assert(cow_elts.dequeue(ce));
-                if (missmatch_addr) { 
+                if (keep_cow || missmatch_addr) { 
                     Counter::used_cows_in_old_cow_elts++;
                     Pd::current->cow_elts.enqueue(c);                
                     Pd::current->cow_elts.enqueue(ce);
@@ -287,7 +287,7 @@ void Cow_elt::commit() {
                     ce->hpt->cow_update(old_phys, ce->attr, ce->page_addr);
                 }
             } else {
-                if (missmatch_addr) {
+                if (keep_cow || missmatch_addr) {
                     Pd::current->cow_elts.enqueue(c);                                    
                 } else {
                     destroy(c, Pd::kern.quota);            
@@ -319,9 +319,9 @@ void Cow_elt::commit() {
 //        trace(0, "count %lu MM %x c %lx %lx %lx %lx ce %lx  index %lu", count, missmatch_addr, 
 //                c->page_addr, c->old_phys, c->new_phys[0], c->new_phys[1], reinterpret_cast<mword>(
 //                ce ? ce->page_addr : 0), reinterpret_cast<mword>(ce ? ce_index + count : 0));
-        Pe::add_pe_state(new(Pd::kern.quota) Pe_state(count, missmatch_addr, 
+        Pe::add_pe_state(count, missmatch_addr, 
                 c->page_addr, c->old_phys, c->new_phys[0], c->new_phys[1], reinterpret_cast<mword>(
-                ce ? ce->page_addr : 0), reinterpret_cast<mword>(ce ? ce_index + count : 0)));
+                ce ? ce->page_addr : 0), reinterpret_cast<mword>(ce ? ce_index + count : 0));
         count++;
     }
 //    trace(0, "============================================ Ec %s ec_cow_elts_size %lu", 
@@ -423,8 +423,23 @@ void Cow_elt::place_phys0() {
 //        return;        
 //    }
     while (Pd::current->cow_elts.dequeue(d = Pd::current->cow_elts.head())) {
-        void *phys_to_ptr = Hpt::remap_cow(Pd::kern.quota, d->old_phys, 3 * PAGE_SIZE); 
-        copy_frames(d->new_phys[0], d->new_phys[1], phys_to_ptr);
+        Paddr phys;
+        mword attrib;
+        size_t s = Pd::current->Space_mem::loc[Cpu::id].lookup(d->page_addr, phys, attrib);
+        if(!s || phys != d->old_phys || attrib != d->attr){
+            Cow_elt *de = d->v_is_mapped_elsewhere;
+            if (de) { 
+                Pd::current->cow_elts.dequeue(de);
+                destroy(de, Pd::kern.quota);
+            }
+            destroy(d, Pd::kern.quota);
+            continue;
+        }
+        void *ptr1 = Hpt::remap_cow(Pd::kern.quota, d->old_phys, 2 * PAGE_SIZE); 
+        void *ptr2 = Hpt::remap_cow(Pd::kern.quota, d->new_phys[0], 3 * PAGE_SIZE); 
+        if(memcmp(ptr1, ptr2, PAGE_SIZE)){
+            copy_frames(d->new_phys[0], d->new_phys[1], ptr1);            
+        }
         if (d->hpt) {
             mword a = d->attr | Hpt::HPT_W;
             a &= ~Hpt::HPT_COW;
@@ -452,12 +467,12 @@ void Cow_elt::place_phys0() {
             Pd::current->cow_elts.dequeue(de);
             cow_elts.enqueue(de);
             current_ec_cow_elts_size++;
-            Pe::add_pe_state(new(Pd::kern.quota) Pe_state(d->page_addr, d->old_phys, d->new_phys[0], 
-                    d->new_phys[1], reinterpret_cast<mword>(de ? de->page_addr : 0)));
         }
 //        trace(0, "Placing %lu d %lx %lx %lx %lx de %lx", current_ec_cow_elts_size, 
 //                d->page_addr, d->old_phys, d->new_phys[0], d->new_phys[1], reinterpret_cast<mword>(
 //                de ? de->page_addr : 0)); 
+        Pe::add_pe_state(d->page_addr, d->old_phys, d->new_phys[0], 
+                d->new_phys[1], reinterpret_cast<mword>(de ? de->page_addr : 0));
     }
     Pe::set_val(current_ec_cow_elts_size);
 }

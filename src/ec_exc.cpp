@@ -481,6 +481,7 @@ void Ec::handle_exc(Exc_regs *r) {
  */
 void Ec::check_memory(PE_stopby from) {
     assert(from);
+    Pe::set_froms(run_number, from);    
     // Is cow_elts empty? If yes, and if we are not in recovering from stack fault or debuging our 
     // code, no memory to check
     if (Cow_elt::is_empty() && !Pe::in_recover_from_stack_fault_mode && !Pe::in_debug_mode) {
@@ -491,6 +492,7 @@ void Ec::check_memory(PE_stopby from) {
     Ec *ec = current;
     switch (run_number) {
         case 0: // First run
+            Pe::set_rip1(ec->utcb? ec->regs.REG(ip) : Vmcs::read(Vmcs::GUEST_RIP));
             prev_reason = from;
             ec->restore_state0();
             counter1 = Lapic::read_instCounter();
@@ -639,6 +641,7 @@ void Ec::check_memory(PE_stopby from) {
         {
             prepare_checking();    
             reg_diff = ec->compare_regs(from);
+            Pe::set_rip2(ec->utcb? ec->regs_2.REG(ip) : Vmcs::read(Vmcs::GUEST_RIP));
             if (Cow_elt::compare() ||reg_diff) {
                 if(Pe::in_recover_from_stack_fault_mode){
                     Pd *pd = ec->getPd();
@@ -662,7 +665,7 @@ void Ec::check_memory(PE_stopby from) {
                 ec->rollback();
                 ec->reset_all();
                 ec->restore_state0_data();
-                Console::debug_started = true;
+                Console::print_on = true;
                 /* Try recovering from stack change check failing.
                  * Re-inforce this by !utcb, when we will be sure that stack Fail check is only 
                  * related to guest OS
@@ -693,7 +696,8 @@ void Ec::check_memory(PE_stopby from) {
                 }                
             } else {
 //                size_t cow_elt_number = Cow_elt::get_number();
-                Cow_elt::commit();
+                bool keep_cow = (from == PES_GP_FAULT && prev_reason == PES_GP_FAULT);
+                Cow_elt::commit(keep_cow);
 //                trace(0, "check_memory run %d from %d name %s qce %lu:%u:%u count %llx", 
 //                run_number, from, current->get_name(), cow_elt_number, Counter::cow_fault, 
 //                Counter::used_cows_in_old_cow_elts, Lapic::read_instCounter());     
@@ -792,7 +796,7 @@ void Ec::prepare_checking(){
     Cpu_regs regs = current->regs;
     if (Pe::inState1){
         current->regs_1 = regs;
-        Pe::c_regs[1] = regs;    
+        Pe::c_regs[1] = regs;   
         if(!current->utcb){
             Pe::vmcsRIP_1 = Vmcs::read(Vmcs::GUEST_RIP);        
             Pe::vmcsRSP_1 = Vmcs::read(Vmcs::GUEST_RSP);  

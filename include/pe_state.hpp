@@ -27,6 +27,7 @@ public:
         PE_STATE_DEFAULT              = 0,
         PE_STATE_RESOLVE_COWFAULT     = 1,
         PE_STATE_PLACE_PHYS0          = 2,
+        PE_STATE_INTERRUPT            = 3,
     };
     
 private:
@@ -39,8 +40,8 @@ private:
     mword rax = 0, rbx = 0, rcx = 0, rdx = 0, rbp = 0, rdi = 0, rsi = 0, rsp = 0, rip = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, r13 = 0, r14 = 0, r15 = 0;
     mword rsp_content = 0, rip_content = 0;
     uint64 retirement_counter = 0;
-    uint8 run_no = 123; 
-    mword int_no = 0;
+    uint8 run_number = 123; 
+    mword interrupt_number = 0;
     bool is_vcpu = false;
     size_t numero = 0;
     mword instruction = 0;
@@ -52,7 +53,7 @@ private:
     int missmatch_addr = 0;
     mword page_addr = 0, page_twin_addr = 0, page_addr_placed = 0, page_twin_addr_placed = 0;
     Paddr phys0 = 0, phys1 = 0, phys2 = 0, phys0_placed = 0, phys1_placed = 0, phys2_placed = 0;
-    
+            
     Pe_state* prev;
     Pe_state* next;
     
@@ -70,6 +71,8 @@ public:
     Pe_state &operator = (Pe_state const &);
     Pe_state(size_t, int, mword, Paddr, Paddr, Paddr, mword, mword);
     Pe_state(mword, Paddr, Paddr, Paddr, mword);
+    Pe_state(mword, uint8, mword, uint64);
+    
     ALWAYS_INLINE
     static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }
 
@@ -86,23 +89,7 @@ public:
         cache.free (ptr, quota);
     }
 
-    void print(){
-//        trace(0, "%d, A %010lx B %010lx C %010lx D %010lx S %010lx D %010lx B %010lx S %010lx I %010lx R8 %010lx %010lx %010lx %010lx %010lx "
-//        "%010lx %010lx %010lx, %0#12llx, %ld:%ld %lx", run_no, rax, rbx, rcx, rdx, rbp, rdi, rsi, rsp, rip, r8, r9, 
-//                r10, r11, r12, r13, r14, r15, retirement_counter, int_no, sub_reason, diff_reason);
-        switch(type){
-            case PE_STATE_RESOLVE_COWFAULT:
-                trace(0, "  count %lu MM %x c %lx %lx %lx %lx ce %lx  index %lu", count, missmatch_addr, 
-                    page_addr, phys0, phys1, phys2, page_twin_addr, page_twin_index);
-                break;
-            case PE_STATE_PLACE_PHYS0:
-                trace(0, "Placing c %lx %lx %lx %lx ce %lx", page_addr_placed, phys0_placed, 
-                        phys1_placed, phys2_placed, page_twin_addr_placed);
-                break;
-            case PE_STATE_DEFAULT:
-                break;
-        }
-    }
+    void print();
 
     static size_t get_number(){
         return number;

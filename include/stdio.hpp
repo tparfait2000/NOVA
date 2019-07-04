@@ -38,7 +38,7 @@ do {                                                                \
 
 #define debug_started_trace(T,format,...)                                         \
 do {                                                                \
-    if (EXPECT_FALSE ((trace_mask & (T)) == (T)) && Console::debug_started) {                 \
+    if (EXPECT_FALSE ((trace_mask & (T)) == (T)) && Console::print_on) {                 \
         mword __esp;                                                \
         Console::print ("[%2ld] " format,                           \
                 static_cast<long>(((reinterpret_cast<mword>(&__esp) - 1) & ~PAGE_MASK) ==     \
