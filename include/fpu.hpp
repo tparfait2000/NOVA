@@ -108,23 +108,24 @@ class Fpu
             fpu_2->save();
             save_state(statedata_2);
             load_state(statedata_2);
-            mword d1 = memcmp(fpu_1->data, fpu_2->data, data_size);
-            mword s1 = memcmp(statedata_1, statedata_2, state_size);
-            mword ret = d1 + s1;
+            int  d1= 0, d2 = 0;
+            int d_diff = memcmp(fpu_1->data, fpu_2->data, d1, data_size);
+            int s_diff = memcmp(statedata_1, statedata_2, d2, state_size);
+            bool ret = d_diff || s_diff;
             if(ret){
-                if(d1){
+                if(d_diff){
                     mword fpu_index = (data_size / 4 - d1 - 1)*4;
                     mword vald1 = *reinterpret_cast<mword*> (fpu_1->data + fpu_index),
                             vald2 = *reinterpret_cast<mword*> (fpu_2->data + fpu_index);
-                    Console::print("d1 %lx fpu_d1 %p fpu_d2 %p vald1 %lx vald2 %lx", 
+                    Console::print("d1 %d fpu_d1 %p fpu_d2 %p vald1 %lx vald2 %lx", 
                              d1, fpu_1->data+fpu_index, fpu_2->data+fpu_index, vald1, vald2);
                 }
-                if(s1){
-                    mword state_index = (state_size / 4 - s1 - 1)*4;
+                if(s_diff){
+                    mword state_index = (state_size / 4 - d2 - 1)*4;
                     mword vals1 = *reinterpret_cast<mword*> (statedata_1 + state_index),
                             vals2 = *reinterpret_cast<mword*> (statedata_2 + state_index);
-                    Console::print("s1 %lx statedata_1 %p statedata_2 %p vals1 %lx vals2 %lx",
-                            s1, statedata_1+state_index, statedata_2+state_index, vals1, vals2);
+                    Console::print("s1 %d statedata_1 %p statedata_2 %p vals1 %lx vals2 %lx",
+                            d2, statedata_1+state_index, statedata_2+state_index, vals1, vals2);
                 }
                 
          }else
@@ -159,13 +160,14 @@ class Fpu
         }
         
         mword data_check(){
-            mword ret = memcmp(data, data_1, data_size);
+            int d = 0;
+            int ret = memcmp(data, data_1, d, data_size);
             if(ret){
-                mword data_index = (data_size / 4 - ret - 1)*4;
+                mword data_index = (data_size / 4 - d - 1)*4;
                 mword vald1 = *reinterpret_cast<mword*> (data + data_index);
                 mword vald2 = *reinterpret_cast<mword*> (data_1 + data_index);
-                Console::print("ret %lx data %p data_1 %p vald1 %lx vald2 %lx", 
-                    ret, data+data_index, data_1+data_index, vald1, vald2);
+                Console::print("d %d data %p data_1 %p vald1 %lx vald2 %lx", 
+                    d, data+data_index, data_1+data_index, vald1, vald2);
             }
             return ret;
         }

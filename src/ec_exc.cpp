@@ -695,7 +695,6 @@ void Ec::check_memory(PE_stopby from) {
                     vmx_enable_single_step(SR_DBG);
                 }                
             } else {
-//                size_t cow_elt_number = Cow_elt::get_number();
                 bool keep_cow = (from == PES_GP_FAULT && prev_reason == PES_GP_FAULT);
                 Cow_elt::commit(keep_cow);
 //                trace(0, "check_memory run %d from %d name %s qce %lu:%u:%u count %llx", 

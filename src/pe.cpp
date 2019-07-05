@@ -189,7 +189,7 @@ void Pe::set_mmio(mword v, Paddr p){
     }
 }
 
-void Pe::add_pe_state(size_t c, int mm, mword pa, Paddr p0, Paddr p1, Paddr p2, mword pta,
+void Pe::add_pe_state(size_t c, size_t mm, mword pa, Paddr p0, Paddr p1, Paddr p2, mword pta,
         mword pti){
     if(!Ec::current->is_debug_requested_from_user_space())
         return;    

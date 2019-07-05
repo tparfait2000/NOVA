@@ -109,18 +109,6 @@ void Cow_elt::resolve_cow_fault(Vtlb* tlb, Hpt *hpt, mword virt, Paddr phys, mwo
     }
     // update the cow pages list
     cow_elts.enqueue(ce);
-//    if(c){
-//        size_t ce_index = 0;
-//        assert(cow_elts.index_of(ce, ce_index));
-//        trace(0, " index of ce %lu ", ce_index);
-//        Cow_elt *d = cow_elts.head(), *n = nullptr;
-//        while (d) {
-//            trace(0, "Cow v: %lx  phys: %lx phys1: %lx  phys2: %lx", d->page_addr, d->old_phys, 
-//                  d->new_phys[0], d->new_phys[1]);                    
-//            n = d->next;
-//            d = (d == n || n == cow_elts.head()) ? nullptr : n;
-//        }
-//    }
 //    Console::print("Cow error  v: %lx  phys: %lx attr %lx phys1: %lx  phys2: %lx", virt, phys, 
 //          ce->attr, ce->new_phys[0], ce->new_phys[1]);            
 }
@@ -198,8 +186,10 @@ bool Cow_elt::compare() {
         mword *ptr1 = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, c->new_phys[0])),
                 *ptr2 = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, c->new_phys[1], 
                 PAGE_SIZE));
-        int missmatch_addr = memcmp(ptr1, ptr2, PAGE_SIZE);
-        if (missmatch_addr) {
+        int missmatch_addr = 0;
+        int diff = memcmp(reinterpret_cast<char*>(ptr1), reinterpret_cast<char*>(ptr2), 
+                missmatch_addr, PAGE_SIZE);
+        if (diff) {
 // if in production, uncomment this, for not to get too many unncessary Missmatch errors because 
 // just of error in vm stack            
             // if(Pe::in_recover_from_stack_fault_mode){ 
@@ -253,11 +243,12 @@ void Cow_elt::commit(bool keep_cow) {
         asm volatile ("" ::"m" (c)); // to avoid gdb "optimized out"                        
         Paddr old_phys = c->old_phys;
         void *ptr = Hpt::remap_cow(Pd::kern.quota, old_phys);
-        mword *ptr1 = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, c->new_phys[0],
-                PAGE_SIZE));
+        void *ptr1 = Hpt::remap_cow(Pd::kern.quota, c->new_phys[0],
+                PAGE_SIZE);
 
-        int missmatch_addr = memcmp(ptr, ptr1, PAGE_SIZE);
-        if (missmatch_addr) { 
+        int missmatch_addr = 0;
+        int diff = memcmp(ptr, ptr1, missmatch_addr, PAGE_SIZE);
+        if (diff) { 
             memcpy(ptr, ptr1, PAGE_SIZE);
         } 
         size_t ce_index = 0;
@@ -267,11 +258,11 @@ void Cow_elt::commit(bool keep_cow) {
                 // if ce was also in previous PE
                 if(Pd::current->cow_elts.index_of(ce, ce_index) && ce_index + count < current_ec_cow_elts_size){
                     count++;
-                    if(keep_cow || missmatch_addr)
+                    if(keep_cow || diff)
                         Counter::used_cows_in_old_cow_elts++;
                 }
                 assert(cow_elts.dequeue(ce));
-                if (keep_cow || missmatch_addr) { 
+                if (keep_cow || diff) { 
                     Counter::used_cows_in_old_cow_elts++;
                     Pd::current->cow_elts.enqueue(c);                
                     Pd::current->cow_elts.enqueue(ce);
@@ -287,7 +278,7 @@ void Cow_elt::commit(bool keep_cow) {
                     ce->hpt->cow_update(old_phys, ce->attr, ce->page_addr);
                 }
             } else {
-                if (keep_cow || missmatch_addr) {
+                if (keep_cow || diff) {
                     Pd::current->cow_elts.enqueue(c);                                    
                 } else {
                     destroy(c, Pd::kern.quota);            
@@ -297,10 +288,7 @@ void Cow_elt::commit(bool keep_cow) {
             Pd::current->cow_elts.enqueue(c);                
             if (ce) { // if ce->old_phys is used elsewhere
                 assert(cow_elts.dequeue(ce));
-//                Pd::current->cow_elts.enqueue(c);
                 Pd::current->cow_elts.enqueue(ce);
-//                destroy(c, Pd::kern.quota);                
-//                destroy(ce, Pd::kern.quota);                
                 // update ce->virt page table entry with the allocated the old frame
                 if (ce->vtlb) {
                     ce->vtlb->cow_update(old_phys, ce->attr);
@@ -392,36 +380,6 @@ void Cow_elt::rollback() {
 void Cow_elt::place_phys0() {
     assert(is_empty());
     Cow_elt *d = nullptr;
-//    if (str_equal("init", Pd::current->get_name())) {
-//        trace(0, "INIT Pe_num %lu", Pe::get_number());
-//        Counter::init++;
-//        if(Counter::init > 1)
-//            Ec::stop_optimisation = true;
-//    } 
-//    else {
-//        if(Ec::stop_optimisation){
-//            while (Pd::current->cow_elts.dequeue(d = Pd::current->cow_elts.head())) {
-//                destroy(d, Pd::kern.quota);
-//            }
-//            Ec::stop_optimisation = false;
-//            Counter::init = 0;
-//            return;
-//        }
-//    }
-//    if(Pe::get_number() == 5928){
-//        while (Pd::current->cow_elts.dequeue(d = Pd::current->cow_elts.head())) {
-//            if(d->page_addr == 0x4d000) { 
-//                mword a = d->attr | Hpt::HPT_W;
-//                a &= ~Hpt::HPT_COW;
-//                d->hpt->cow_update(d->new_phys[0], a, d->page_addr);
-//                cow_elts.enqueue(d);
-//                current_ec_cow_elts_size++;
-//            } else {
-//                destroy(d, Pd::kern.quota);
-//            }
-//        }
-//        return;        
-//    }
     while (Pd::current->cow_elts.dequeue(d = Pd::current->cow_elts.head())) {
         Paddr phys;
         mword attrib;
@@ -437,7 +395,9 @@ void Cow_elt::place_phys0() {
         }
         void *ptr1 = Hpt::remap_cow(Pd::kern.quota, d->old_phys, 2 * PAGE_SIZE); 
         void *ptr2 = Hpt::remap_cow(Pd::kern.quota, d->new_phys[0], 3 * PAGE_SIZE); 
-        if(memcmp(ptr1, ptr2, PAGE_SIZE)){
+        int missmatch_addr = 0;
+        if(memcmp(reinterpret_cast<char*>(ptr1), reinterpret_cast<char*>(ptr2),
+                missmatch_addr, PAGE_SIZE)){
             copy_frames(d->new_phys[0], d->new_phys[1], ptr1);            
         }
         if (d->hpt) {

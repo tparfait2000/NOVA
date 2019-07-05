@@ -50,7 +50,7 @@ private:
     mword diff_reason = 0;
     Type type = PE_STATE_DEFAULT;
     size_t count = 0, page_twin_index = 0;
-    int missmatch_addr = 0;
+    size_t missmatch_addr = 0;
     mword page_addr = 0, page_twin_addr = 0, page_addr_placed = 0, page_twin_addr_placed = 0;
     Paddr phys0 = 0, phys1 = 0, phys2 = 0, phys0_placed = 0, phys1_placed = 0, phys2_placed = 0;
             
@@ -69,7 +69,7 @@ public:
     Pe_state(Exc_regs*, uint64, uint8, mword, bool = false); 
     Pe_state(Cpu_regs*, uint64, uint8, mword, bool = false); 
     Pe_state &operator = (Pe_state const &);
-    Pe_state(size_t, int, mword, Paddr, Paddr, Paddr, mword, mword);
+    Pe_state(size_t, size_t, mword, Paddr, Paddr, Paddr, mword, mword);
     Pe_state(mword, Paddr, Paddr, Paddr, mword);
     Pe_state(mword, uint8, mword, uint64);
     

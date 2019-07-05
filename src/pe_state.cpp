@@ -99,22 +99,28 @@ Pe_state::Pe_state(const Pe_state& orig) : retirement_counter(orig.retirement_co
     number++;
 }
 
-Pe_state::Pe_state(size_t c, int mm, mword pa, Paddr p0, Paddr p1, Paddr p2, mword pta, mword pti) : 
+Pe_state::Pe_state(size_t c, size_t mm, mword pa, Paddr p0, Paddr p1, Paddr p2, mword pta, mword pti) : 
     count(c), page_twin_index(pti), missmatch_addr(mm), page_addr(pa), page_twin_addr(pta), 
         phys0(p0), phys1(p1), phys2(p2), prev(nullptr), next(nullptr){
     type = PE_STATE_RESOLVE_COWFAULT;
+    numero = number;
+    number++;
 }
 
 Pe_state::Pe_state(mword addr, Paddr p0, Paddr p1, Paddr p2, mword ptap) : page_addr_placed(addr), 
         page_twin_addr_placed(ptap), phys0_placed(p0), phys1_placed(p1), phys2_placed(p2),
         prev(nullptr), next(nullptr){
     type = PE_STATE_PLACE_PHYS0;    
+    numero = number;
+    number++;
 }
 
 Pe_state::Pe_state(mword int_rip, uint8 run, mword int_number, uint64 inst_count) : 
         rip_content(int_rip), retirement_counter(inst_count), run_number(run), 
         interrupt_number(int_number), prev(nullptr), next(nullptr){
     type = PE_STATE_INTERRUPT;    
+    numero = number;
+    number++;
 }
 
 Pe_state::~Pe_state() {
@@ -186,7 +192,7 @@ void Pe_state::print(){
 //                r10, r11, r12, r13, r14, r15, retirement_counter, int_no, sub_reason, diff_reason);
         switch(type){
             case PE_STATE_RESOLVE_COWFAULT:
-                trace(0, "  count %lu MM %x c %lx %lx %lx %lx ce %lx  index %lu", count, missmatch_addr, 
+                trace(0, "  count %lu MM %lx c %lx %lx %lx %lx ce %lx  index %lu", count, missmatch_addr, 
                     page_addr, phys0, phys1, phys2, page_twin_addr, page_twin_index);
                 break;
             case PE_STATE_PLACE_PHYS0:

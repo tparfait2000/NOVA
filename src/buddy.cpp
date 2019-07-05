@@ -135,7 +135,8 @@ void *Buddy::alloc (unsigned short ord, Quota &quota, Fill fill)
 
     quota.dump(Pd::current);
 
-    Console::panic ("Out of memory PE %lu CowElt %lu", Pe::get_number(), Cow_elt::get_number());
+    Console::panic ("Out of memory PE %lu PE_State %lu CowElt %lu", Pe::get_number(), 
+            Pe_state::get_number(), Cow_elt::get_number());
 }
 
 /*
