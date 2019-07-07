@@ -28,6 +28,7 @@ public:
         PE_STATE_RESOLVE_COWFAULT     = 1,
         PE_STATE_PLACE_PHYS0          = 2,
         PE_STATE_INTERRUPT            = 3,
+        PE_STATE_VM_EXIT              = 4,
     };
     
 private:
@@ -37,8 +38,9 @@ private:
     static Queue<Pe_state> pe_states, log_pe_states;
     
     static size_t number;
-    mword rax = 0, rbx = 0, rcx = 0, rdx = 0, rbp = 0, rdi = 0, rsi = 0, rsp = 0, rip = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0, r12 = 0, r13 = 0, r14 = 0, r15 = 0;
-    mword rsp_content = 0, rip_content = 0;
+    mword rax = 0, rbx = 0, rcx = 0, rdx = 0, rbp = 0, rdi = 0, rsi = 0, rsp = 0, rip = 0, r8 = 0, 
+    r9 = 0, r10 = 0, r11 = 0, r12 = 0, r13 = 0, r14 = 0, r15 = 0;
+    mword m_rip = 0, m_rsp = 0, m_eflag = 0;
     uint64 retirement_counter = 0;
     uint8 run_number = 123; 
     mword interrupt_number = 0;
@@ -67,11 +69,11 @@ public:
      * @param counter
      */
     Pe_state(Exc_regs*, uint64, uint8, mword, bool = false); 
-    Pe_state(Cpu_regs*, uint64, uint8, mword, bool = false); 
     Pe_state &operator = (Pe_state const &);
     Pe_state(size_t, size_t, mword, Paddr, Paddr, Paddr, mword, mword);
     Pe_state(mword, Paddr, Paddr, Paddr, mword);
     Pe_state(mword, uint8, mword, uint64);
+    Pe_state(mword, mword, mword, mword, uint8, uint64);
     
     ALWAYS_INLINE
     static inline void *operator new (size_t, Quota &quota) { return cache.alloc(quota); }

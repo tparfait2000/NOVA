@@ -43,6 +43,7 @@
 
 #define MAX_INSTRUCTION 0x100000
 #define MAX_STR_LENGTH  80
+#define MIN_STR_LENGTH  20
 
 #define DEBUG_CMD_SHIFT          0
 #define DEBUG_CMD_KILL           1

@@ -44,7 +44,7 @@
 mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx,
         Ec::tscp_rcx1 = 0, Ec::tscp_rcx2 = 0;
 bool Ec::hardening_started = false, Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false, 
-        Ec::no_further_check = false, Ec::first_run_advanced = false, Ec::stop_optimisation = false;
+        Ec::no_further_check = false, Ec::first_run_advanced = false, Ec::keep_cow = false;
 uint64 Ec::exc_counter = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::counter1 = 0, 
         Ec::counter2 = 0, Ec::debug_compteur = 0, Ec::count_je = 0, Ec::nbInstr_to_execute = 0,
         Ec::nb_inst_single_step = 0, Ec::second_run_instr_number = 0, 
@@ -417,7 +417,7 @@ void Ec::ret_user_vmresume() {
     size_t size_g = current->regs.vtlb->gla_to_gpa(cr0_shadow, cr3_shadow, cr4_shadow, eip, gpeip),
             size_h = Pd::current->ept.lookup (gpeip, ept_hpa, ept_attr);
 
-    char buffer[80];
+    char buffer[MIN_STR_LENGTH];
     instruction_in_hex(*ptr1, buffer);
     debug_started_trace(0, "Geip %lx heip %lx, *heip %lx instr %s hpa %lx *hpa %lx size_g %lx gpeip"
             " %lx size_h %lx ept_hpa %lx run %u", 
@@ -497,6 +497,7 @@ void Ec::ret_user_vmrun() {
 
 void Ec::idle() {
     Pe::dump(false);
+    Counter::dump();
     for (;;) {
 
         mword hzd = Cpu::hazard & (HZD_RCU | HZD_SCHED);
@@ -860,6 +861,7 @@ void Ec::save_state0() {
     copy_string(Pe::current_pd, current->getPd()->get_name());
     Pe::c_regs[0] = regs_0;
     Pe::inState1 = false;
+    Counter::nb_pe++;    
 }
 
 /**
@@ -1225,11 +1227,11 @@ mword Ec::get_reg(int reg_number) {
         case 17:
             return 0; //FPU to be dealt with later
         case 18:
-            return regs.REG(ip);
+            return utcb ? regs.REG(ip) : Vmcs::read(Vmcs::GUEST_RIP);
         case 19:
-            return regs.REG(fl);
+            return utcb ? regs.REG(sp) : Vmcs::read(Vmcs::GUEST_RSP);
         case 20:
-            return regs.REG(sp);
+            return utcb ? regs.REG(fl) : Vmcs::read(Vmcs::GUEST_RFLAGS);
     }
     return 0;
 }

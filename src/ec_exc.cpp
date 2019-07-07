@@ -340,12 +340,14 @@ void Ec::handle_exc_db(Exc_regs *r) {
  * deterministic
  */
 bool Ec::handle_deterministic_exception(mword vec, PE_stopby &stop_reason) {
+    keep_cow = false;
     switch (vec) {
         case Cpu::EXC_NM:
             return (stop_reason = PES_DEV_NOT_AVAIL);
         case Cpu::EXC_TS:
             return (stop_reason = PES_INVALID_TSS);
         case Cpu::EXC_GP:
+            keep_cow = true;
             return (stop_reason = PES_GP_FAULT);
         case Cpu::EXC_AC:
             return (stop_reason = PES_ALIGNEMENT_CHECK);
@@ -665,7 +667,7 @@ void Ec::check_memory(PE_stopby from) {
                 ec->rollback();
                 ec->reset_all();
                 ec->restore_state0_data();
-                Console::print_on = true;
+//                Console::print_on = true;
                 /* Try recovering from stack change check failing.
                  * Re-inforce this by !utcb, when we will be sure that stack Fail check is only 
                  * related to guest OS
@@ -682,21 +684,33 @@ void Ec::check_memory(PE_stopby from) {
                  * This is for debugging the rollback part of the hardening program.
                  * Before send in production, uncomment the previous check_exit();
                  */ 
-//              check_exit();   In production, we meust check_exit() to start the second redundancy 
-//              round            
+// In production, we meust check_exit() to start the second redundancy round
+//                check_exit(); 
                 nbInstr_to_execute = nbInstr_to_execute_value;
                 Pe::in_debug_mode = true;
                 if(ec->utcb){
                     ec->enable_step_debug(SR_DBG);
                     check_exit();
                 } else {
-                    Console::print("SR DBG launch in VMX nbInstr_to_execute %llx", 
-                            nbInstr_to_execute);
+                    Paddr hpa_guest_rip;
+                    mword attr;
+                    mword guest_rip = Vmcs::read(Vmcs::GUEST_RIP);
+                    Console::print("SR DBG launch in VMX nbInstr_to_execute %llx guest_rip %lx ", 
+                            nbInstr_to_execute, guest_rip);
+                    current->regs.vtlb->vtlb_lookup(guest_rip, hpa_guest_rip, attr);
+                    
+                    void *rip_ptr = reinterpret_cast<char*>(Hpt::remap_cow(Pd::kern.quota, hpa_guest_rip, PAGE_SIZE)) + 
+                            (hpa_guest_rip & PAGE_MASK);
+                    Console::print_memory(rip_ptr, 200);
+                    Paddr hpa_miss_match_addr;
+                    current->regs.vtlb->vtlb_lookup(Pe::missmatch_addr, hpa_miss_match_addr, attr);
+                    Pe::missmatch_ptr = reinterpret_cast<char*>(Hpt::remap_cow(Pd::kern.quota, hpa_miss_match_addr)) +
+                    (hpa_miss_match_addr & PAGE_MASK);
+                    
                     vmx_enable_single_step(SR_DBG);
                 }                
             } else {
-                bool keep_cow = (from == PES_GP_FAULT && prev_reason == PES_GP_FAULT);
-                Cow_elt::commit(keep_cow);
+                Cow_elt::commit();
 //                trace(0, "check_memory run %d from %d name %s qce %lu:%u:%u count %llx", 
 //                run_number, from, current->get_name(), cow_elt_number, Counter::cow_fault, 
 //                Counter::used_cows_in_old_cow_elts, Lapic::read_instCounter());     

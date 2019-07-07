@@ -60,7 +60,7 @@ public:
     }
     static void restore_state0();
     static bool compare();
-    static void commit(bool=false);
+    static void commit();
     static void restore_state1();
     static void rollback();
     static void place_phys0();
@@ -72,6 +72,7 @@ private:
     Paddr old_phys = {};
     mword attr = {};
     Paddr new_phys[2];
+    mword ec_rip = 0;
     Cow_elt* v_is_mapped_elsewhere = nullptr;
     /*---These should moved to Pe class when it will be used -----*/
     Vtlb *vtlb = nullptr;

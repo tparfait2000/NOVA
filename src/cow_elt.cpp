@@ -29,6 +29,7 @@ Cow_elt::Cow_elt(mword v, Paddr phys, mword a, Page_type t) : type(t), page_addr
     linear_add = Buddy::allocator.alloc(ord, Pd::kern.quota, Buddy::NOFILL);
     new_phys[0] = Buddy::ptr_to_phys(linear_add);
     new_phys[1] = new_phys[0] + (1UL << ((ord - 1) + PAGE_BITS));
+    ec_rip = Ec::current->get_reg(18);
     number++;
 }
 
@@ -86,7 +87,7 @@ void Cow_elt::resolve_cow_fault(Vtlb* tlb, Hpt *hpt, mword virt, Paddr phys, mwo
     // If this page fault occurs in a virtual address that points to an already mapped (and in-use) 
     // physical frame, Do not triplicate frame to the newly allocated frames; use the existing ones
     if (c) { 
-        trace(COW_FAULT, "virt %lx Pe %lu", virt, Pe::get_number());
+        trace(COW_FAULT, "virt %lx Pe %u", virt, Counter::nb_pe);
         ce->new_phys[0] = c->new_phys[0];
         ce->new_phys[1] = c->new_phys[1];
         ce->v_is_mapped_elsewhere = c;
@@ -192,10 +193,10 @@ bool Cow_elt::compare() {
         if (diff) {
 // if in production, uncomment this, for not to get too many unncessary Missmatch errors because 
 // just of error in vm stack            
-            // if(Pe::in_recover_from_stack_fault_mode){ 
-            // If already in recovering from stack fault, 
-            // if in development, we got a real bug, print info, 
-            // if in production, we got an SEU, just return true
+             if(Pe::in_recover_from_stack_fault_mode){ 
+                // If already in recovering from stack fault, 
+                // if in development, we got a real bug, print info, 
+                // if in production, we got an SEU, just return true
             asm volatile ("" ::"m" (missmatch_addr)); // to avoid gdb "optimized out"            
             asm volatile ("" ::"m" (c)); // to avoid gdb "optimized out"     
             // because memcmp compare by grasp of 4 bytes
@@ -205,11 +206,17 @@ bool Cow_elt::compare() {
             mword *ptr3 = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, c->old_phys, 
                     2 * PAGE_SIZE));
             mword val0 = *(ptr3 + index);
+//            if(Ec::current->is_virutalcpu() && hamming_weight(val1 ^ val2) < 4){
+//                // Cow fault due to change of VM stack
+//                return false;
+//            }
+            // if in production, comment this and return true, for not to get too many unncessary 
+            // Missmatch errors           
             Pe::missmatch_addr = c->page_addr + index * sizeof (mword);
-            Console::print("MISSMATCH Pd: %s PE %lu virt %lx phys0:%lx phys1 %lx phys2 %lx ptr1: %p"
+            Console::print("MISSMATCH Pd: %s PE %lu virt %lx phys0:%lx phys1 %lx phys2 %lx rip %lx ptr1: %p"
             " ptr2: %p  val0: 0x%lx  val1: 0x%lx val2 0x%lx missmatch_addr: %p, nb_cow_fault %u "
             "counter1 %llx counter2 %llx", Pd::current->get_name(), Pe::get_number(), c->page_addr, 
-                    c->old_phys, c->new_phys[0], c->new_phys[1], ptr1, ptr2, val0, val1, val2, ptr2 
+                    c->old_phys, c->new_phys[0], c->new_phys[1], c->ec_rip, ptr1, ptr2, val0, val1, val2, ptr2 
             + index, Counter::cow_fault, Ec::counter1, Lapic::read_instCounter());
             c = cow_elts.head(), n = nullptr;
             while (c) {
@@ -220,7 +227,7 @@ bool Cow_elt::compare() {
             }
             Console::print_page(reinterpret_cast<void*> (ptr1));
             Console::print_page(reinterpret_cast<void*> (ptr2));
-            //            }
+            }
             return true;
         }
         n = c->next;
@@ -234,7 +241,7 @@ bool Cow_elt::compare() {
  * Only called if everything went fine during comparison, 
  * We can now copy memories back to frame0, destroy cow_elts 
  */
-void Cow_elt::commit(bool keep_cow) {
+void Cow_elt::commit() {
     Cow_elt *c = nullptr;
     assert(Pd::current->is_cow_elts_empty());
     size_t count = 0;
@@ -258,11 +265,11 @@ void Cow_elt::commit(bool keep_cow) {
                 // if ce was also in previous PE
                 if(Pd::current->cow_elts.index_of(ce, ce_index) && ce_index + count < current_ec_cow_elts_size){
                     count++;
-                    if(keep_cow || diff)
+                    if(Ec::keep_cow || diff)
                         Counter::used_cows_in_old_cow_elts++;
                 }
                 assert(cow_elts.dequeue(ce));
-                if (keep_cow || diff) { 
+                if (Ec::keep_cow || diff) { 
                     Counter::used_cows_in_old_cow_elts++;
                     Pd::current->cow_elts.enqueue(c);                
                     Pd::current->cow_elts.enqueue(ce);
@@ -278,7 +285,7 @@ void Cow_elt::commit(bool keep_cow) {
                     ce->hpt->cow_update(old_phys, ce->attr, ce->page_addr);
                 }
             } else {
-                if (keep_cow || diff) {
+                if (Ec::keep_cow || diff) {
                     Pd::current->cow_elts.enqueue(c);                                    
                 } else {
                     destroy(c, Pd::kern.quota);            
@@ -316,7 +323,8 @@ void Cow_elt::commit(bool keep_cow) {
 //            Ec::current->get_name(), current_ec_cow_elts_size);
     Pe::set_ss_val(current_ec_cow_elts_size);
     current_ec_cow_elts_size = 0;
-    if (Pe::in_recover_from_stack_fault_mode) {
+    Ec::keep_cow = false;
+    if(Pe::in_recover_from_stack_fault_mode){
         Pe::in_recover_from_stack_fault_mode = false;
         debug_started_trace(0, "Rollback finished");
     }

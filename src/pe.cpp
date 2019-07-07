@@ -22,6 +22,7 @@ size_t Pe::number = 0;
 bool Pe::inState1 = false, Pe::in_recover_from_stack_fault_mode = false, Pe::in_debug_mode = false;
 bool Pe::pmi_pending = false;
 mword Pe::missmatch_addr;
+void* Pe::missmatch_ptr;
 
 Queue<Pe> Pe::pes;
 unsigned Pe::ipi[2][NUM_IPI];
@@ -81,11 +82,17 @@ void Pe::add_pe(const char* pd_name, const char* ec_name, mword eip, mword cr, u
 void Pe::free_recorded_pe() {
     Pe *pe = nullptr;
     while (pes.dequeue(pe = pes.head())) {
+        Pe_state *pe_state = nullptr;
+        while(pe->pe_states.dequeue(pe_state = pe->pe_states.head())){
+            Pe_state::destroy(pe_state, Pd::kern.quota);
+        }
         Pe::destroy(pe, Pd::kern.quota);
     }
 }
 
 void Pe::dump(bool from_head){   
+    if(!pes.head())
+        return;
     trace(0, "PE nb %lu", number);
     Pe *p = from_head ? pes.head() : pes.tail(), *end = from_head ? pes.head() : pes.tail(), 
             *n = nullptr;
@@ -214,6 +221,16 @@ void Pe::add_pe_state(mword eip, uint8 run_number, mword interrupt_number){
     Pe *p = pes.tail();
     assert(p);
     Pe_state* pe_state = new(Pd::kern.quota) Pe_state(eip, run_number, interrupt_number, 
+            Lapic::read_instCounter());
+    p->pe_states.enqueue(pe_state);  
+}
+
+void Pe::add_pe_state(mword eip, mword esp, mword eflag, mword reason, uint8 run){
+    if(!Ec::current->is_debug_requested_from_user_space())
+        return;    
+    Pe *p = pes.tail();
+    assert(p);
+    Pe_state* pe_state = new(Pd::kern.quota) Pe_state(eip, esp, eflag, reason, run,
             Lapic::read_instCounter());
     p->pe_states.enqueue(pe_state);  
 }

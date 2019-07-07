@@ -44,11 +44,13 @@ void Ec::vmx_exception()
 
     mword intr_info = Vmcs::read (Vmcs::EXI_INTR_INFO);
     Pe_state::set_current_pe_sub_reason(intr_info & 0x7ff);
-    mword cr0_shadow = current->regs.cr0_shadow, cr3_shadow = current->regs.cr3_shadow, cr4_shadow = current->regs.cr4_shadow; 
+    mword cr0_shadow = current->regs.cr0_shadow, cr3_shadow = current->regs.cr3_shadow, cr4_shadow = 
+            current->regs.cr4_shadow; 
     mword gpa;
     if((intr_info & 0x7ff) == 0x30e && // Page fault
-            Vtlb::gla_to_gpa(cr0_shadow, cr3_shadow, cr4_shadow, Vmcs::read (Vmcs::EXI_QUALIFICATION), gpa) &&
-            current->regs.vtlb->is_cow(Vmcs::read (Vmcs::EXI_QUALIFICATION), gpa, Vmcs::read (Vmcs::EXI_INTR_ERROR))){
+            Vtlb::gla_to_gpa(cr0_shadow, cr3_shadow, cr4_shadow, Vmcs::read(Vmcs::EXI_QUALIFICATION)
+            , gpa) && current->regs.vtlb->is_cow(Vmcs::read (Vmcs::EXI_QUALIFICATION), gpa, 
+            Vmcs::read (Vmcs::EXI_INTR_ERROR))){
         ret_user_vmresume();
     } else {
         check_memory(PES_VMX_EXC);
@@ -200,28 +202,38 @@ void Ec::handle_vmx()
     Cpu::hazard = (Cpu::hazard | HZD_DS_ES | HZD_TR) & ~HZD_FPU;
 
     mword reason = Vmcs::read (Vmcs::EXI_REASON) & 0xff;
-
+    keep_cow = false;    
+    
     Counter::vmi[reason]++;
+
+    Pe::add_pe_state(Vmcs::read(Vmcs::GUEST_RIP), Vmcs::read(Vmcs::GUEST_RSP),
+            Vmcs::read(Vmcs::GUEST_RFLAGS), reason, run_number);
+
     if(reason == Vmcs::VMX_EXTINT){
         unsigned vector = Vmcs::read (Vmcs::EXI_INTR_INFO) & 0xff;
-        debug_started_trace(TRACE_VMX, "VMExit reason %ld:%d Guest rip %lx run %d counter %llx:%llx rsp %lx", reason, vector, Vmcs::read (Vmcs::GUEST_RIP), run_number, Lapic::read_instCounter(), Lapic::counter_read_value, Vmcs::read (Vmcs::GUEST_RSP));
+        debug_started_trace(TRACE_VMX, "VMExit reason %ld:%d Guest rip %lx run %d counter %llx:%llx"
+                " rsp %lx", reason, vector, Vmcs::read (Vmcs::GUEST_RIP), run_number, 
+                Lapic::read_instCounter(), Lapic::counter_read_value, Vmcs::read (Vmcs::GUEST_RSP));
     } 
     else if (reason == Vmcs::VMX_EXC_NMI){
         mword intr_info = Vmcs::read (Vmcs::EXI_INTR_INFO);
         if((intr_info & 0x7ff) == 0x30e) {       // #PF
             mword err = Vmcs::read (Vmcs::EXI_INTR_ERROR);
             mword cr2 = Vmcs::read (Vmcs::EXI_QUALIFICATION);
-            debug_started_trace(TRACE_VMX, "VMExit reason %ld:%lx:%lx Guest rip %lx run %d counter %llx rsp %lx", reason, cr2, err, Vmcs::read (Vmcs::GUEST_RIP), run_number, Lapic::read_instCounter(), Vmcs::read (Vmcs::GUEST_RSP));    
+            debug_started_trace(TRACE_VMX, "VMExit reason %ld:%lx:%lx Guest rip %lx run %d counter "
+                    "%llx rsp %lx", reason, cr2, err, Vmcs::read (Vmcs::GUEST_RIP), run_number, 
+                    Lapic::read_instCounter(), Vmcs::read (Vmcs::GUEST_RSP));    
         } 
     }
     else
-        debug_started_trace(TRACE_VMX, "VMExit reason %ld Guest rip %lx run %d counter %llx:%llx rsp %lx", reason, Vmcs::read (Vmcs::GUEST_RIP), run_number, Lapic::read_instCounter(), Lapic::counter_read_value, Vmcs::read (Vmcs::GUEST_RSP));
+        debug_started_trace(TRACE_VMX, "VMExit reason %ld Guest rip %lx run %d counter %llx:%llx "
+                "rsp %lx", reason, Vmcs::read (Vmcs::GUEST_RIP), run_number, 
+                Lapic::read_instCounter(), Lapic::counter_read_value, Vmcs::read (Vmcs::GUEST_RSP));
     
 //    if(reason == Vmcs::VMX_INTR_WINDOW){
 //        trace(0, "VMExit reason %ld Guest rip %lx counter %llx run %d", reason, 
 //                Vmcs::read (Vmcs::GUEST_RIP), Lapic::read_instCounter(), run_number);
 //    }
-    Pe_state::add_pe_state(new(Pd::kern.quota) Pe_state(&current->regs, Lapic::read_instCounter(), run_number, reason));
 
     switch (reason) {
         case Vmcs::VMX_EXC_NMI:     vmx_exception();
@@ -230,6 +242,7 @@ void Ec::handle_vmx()
         case Vmcs::VMX_RDTSC:       
             if(run_number == 0)
                 tsc1 = rdtsc();
+            keep_cow = true;
             check_memory(PES_VMX_RDTSC); 
             vmx_resolve_rdtsc();
         case Vmcs::VMX_CR:          check_memory(PES_VMX_CR); vmx_cr();
@@ -242,10 +255,14 @@ void Ec::handle_vmx()
         case Vmcs::VMX_RDTSCP:      
             if(run_number == 0)
                 tsc1 = rdtscp(tscp_rcx1);
+            keep_cow = true;
             check_memory(PES_VMX_RDTSCP); 
             vmx_resolve_rdtsc(true);
             break;
     }
+    
+    if(reason == Vmcs::VMX_IO)
+        keep_cow = true;    
     check_memory(PES_VMX_EXIT);     
     current->regs.dst_portal = reason;
 
@@ -301,26 +318,23 @@ void Ec::vmx_disable_single_step() {
             break;
         }
         case SR_DBG:
-//            if (nb_inst_single_step > nbInstr_to_execute) {
-//                if (run_number == 0) {
-//                    Console::print("Relaunching for the second run");
-//                    current->restore_state();
-//                    nb_inst_single_step = 0;
-//                    run_number++;
-//                } else {
-//                    Pe::print_current(true);
-//                    Pe_state::dump();
-//                    Console::panic("SR_DBG Finish");
-//                }
-//            } else 
-            {
-                Paddr hpa;
-                mword attr;
-                current->regs.vtlb->vtlb_lookup(Pe::missmatch_addr, hpa, attr);
-                mword *ptr = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, hpa)) + (hpa & PAGE_MASK)/sizeof(mword);
-                Console::print("nb_inst_single_step %llu nbInstr_to_execute %llu miss %lx, %p, %lx", nb_inst_single_step, nbInstr_to_execute, hpa, ptr, *ptr);
-                Pe_state::set_current_pe_diff_reason(*ptr);
-                nb_inst_single_step++;
+            if (run_number == 0) {
+                if (nb_inst_single_step < nbInstr_to_execute) {
+                    nb_inst_single_step++;
+                } else {
+                    Console::print("Relaunching for the second run");
+                    current->restore_state0();
+                    nb_inst_single_step = 0;
+                    run_number++;
+                }
+            } else {
+                if (nb_inst_single_step < nbInstr_to_execute) {
+                    nb_inst_single_step++;
+                } else {
+                    Pe::print_current(true);
+                    Pe_state::dump();
+                    Console::panic("SR_DBG Finish");
+                }
             }
             vmx_enable_single_step(SR_DBG);
         break;
@@ -332,7 +346,8 @@ void Ec::vmx_disable_single_step() {
                 prepare_checking();    
                 Pe::print_current(true);
                 Pe_state::dump();
-                Console::panic("SR_EQU Too much single stepping GuestRIP %lx nbSS %llx ", current_rip, nb_inst_single_step);
+                Console::panic("SR_EQU Too much single stepping GuestRIP %lx nbSS %llx ", 
+                        current_rip, nb_inst_single_step);
             }
             if (nbInstr_to_execute > 0)
                 nbInstr_to_execute--;
@@ -340,7 +355,8 @@ void Ec::vmx_disable_single_step() {
                 nb_inst_single_step--;
                 nbInstr_to_execute++; // Re-adjust the number of instruction                  
                 // Console::print("EIP: %lx  prev_rip: %lx MSR_PERF_FIXED_CTR0: %lld instr: %lx", 
-                // current->regs.REG(ip), prev_rip, Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), *reinterpret_cast<mword *>(current->regs.REG(ip)));
+                // current->regs.REG(ip), prev_rip, Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), 
+                // *reinterpret_cast<mword *>(current->regs.REG(ip)));
                 // It may happen that this is the final instruction
                 if (!current->compare_regs_mute()) {
                     //                                check_instr_number_equals(3);
@@ -406,6 +422,18 @@ void Ec::vmx_enable_single_step(Step_reason reason) {
         current->regs.vmcs->make_current();
     } else {
         Console::panic("VM Single step required and monitor trap not supported : IO Emulation required");        
+    }
+    if(reason == SR_DBG){
+        Paddr hpa_guest_rip;
+        mword guest_rip = Vmcs::read(Vmcs::GUEST_RIP), attr;
+        current->regs.vtlb->vtlb_lookup(guest_rip, hpa_guest_rip, attr);
+        void *rip_ptr = reinterpret_cast<char*>(Hpt::remap_cow(Pd::kern.quota, hpa_guest_rip, PAGE_SIZE)) + 
+            (hpa_guest_rip & PAGE_MASK);
+        char instr_buff[MIN_STR_LENGTH];
+        instruction_in_hex(*reinterpret_cast<mword*>(rip_ptr), instr_buff);
+        Console::print("nb_inst_single_step %llu rip %lx hpa_guest_rip %lx %p %s hpa_miss %p %lx", 
+                nb_inst_single_step, guest_rip, hpa_guest_rip, rip_ptr, instr_buff, 
+                Pe::missmatch_ptr, *reinterpret_cast<mword*>(Pe::missmatch_ptr));
     }
     ret_user_vmresume();    
 }

@@ -122,3 +122,14 @@ static inline mword get_dr6()
     asm volatile ("mov %%dr6, %0" : "=r" (dr6));
     return dr6;
 }
+
+ALWAYS_INLINE
+static inline mword hamming_weight(mword val){
+    mword result;
+    asm volatile ("popcnt %1, %0\n"
+        : "=r" (result)
+        : "mr" (val)
+        : "cc"                                                                                                                                       
+    );
+    return result;
+}

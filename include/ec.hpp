@@ -38,6 +38,7 @@
 #include "stdio.hpp"
 #include "vmx.hpp"
 #include "pe_state.hpp"
+#include "utcb.hpp"
 
 class Utcb;
 class Sm;
@@ -305,7 +306,7 @@ public:
     static uint8 run_number, launch_state, step_reason, debug_nb, debug_type, 
     replaced_int3_instruction, replaced_int3_instruction2;
     static bool hardening_started, in_rep_instruction, not_nul_cowlist, 
-    no_further_check, first_run_advanced, stop_optimisation;
+    no_further_check, first_run_advanced, keep_cow;
     static int prev_reason, previous_ret, nb_try, reg_diff;
     static const char* regs_name_table[];
 
@@ -665,7 +666,7 @@ public:
     static void vmx_emulate_io();
 
     bool is_virutalcpu() {
-        return utcb ? false : true;
+        return !utcb;
     }
     mword get_reg(int);
     int compare_regs_mute();

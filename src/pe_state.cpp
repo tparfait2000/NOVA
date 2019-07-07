@@ -48,34 +48,6 @@ Pe_state::Pe_state(Exc_regs* r, uint64 inst_count, uint8 run, mword int_number, 
     number++;
 };
 
-Pe_state::Pe_state(Cpu_regs* cpu_regs, uint64 inst_count, uint8 run, mword int_number, bool vcpu) : 
-    retirement_counter(inst_count), run_number(run), interrupt_number(int_number), is_vcpu(vcpu), prev(nullptr), next(nullptr) {
-    rax = cpu_regs->REG(ax);
-    rbx = cpu_regs->REG(bx);
-    rcx = cpu_regs->REG(cx);
-    rdx = cpu_regs->REG(dx);
-    rsi = cpu_regs->REG(si);
-    rdi = cpu_regs->REG(di);
-    rbp = cpu_regs->REG(bp);
-    if(is_vcpu){
-        rsp = Vmcs::read(Vmcs::GUEST_RSP);
-        rip = Vmcs::read(Vmcs::GUEST_RIP);
-    } else {
-        rsp = cpu_regs->REG(sp);
-        rip = cpu_regs->REG(ip);
-    }
-    r8  = cpu_regs->r8;
-    r9  = cpu_regs->r9;
-    r10 = cpu_regs->r10;
-    r11 = cpu_regs->r11;
-    r12 = cpu_regs->r12;
-    r13 = cpu_regs->r13;
-    r14 = cpu_regs->r14;
-    r15 = cpu_regs->r15;
-    numero = number;
-    number++;
-};
-
 Pe_state::Pe_state(const Pe_state& orig) : retirement_counter(orig.retirement_counter), 
         run_number(orig.run_number), interrupt_number(orig.interrupt_number), is_vcpu(orig.is_vcpu), prev(nullptr), next(nullptr){
     rax = orig.rax;
@@ -116,9 +88,17 @@ Pe_state::Pe_state(mword addr, Paddr p0, Paddr p1, Paddr p2, mword ptap) : page_
 }
 
 Pe_state::Pe_state(mword int_rip, uint8 run, mword int_number, uint64 inst_count) : 
-        rip_content(int_rip), retirement_counter(inst_count), run_number(run), 
+        m_rip(int_rip), retirement_counter(inst_count), run_number(run), 
         interrupt_number(int_number), prev(nullptr), next(nullptr){
     type = PE_STATE_INTERRUPT;    
+    numero = number;
+    number++;
+}
+
+Pe_state::Pe_state(mword eip, mword esp, mword eflag, mword reason, uint8 run, uint64 inst_count) : 
+        m_rip(eip), m_rsp(esp), m_eflag(eflag), retirement_counter(inst_count), 
+        run_number(run), interrupt_number(reason), prev(nullptr), next(nullptr){
+    type = PE_STATE_VM_EXIT;    
     numero = number;
     number++;
 }
@@ -200,8 +180,12 @@ void Pe_state::print(){
                         phys1_placed, phys2_placed, page_twin_addr_placed);
                 break;
             case PE_STATE_INTERRUPT:
-                trace(0, "  Interupt rip %lx run %u vec %lu counter %llx", rip_content, run_number, 
+                trace(0, "  Interupt rip %lx run %u vec %lu counter %llx", m_rip, run_number, 
                         interrupt_number, retirement_counter);
+                break;
+            case PE_STATE_VM_EXIT:
+                trace(0, "  VM Exit reason rip %lx esp %lx eflag %lx reason %lx run %u counter %llx", 
+                        m_rip, m_rsp, m_eflag, interrupt_number, run_number, retirement_counter);
                 break;
             case PE_STATE_DEFAULT:
                 break;

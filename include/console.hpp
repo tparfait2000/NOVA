@@ -81,4 +81,5 @@ class Console
         static bool print_on, log_on;
         
         static void print_page(void *);
+        static void print_memory(void*, int);
 };

@@ -79,6 +79,7 @@ public:
     static bool inState1, in_recover_from_stack_fault_mode, in_debug_mode;
     static bool pmi_pending;
     static mword missmatch_addr;
+    static void* missmatch_ptr;
     /**
      * 
      * @param ec
@@ -204,6 +205,7 @@ public:
     static void add_pe_state(mword, Paddr, Paddr, Paddr, mword);
     static void add_pe_state(size_t, size_t, mword, Paddr, Paddr, Paddr, mword, mword pti);
     static void add_pe_state(mword, uint8, mword);
+    static void add_pe_state(mword, mword, mword, mword, uint8);
     static void set_rip1(mword);
 
     static void set_rip2(mword);

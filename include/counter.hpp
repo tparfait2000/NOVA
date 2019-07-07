@@ -54,6 +54,7 @@ class Counter
         static unsigned nb_pe           CPULOCAL;
         static unsigned pio             CPULOCAL;
         static unsigned mmio            CPULOCAL;
+        static unsigned vmio            CPULOCAL;
         static uint64   cycles_idle     CPULOCAL;
         static unsigned init           CPULOCAL;
         
