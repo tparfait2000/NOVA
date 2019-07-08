@@ -34,6 +34,7 @@
 #include "svm.hpp"
 #include "tss.hpp"
 #include "vmx.hpp"
+#include "crc.hpp"
 
 char const * const Cpu::vendor_string[] =
 {
@@ -164,7 +165,12 @@ void Cpu::check_features()
     
     cpuid (0xa, eax, ebx, ecx, edx);
     perf_bit_size = (edx>>5) & 0xff;
-
+    
+    cpuid(0x1, eax, ebx, ecx, edx);
+    if(!((ecx >> 20) & 1)){
+        Console::panic("Intel SSE4.2 is not detected on this platform");
+    }
+    Crc::initialize();
 }
 
 void Cpu::setup_thermal()

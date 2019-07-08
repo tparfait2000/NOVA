@@ -16,6 +16,9 @@
 #include "string.hpp"
 #include "regs.hpp"
 #include "vmx.hpp"
+#include "ec.hpp"
+#include "lapic.hpp"
+
 Slab_cache Pe_state::cache(sizeof (Pe_state), 32);
 size_t Pe_state::number = 0;
 Queue<Pe_state> Pe_state::pe_states, Pe_state::log_pe_states;
@@ -103,12 +106,27 @@ Pe_state::Pe_state(mword eip, mword esp, mword eflag, mword reason, uint8 run, u
     number++;
 }
 
+Pe_state::Pe_state(mword v, Paddr p0, Paddr p1, Paddr p2, mword eip, mword v1, 
+        mword v2) : m_rip(eip), page_addr(v), val1(v1), val2(v2), phys0(p0), phys1(p1), phys2(p2), 
+        prev(nullptr), next(nullptr){
+    type = PE_STATE_CMP;    
+    numero = number;
+    retirement_counter = Lapic::read_instCounter();
+    number++;
+}
+
 Pe_state::~Pe_state() {
     number--;
 }
 
-void Pe_state::add_pe_state(Pe_state* pes){
-    pe_states.enqueue(pes);
+void Pe_state::add_pe_state(mword v, Paddr p0, Paddr p1, Paddr p2, mword eip, mword v1, 
+        mword v2){
+    if(!Ec::current->is_debug_requested_from_user_space())
+        return;   
+    if(number > 100000) {
+        free_recorded_pe_state();
+    }
+    pe_states.enqueue(new (Pd::kern.quota) Pe_state(v, p0, p1, p2, eip, v1, v2));
 //    Pe_state *newPe_state = new(Pd::kern.quota)Pe_state(*pes);
 //    log_pe_states.enqueue(newPe_state);
 }
@@ -117,7 +135,7 @@ void Pe_state::set_current_pe_sub_reason(mword sub_reason) {
     Pe_state *p = pe_states.tail()/*, *lp = log_pe_states.tail()*/;
     
     if(p)
-        p->sub_reason = sub_reason;
+        p->val2 = sub_reason;
 //    if(lp)
 //        lp->sub_reason = sub_reason;
 }
@@ -125,7 +143,7 @@ void Pe_state::set_current_pe_sub_reason(mword sub_reason) {
 void Pe_state::set_current_pe_diff_reason(mword reason){
     Pe_state *p = pe_states.tail()/*, *lp = log_pe_states.tail()*/;
     if(p)
-        pe_states.tail()->diff_reason = reason;    
+        pe_states.tail()->val1 = reason;    
 //    if(lp)
 //        log_pe_states.tail()->diff_reason = reason;    
 }
@@ -144,14 +162,26 @@ void Pe_state::free_recorded_log_pe_state() {
     }
 }
 
-void Pe_state::dump(){    
-    Pe_state *p = pe_states.head(), *head = pe_states.head(), *n = nullptr;
+void Pe_state::dump(bool from_head, uint32 nb){    
+    if(!pe_states.head())
+        return;
+    Pe_state *p = from_head ? pe_states.head() : pe_states.tail(), *end = from_head ?
+        pe_states.head() : pe_states.tail(), *n = nullptr;
     Console::print("RUN     RAX             RBX         RCX         RDX         RSI         RDI         RBP     "
             "       RSP         RIP         R8          R9          R10         R11         R12         R13         R14         R15         Conter");
-    while(p) {
-        p->print();
-        n = p->next;
-        p = (p == n || n == head) ? nullptr : n;
+    if(nb){
+        while(p && nb) {
+            p->print();
+            n = from_head ? p->next : p->prev;
+            p = (p == n || n == end) ? nullptr : n;
+            nb--;
+        }
+    } else {
+        while(p) {
+            p->print();
+            n = from_head ? p->next : p->prev;
+            p = (p == n || n == end) ? nullptr : n;
+        }
     }
 }
 
@@ -186,6 +216,10 @@ void Pe_state::print(){
             case PE_STATE_VM_EXIT:
                 trace(0, "  VM Exit reason rip %lx esp %lx eflag %lx reason %lx run %u counter %llx", 
                         m_rip, m_rsp, m_eflag, interrupt_number, run_number, retirement_counter);
+                break;
+            case PE_STATE_CMP:
+                trace(0, "  Compare v %lx p0 %lx p1 %lx p2 %lx rip %lx val1 %lx val2 %lx counter %llx", 
+                        page_addr, phys0, phys1, phys2, m_rip, val1, val2, retirement_counter);
                 break;
             case PE_STATE_DEFAULT:
                 break;

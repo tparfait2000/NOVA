@@ -16,6 +16,7 @@
 #include "ec.hpp"
 #include "lapic.hpp"
 #include "pd.hpp"
+#include "crc.hpp"
 
 Slab_cache Cow_elt::cache(sizeof (Cow_elt), 32);
 Queue<Cow_elt> Cow_elt::cow_elts;
@@ -91,14 +92,17 @@ void Cow_elt::resolve_cow_fault(Vtlb* tlb, Hpt *hpt, mword virt, Paddr phys, mwo
         ce->new_phys[0] = c->new_phys[0];
         ce->new_phys[1] = c->new_phys[1];
         ce->v_is_mapped_elsewhere = c;
+        ce->crc = c->crc;
         c->v_is_mapped_elsewhere = ce;
     } else { // Triplicate frames
         if (hpt) {
             copy_frames(ce->new_phys[0], ce->new_phys[1], reinterpret_cast<void*> (virt));
+            ce->crc = Crc::compute(0, reinterpret_cast<void*>(virt), PAGE_SIZE);
         }
         if (tlb) { // virt is not mapped in the kernel page table
             void *phys_to_ptr = Hpt::remap_cow(Pd::kern.quota, phys, 2 * PAGE_SIZE); 
             copy_frames(ce->new_phys[0], ce->new_phys[1], phys_to_ptr);
+            ce->crc = Crc::compute(0, phys_to_ptr, PAGE_SIZE);
         }
     }
     // update page table entry with the newly allocated frame1
@@ -187,46 +191,51 @@ bool Cow_elt::compare() {
         mword *ptr1 = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, c->new_phys[0])),
                 *ptr2 = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, c->new_phys[1], 
                 PAGE_SIZE));
-        int missmatch_addr = 0;
-        int diff = memcmp(reinterpret_cast<char*>(ptr1), reinterpret_cast<char*>(ptr2), 
-                missmatch_addr, PAGE_SIZE);
-        if (diff) {
+        uint32 crc1 = Crc::compute(0, ptr1, PAGE_SIZE);
+        uint32 crc2 = Crc::compute(0, ptr2, PAGE_SIZE);
+        if (crc1 == crc2) {
+            c->crc1 = crc1;
+        } else {
 // if in production, uncomment this, for not to get too many unncessary Missmatch errors because 
 // just of error in vm stack            
              if(Pe::in_recover_from_stack_fault_mode){ 
                 // If already in recovering from stack fault, 
                 // if in development, we got a real bug, print info, 
                 // if in production, we got an SEU, just return true
-            asm volatile ("" ::"m" (missmatch_addr)); // to avoid gdb "optimized out"            
-            asm volatile ("" ::"m" (c)); // to avoid gdb "optimized out"     
-            // because memcmp compare by grasp of 4 bytes
-            mword index = (PAGE_SIZE - 4 * (missmatch_addr + 1)) / sizeof (mword); 
-            mword val1 = *(ptr1 + index);
-            mword val2 = *(ptr2 + index);
-            mword *ptr3 = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, c->old_phys, 
-                    2 * PAGE_SIZE));
-            mword val0 = *(ptr3 + index);
-//            if(Ec::current->is_virutalcpu() && hamming_weight(val1 ^ val2) < 4){
-//                // Cow fault due to change of VM stack
-//                return false;
-//            }
-            // if in production, comment this and return true, for not to get too many unncessary 
-            // Missmatch errors           
-            Pe::missmatch_addr = c->page_addr + index * sizeof (mword);
-            Console::print("MISSMATCH Pd: %s PE %lu virt %lx phys0:%lx phys1 %lx phys2 %lx rip %lx ptr1: %p"
-            " ptr2: %p  val0: 0x%lx  val1: 0x%lx val2 0x%lx missmatch_addr: %p, nb_cow_fault %u "
-            "counter1 %llx counter2 %llx", Pd::current->get_name(), Pe::get_number(), c->page_addr, 
-                    c->old_phys, c->new_phys[0], c->new_phys[1], c->ec_rip, ptr1, ptr2, val0, val1, val2, ptr2 
-            + index, Counter::cow_fault, Ec::counter1, Lapic::read_instCounter());
-            c = cow_elts.head(), n = nullptr;
-            while (c) {
-                trace(0, "Cow v: %lx  phys: %lx phys1: %lx  phys2: %lx", c->page_addr, c->old_phys, 
-                        c->new_phys[0], c->new_phys[1]);
-                n = c->next;
-                c = (c == n || n == cow_elts.head()) ? nullptr : n;
-            }
-            Console::print_page(reinterpret_cast<void*> (ptr1));
-            Console::print_page(reinterpret_cast<void*> (ptr2));
+                int missmatch_addr = 0;
+                int diff = memcmp(reinterpret_cast<char*>(ptr1), reinterpret_cast<char*>(ptr2), 
+                        missmatch_addr, PAGE_SIZE);
+                assert(diff);
+//                asm volatile ("" ::"m" (missmatch_addr)); // to avoid gdb "optimized out"            
+//                asm volatile ("" ::"m" (c)); // to avoid gdb "optimized out"     
+                // because memcmp compare by grasp of 4 bytes
+                mword index = (PAGE_SIZE - 4 * (missmatch_addr + 1)) / sizeof (mword); 
+                mword val1 = *(ptr1 + index);
+                mword val2 = *(ptr2 + index);
+                mword *ptr3 = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, c->old_phys, 
+                        2 * PAGE_SIZE));
+                mword val0 = *(ptr3 + index);
+    //            if(Ec::current->is_virutalcpu() && hamming_weight(val1 ^ val2) < 4){
+    //                // Cow fault due to change of VM stack
+    //                return false;
+    //            }
+                // if in production, comment this and return true, for not to get too many unncessary 
+                // Missmatch errors           
+                Pe::missmatch_addr = c->page_addr + index * sizeof (mword);
+                Console::print("MISSMATCH Pd: %s PE %lu virt %lx phys0:%lx phys1 %lx phys2 %lx rip %lx ptr1: %p"
+                " ptr2: %p  val0: 0x%lx  val1: 0x%lx val2 0x%lx missmatch_addr: %p, nb_cow_fault %u "
+                "counter1 %llx counter2 %llx", Pd::current->get_name(), Pe::get_number(), c->page_addr, 
+                        c->old_phys, c->new_phys[0], c->new_phys[1], c->ec_rip, ptr1, ptr2, val0, val1, val2, ptr2 
+                + index, Counter::cow_fault, Ec::counter1, Lapic::read_instCounter());
+                c = cow_elts.head(), n = nullptr;
+                while (c) {
+                    trace(0, "Cow v: %lx  phys: %lx phys1: %lx  phys2: %lx", c->page_addr, c->old_phys, 
+                            c->new_phys[0], c->new_phys[1]);
+                    n = c->next;
+                    c = (c == n || n == cow_elts.head()) ? nullptr : n;
+                }
+                Console::print_page(reinterpret_cast<void*> (ptr1));
+                Console::print_page(reinterpret_cast<void*> (ptr2));
             }
             return true;
         }
@@ -249,15 +258,15 @@ void Cow_elt::commit() {
         //        Console::print("c %p", c);
         asm volatile ("" ::"m" (c)); // to avoid gdb "optimized out"                        
         Paddr old_phys = c->old_phys;
-        void *ptr = Hpt::remap_cow(Pd::kern.quota, old_phys);
+        void *ptr0 = Hpt::remap_cow(Pd::kern.quota, old_phys);
         void *ptr1 = Hpt::remap_cow(Pd::kern.quota, c->new_phys[0],
                 PAGE_SIZE);
 
-        int missmatch_addr = 0;
-        int diff = memcmp(ptr, ptr1, missmatch_addr, PAGE_SIZE);
-        if (diff) { 
-            memcpy(ptr, ptr1, PAGE_SIZE);
-        } 
+        int diff = (c->crc != c->crc1);
+        if(diff) {
+            memcpy(ptr0, ptr1, PAGE_SIZE); 
+            c->crc = c->crc1;
+        }
         size_t ce_index = 0;
         Cow_elt *ce = c->v_is_mapped_elsewhere;
         if (count < current_ec_cow_elts_size) { // if c comes from previous PE
@@ -314,9 +323,9 @@ void Cow_elt::commit() {
 //        trace(0, "count %lu MM %x c %lx %lx %lx %lx ce %lx  index %lu", count, missmatch_addr, 
 //                c->page_addr, c->old_phys, c->new_phys[0], c->new_phys[1], reinterpret_cast<mword>(
 //                ce ? ce->page_addr : 0), reinterpret_cast<mword>(ce ? ce_index + count : 0));
-        Pe::add_pe_state(count, missmatch_addr, 
-                c->page_addr, c->old_phys, c->new_phys[0], c->new_phys[1], reinterpret_cast<mword>(
-                ce ? ce->page_addr : 0), reinterpret_cast<mword>(ce ? ce_index + count : 0));
+//        Pe::add_pe_state(count, c->crc, c->page_addr, c->old_phys, c->new_phys[0], c->new_phys[1], 
+//                reinterpret_cast<mword>(ce ? ce->page_addr : 0), 
+//                reinterpret_cast<mword>(ce ? ce_index + count : 0));
         count++;
     }
 //    trace(0, "============================================ Ec %s ec_cow_elts_size %lu", 
@@ -401,12 +410,11 @@ void Cow_elt::place_phys0() {
             destroy(d, Pd::kern.quota);
             continue;
         }
-        void *ptr1 = Hpt::remap_cow(Pd::kern.quota, d->old_phys, 2 * PAGE_SIZE); 
-        void *ptr2 = Hpt::remap_cow(Pd::kern.quota, d->new_phys[0], 3 * PAGE_SIZE); 
-        int missmatch_addr = 0;
-        if(memcmp(reinterpret_cast<char*>(ptr1), reinterpret_cast<char*>(ptr2),
-                missmatch_addr, PAGE_SIZE)){
-            copy_frames(d->new_phys[0], d->new_phys[1], ptr1);            
+        void *ptr0 = Hpt::remap_cow(Pd::kern.quota, d->old_phys, 2 * PAGE_SIZE); 
+        uint32 crc0 = Crc::compute(0, ptr0, PAGE_SIZE);
+        if(d->crc != crc0) {
+            copy_frames(d->new_phys[0], d->new_phys[1], ptr0);            
+            d->crc = crc0;
         }
         if (d->hpt) {
             mword a = d->attr | Hpt::HPT_W;

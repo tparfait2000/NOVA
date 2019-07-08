@@ -75,6 +75,8 @@ void Pe::add_pe(const char* pd_name, const char* ec_name, mword eip, mword cr, u
         char* t){
     if(!Ec::current->is_debug_requested_from_user_space())
         return;
+    if(number > 10000)
+        free_recorded_pe();
     Pe* pe = new (Pd::kern.quota)Pe(pd_name, ec_name, eip, cr, n, t);
     pes.enqueue(pe);
 }

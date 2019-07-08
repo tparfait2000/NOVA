@@ -618,6 +618,7 @@ void Ec::die(char const *reason, Exc_regs *r) {
     bool const pf_in_kernel = str_equal(reason, "#PF (kernel)");
 //    prepare_checking();    
 //    Pe::print_current(current->utcb ? false : true);
+    Pe_state::dump(false, 100);
     Pe::dump(false);
     if (current->utcb || show || pf_in_kernel) {
 //        if (show || !strmatch(reason, "PT not found", 12))

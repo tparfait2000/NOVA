@@ -73,6 +73,7 @@ private:
     mword attr = {};
     Paddr new_phys[2];
     mword ec_rip = 0;
+    uint32 crc = 0, crc1 = 0;
     Cow_elt* v_is_mapped_elsewhere = nullptr;
     /*---These should moved to Pe class when it will be used -----*/
     Vtlb *vtlb = nullptr;
