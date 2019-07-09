@@ -198,35 +198,39 @@ bool Cow_elt::compare() {
         } else {
 // if in production, uncomment this, for not to get too many unncessary Missmatch errors because 
 // just of error in vm stack            
-             if(Pe::in_recover_from_stack_fault_mode){ 
+            int missmatch_addr = 0;
+            int diff = memcmp(reinterpret_cast<char*>(ptr1), reinterpret_cast<char*>(ptr2), 
+                    missmatch_addr, PAGE_SIZE);
+            assert(diff);
+//                asm volatile ("" ::"m" (missmatch_addr)); // to avoid gdb "optimized out"            
+//                asm volatile ("" ::"m" (c)); // to avoid gdb "optimized out"     
+            // because memcmp compare by grasp of 4 bytes
+            mword index = (PAGE_SIZE - 4 * (missmatch_addr + 1)) / sizeof (mword); 
+            mword val1 = *(ptr1 + index);
+            mword val2 = *(ptr2 + index);
+            if(Ec::current->is_virutalcpu()){ /*&& hamming_weight(val1 ^ val2) < 4){*/
+                // Cow fault due to change of VM stack
+                *(ptr1 + index) = *(ptr2 + index);
+                crc1 = Crc::compute(0, ptr1, PAGE_SIZE);
+                if(crc1 == crc2)
+                return false;
+            }
+            // if in production, comment this and return true, for not to get too many unncessary 
+            // Missmatch errors           
+            
+            mword *ptr0 = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, c->old_phys, 
+                    2 * PAGE_SIZE));
+            mword val0 = *(ptr0 + index);
+            Pe::missmatch_addr = c->page_addr + index * sizeof (mword);
+            Console::print("MISSMATCH Pd: %s PE %lu virt %lx phys0:%lx phys1 %lx phys2 %lx rip %lx ptr1: %p"
+            " ptr2: %p  val0: 0x%lx  val1: 0x%lx val2 0x%lx missmatch_addr: %p, nb_cow_fault %u "
+            "counter1 %llx counter2 %llx", Pd::current->get_name(), Pe::get_number(), c->page_addr, 
+                    c->old_phys, c->new_phys[0], c->new_phys[1], c->ec_rip, ptr1, ptr2, val0, val1, val2, ptr2 
+            + index, Counter::cow_fault, Ec::counter1, Lapic::read_instCounter());
+            if(Pe::in_recover_from_stack_fault_mode){ 
                 // If already in recovering from stack fault, 
                 // if in development, we got a real bug, print info, 
                 // if in production, we got an SEU, just return true
-                int missmatch_addr = 0;
-                int diff = memcmp(reinterpret_cast<char*>(ptr1), reinterpret_cast<char*>(ptr2), 
-                        missmatch_addr, PAGE_SIZE);
-                assert(diff);
-//                asm volatile ("" ::"m" (missmatch_addr)); // to avoid gdb "optimized out"            
-//                asm volatile ("" ::"m" (c)); // to avoid gdb "optimized out"     
-                // because memcmp compare by grasp of 4 bytes
-                mword index = (PAGE_SIZE - 4 * (missmatch_addr + 1)) / sizeof (mword); 
-                mword val1 = *(ptr1 + index);
-                mword val2 = *(ptr2 + index);
-                mword *ptr3 = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, c->old_phys, 
-                        2 * PAGE_SIZE));
-                mword val0 = *(ptr3 + index);
-    //            if(Ec::current->is_virutalcpu() && hamming_weight(val1 ^ val2) < 4){
-    //                // Cow fault due to change of VM stack
-    //                return false;
-    //            }
-                // if in production, comment this and return true, for not to get too many unncessary 
-                // Missmatch errors           
-                Pe::missmatch_addr = c->page_addr + index * sizeof (mword);
-                Console::print("MISSMATCH Pd: %s PE %lu virt %lx phys0:%lx phys1 %lx phys2 %lx rip %lx ptr1: %p"
-                " ptr2: %p  val0: 0x%lx  val1: 0x%lx val2 0x%lx missmatch_addr: %p, nb_cow_fault %u "
-                "counter1 %llx counter2 %llx", Pd::current->get_name(), Pe::get_number(), c->page_addr, 
-                        c->old_phys, c->new_phys[0], c->new_phys[1], c->ec_rip, ptr1, ptr2, val0, val1, val2, ptr2 
-                + index, Counter::cow_fault, Ec::counter1, Lapic::read_instCounter());
                 c = cow_elts.head(), n = nullptr;
                 while (c) {
                     trace(0, "Cow v: %lx  phys: %lx phys1: %lx  phys2: %lx", c->page_addr, c->old_phys, 
