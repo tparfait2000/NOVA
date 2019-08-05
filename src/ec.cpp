@@ -89,10 +89,11 @@ Ec::Ec (Pd *own, mword sel, Pd *p, void (*f)(), unsigned c, unsigned e, mword u,
         regs.fpu_on = Cmdline::fpu_eager;
 
         if (Hip::feature() & Hip::FEAT_VMX) {
+            mword host_cr3 = pd->loc[c].root(pd->quota) | (Cpu::feature (Cpu::FEAT_PCID) ? pd->did : 0);
 
             regs.vmcs = new (pd->quota) Vmcs (reinterpret_cast<mword>(sys_regs() + 1),
                                               pd->Space_pio::walk(pd->quota),
-                                              pd->loc[c].root(pd->quota),
+                                              host_cr3,
                                               pd->ept.root(pd->quota));
 
             regs.nst_ctrl<Vmcs>();
