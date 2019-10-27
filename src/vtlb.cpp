@@ -27,6 +27,7 @@
 #include "cow_elt.hpp"
 #include "ec.hpp"
 #include "pe_stack.hpp"
+#include "log.hpp"
 #include "pe.hpp"
 
 size_t Vtlb::gwalk (Exc_regs *regs, mword gla, mword &gpa, mword &attr, mword &error)
