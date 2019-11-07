@@ -56,19 +56,16 @@ type(t), page_addr(addr), attr(a), prev(nullptr), next(nullptr) {
     linear_add = Buddy::allocator.alloc(ord, Pd::kern.quota, Buddy::NOFILL);
         phys_addr[1] = Buddy::ptr_to_phys(linear_add);
         phys_addr[2] = phys_addr[1] + (1UL << ((ord - 1) + PAGE_BITS));
-        void *copy_from = nullptr;
         if (h) {
             pte.hpt = h;
-            copy_from = reinterpret_cast<void*> (addr);
         } else if (v) { // virt is not mapped in the kernel page table
             pte.is_hpt = false;
             pte.vtlb = v;
-            copy_from = Hpt::remap_cow(Pd::kern.quota, phys, 2 * PAGE_SIZE);
         } else {
             Console::panic("Neither tlb, nor htp is specified");
         }
-        copy_frames(phys_addr[1], phys_addr[2], copy_from);
-        crc = Crc::compute(0, copy_from, PAGE_SIZE);
+        copy_frames(phys_addr[1], phys_addr[2], phys);
+        crc = Crc::compute(0, reinterpret_cast<void*>(COW_ADDR), PAGE_SIZE); // phys should have been mapped on COW_ADDR by copy_frames()
     }
     // update page table entry with the newly allocated frame1
     update_pte(PHYS1, RW);
@@ -81,15 +78,11 @@ type(t), page_addr(addr), attr(a), prev(nullptr), next(nullptr) {
     if (Ec::current->is_virutalcpu()) {
         Paddr hpa_rcx_rip;
         mword attrib;
-        Ec::current->vtlb_lookup(ec_rsp, hpa_rcx_rip, attrib);
-        char *rsp_ptr = reinterpret_cast<char*> (Hpt::remap_cow(Pd::kern.quota, hpa_rcx_rip)) +
-                (ec_rsp & PAGE_MASK);
-        // if *(rip_ptr as mword) overflows to the next page 
-        if ((reinterpret_cast<mword> (rsp_ptr) & PAGE_MASK) + sizeof (mword) > PAGE_SIZE) {
-            Hpt::remap_cow(Pd::kern.quota, (hpa_rcx_rip &= ~PAGE_MASK) + PAGE_SIZE,
-                    PAGE_SIZE);
-}
-        ec_rsp_content = *reinterpret_cast<mword*> (rsp_ptr + 0x10);
+        Ec::current->vtlb_lookup(static_cast<uint64>(ec_rsp), hpa_rcx_rip, attrib);
+        mword *rsp_ptr = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, 
+                hpa_rcx_rip, 3, sizeof(mword)));
+        assert(rsp_ptr);
+        ec_rsp_content = *rsp_ptr + 0x10;
     }
     //=============================================================================
 }
@@ -166,11 +159,12 @@ Cow_elt* Cow_elt::is_mapped_elsewhere(Paddr phys) {
  * @param ce
  * @param virt
  */
-void Cow_elt::copy_frames(Paddr phys1, Paddr phys2, void* virt) {
-    void *ptr = Hpt::remap_cow(Pd::kern.quota, phys1);
-    memcpy(ptr, virt, PAGE_SIZE);
-    ptr = Hpt::remap_cow(Pd::kern.quota, phys2);
-    memcpy(ptr, virt, PAGE_SIZE);
+void Cow_elt::copy_frames(Paddr phys1, Paddr phys2, Paddr phys0) {
+    void *ptr0 = Hpt::remap_cow(Pd::kern.quota, phys0, 0),
+            *ptr1 = Hpt::remap_cow(Pd::kern.quota, phys1, 1),
+            *ptr2 = Hpt::remap_cow(Pd::kern.quota, phys2, 2);
+    memcpy(ptr1, ptr0, PAGE_SIZE);
+    memcpy(ptr2, ptr0, PAGE_SIZE);
 }
 
 /**
@@ -195,9 +189,8 @@ bool Cow_elt::compare() {
 //        Console::print("Compare v: %p  phys: %p  ce: %p  phys1: %p  phys2: %p", 
 //        cow->page_addr_or_gpa, cow->phys_addr[0], cow, cow->new_phys[0]->phys_addr, 
 //        cow->new_phys[1]->phys_addr);
-        void *ptr1 = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, c->phys_addr[1])),
-                *ptr2 = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, c->phys_addr[2],
-                PAGE_SIZE));
+        void *ptr1 = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, c->phys_addr[1], 1)),
+                *ptr2 = reinterpret_cast<mword*> (Hpt::remap_cow(Pd::kern.quota, c->phys_addr[2], 2));
         uint32 crc1 = Crc::compute(0, ptr1, PAGE_SIZE);
         uint32 crc2 = Crc::compute(0, ptr2, PAGE_SIZE);
         if (crc1 == crc2) {
@@ -208,47 +201,48 @@ bool Cow_elt::compare() {
             size_t missmatch_addr = 0;
             int diff = memcmp(ptr1, ptr2, missmatch_addr, PAGE_SIZE);
             assert(diff);
-//                asm volatile ("" ::"m" (missmatch_addr)); // to avoid gdb "optimized out"            
-//                asm volatile ("" ::"m" (c)); // to avoid gdb "optimized out"     
+                asm volatile ("" ::"m" (missmatch_addr)); // to avoid gdb "optimized out"            
+                asm volatile ("" ::"m" (c)); // to avoid gdb "optimized out"     
             // because memcmp compare by grasp of 4 bytes
 //            int ratio = sizeof(mword)/4; // sizeof(mword) == 4 ? 1 ; sizeof(mword) == 8 ? 2
             size_t index = missmatch_addr/sizeof(mword);
-            if(Ec::current->is_virutalcpu()){
-                // Cow fault due to instruction side effect in VM kernel stack
-                *(reinterpret_cast<mword*>(ptr1) + index) = *(reinterpret_cast<mword*>(ptr2) + index);
-                crc1 = Crc::compute(0, ptr1, PAGE_SIZE);
-                if(crc1 == crc2)
-                return false;
-            }
+//            if(Ec::current->is_virutalcpu()){
+//                // Cow fault due to instruction side effect in VM kernel stack
+//                *(reinterpret_cast<mword*>(ptr1) + index) = *(reinterpret_cast<mword*>(ptr2) + index);
+//                crc1 = Crc::compute(0, ptr1, PAGE_SIZE);
+//                if(crc1 == crc2){
+//                    c->crc1 = crc1;
+//                    continue;
+//                }
+//            }
             mword val1 = *(reinterpret_cast<mword*>(ptr1) + index);
             mword val2 = *(reinterpret_cast<mword*>(ptr2) + index);
             // if in production, comment this and return true, for not to get too many unncessary 
             // Missmatch errors           
             
-            void *ptr0 = Hpt::remap_cow(Pd::kern.quota, c->phys_addr[0], 2 * PAGE_SIZE);
+            void *ptr0 = Hpt::remap_cow(Pd::kern.quota, c->phys_addr[0], 0);
             mword val0 = *(reinterpret_cast<mword*>(ptr0) + index);
             Pe::missmatch_addr = c->page_addr + missmatch_addr;
 
-            Paddr hpa_guest_rip;
-            mword attr;
+            void *rip_ptr;
             if(Ec::current->is_virutalcpu()){
+                Paddr hpa_guest_rip;
+                mword attr;
                 Ec::current->vtlb_lookup(c->ec_rip, hpa_guest_rip, attr);
+                rip_ptr = reinterpret_cast<char*>(Hpt::remap_cow(Pd::kern.quota, 
+                        hpa_guest_rip, 3, sizeof(mword)));                
             }else{
-                Pd::current->Space_mem::loc[Cpu::id].lookup(c->ec_rip, hpa_guest_rip, attr);
+                rip_ptr = reinterpret_cast<char*>(Hpt::remap_cow(Pd::kern.quota, 
+                    Pd::current->Space_mem::loc[Cpu::id], c->ec_rip, 3, sizeof(mword)));
+                assert(rip_ptr);
             }
-            void *rip_ptr = reinterpret_cast<char*>(Hpt::remap_cow(Pd::kern.quota, hpa_guest_rip, 
-                    3 * PAGE_SIZE)) + (c->ec_rip & PAGE_MASK);
-            // if *(rip_ptr as mword) overflows to the next page 
-            if ((reinterpret_cast<mword> (rip_ptr) & PAGE_MASK) + sizeof (mword) > PAGE_SIZE) {
-                Hpt::remap_cow(Pd::kern.quota, (hpa_guest_rip &= ~PAGE_MASK) + PAGE_SIZE,
-                        4 * PAGE_SIZE);
-            }
+            
             char instr_buff[STR_MIN_LENGTH];
             instruction_in_hex(*reinterpret_cast<mword*> (rip_ptr), instr_buff);
-            Console::print("MISSMATCH Pd: %s PE %lu virt %lx: phys0:%lx phys1 %lx phys2 %lx "
+            Console::print("MISSMATCH Pd: %s PE %llu virt %lx: phys0:%lx phys1 %lx phys2 %lx "
                     "rip %lx:%s rcx %lx rsp %lx:%lx MM %lx index %lu %lx val0: 0x%lx  val1: 0x%lx "
                     "val2 0x%lx", 
-                    Pd::current->get_name(), Logstore::get_number(), c->m_fault_addr, c->phys_addr[0], 
+                    Pd::current->get_name(), Counter::nb_pe, c->m_fault_addr, c->phys_addr[0], 
                     c->phys_addr[1], c->phys_addr[2], c->ec_rip, instr_buff, c->ec_rcx, c->ec_rsp, 
                     c->ec_rsp_content, Pe::missmatch_addr, index, reinterpret_cast<mword>(reinterpret_cast<mword*>(c->page_addr) + index), val0, val1, val2);
                         
@@ -286,10 +280,10 @@ void Cow_elt::commit() {
         if (c->linear_add) { 
             int diff = (c->crc != c->crc1);
             if (diff) {
-                void *ptr0 = Hpt::remap_cow(Pd::kern.quota, c->phys_addr[0]), 
-                        *ptr1 = Hpt::remap_cow(Pd::kern.quota, c->phys_addr[1], PAGE_SIZE);
-            memcpy(ptr0, ptr1, PAGE_SIZE); 
-            c->crc = c->crc1;
+                void *ptr0 = Hpt::remap_cow(Pd::kern.quota, c->phys_addr[0], 0), 
+                        *ptr1 = Hpt::remap_cow(Pd::kern.quota, c->phys_addr[1], 1);
+                memcpy(ptr0, ptr1, PAGE_SIZE); 
+                c->crc = c->crc1;
             }
             if (!c->age || (c->age && diff) || Ec::keep_cow) {
                 c->age++;
@@ -344,8 +338,7 @@ void Cow_elt::restore_state1() {
 void Cow_elt::rollback() {
     Cow_elt *c = cow_elts->head(), *n = nullptr, *h = c;
     while (c) {
-        void *phys_to_ptr = Hpt::remap_cow(Pd::kern.quota, c->phys_addr[0], 2 * PAGE_SIZE);
-        copy_frames(c->phys_addr[1], c->phys_addr[2], phys_to_ptr);
+        copy_frames(c->phys_addr[1], c->phys_addr[2], c->phys_addr[0]);
         c->update_pte(PHYS1, RW);
         n = c->next;
         c = (n == h) ? nullptr : n;
@@ -395,13 +388,13 @@ void Cow_elt::place_phys0() {
             }
             if (s && phys == d->phys_addr[0] && attrib == cow_attrib) {
                 if(d->linear_add) {
-                    void *ptr0 = Hpt::remap_cow(Pd::kern.quota, d->phys_addr[0], 2 * PAGE_SIZE);
+                    void *ptr0 = Hpt::remap_cow(Pd::kern.quota, d->phys_addr[0], 0);
                     uint32 crc0 = Crc::compute(0, ptr0, PAGE_SIZE);
                     if (d->crc != crc0) {
-                        copy_frames(d->phys_addr[1], d->phys_addr[2], ptr0);
+                        copy_frames(d->phys_addr[1], d->phys_addr[2], d->phys_addr[0]);
                         d->crc = crc0;
                     }
-                } else if (d->crc != d->v_is_mapped_elsewhere->crc){
+                } else if (d->crc != d->v_is_mapped_elsewhere->crc) {
                     d->crc = d->v_is_mapped_elsewhere->crc;
                 }
                 d->update_pte(PHYS1, RW);
