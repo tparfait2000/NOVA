@@ -312,10 +312,6 @@ void Cow_elt::commit() {
 //            Pd::current->cow_elts.size());
     current_ec_cow_elts_size = 0;
     Ec::keep_cow = false;
-    if(Pe::in_recover_from_stack_fault_mode){
-        Pe::in_recover_from_stack_fault_mode = false;
-        debug_started_trace(0, "Rollback finished");
-    }
 }
 
 /**
@@ -409,23 +405,6 @@ void Cow_elt::place_phys0() {
     }
 //    trace(0, "Pd %s Ec %s cow_elts size %lu %lu PE %u", Pd::current->get_name(), Ec::current->get_name(), 
 //            cow_elts->size(), Pd::current->cow_elts.size(), Counter::nb_pe);
-}
-
-/**
- * this function is supposed to be called after place_phys0. If v is found in 
- * Ec::current->cow_elts, v is supposed to have been cowed.
- * @param v
- * @return 
- */
-bool Cow_elt::would_have_been_cowed_in_place_phys0(mword v) {
-    Cow_elt *c = Pd::current->cow_elts.head(), *head = c, *n = nullptr;
-    while (c) {
-        if (v == c->page_addr)
-            return true;
-        n = c->next;
-        c = (n == head) ? nullptr : n;
-    }
-    return false;
 }
 
 void Cow_elt::free(Cow_elt* c){

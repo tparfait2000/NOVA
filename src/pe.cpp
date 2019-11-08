@@ -13,7 +13,7 @@
 
 #include "pe.hpp"
 uint8 Pe::run_number = 0;
-bool Pe::inState1 = false, Pe::in_recover_from_stack_fault_mode = false, Pe::in_debug_mode = false, Pe::pmi_pending = false;
+bool Pe::inState1 = false, Pe::in_debug_mode = false, Pe::pmi_pending = false;
 mword Pe::missmatch_addr, Pe::vmcsRIP[], Pe::vmcsRSP[], Pe::vmcsRIP_0, 
         Pe::vmcsRIP_1, Pe::vmcsRIP_2, Pe::vmcsRSP_0, Pe::vmcsRSP_1, Pe::vmcsRSP_2;
 void* Pe::missmatch_ptr;

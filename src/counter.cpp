@@ -53,7 +53,6 @@ unsigned Counter::pio;
 unsigned Counter::mmio;
 unsigned Counter::vmio;
 uint64 Counter::cycles_idle;
-unsigned Counter::init;
 unsigned Counter::rep_prefix[2];
 unsigned Counter::hlt_instr[2];
 

@@ -245,19 +245,3 @@ void Hpt::cow_update(Paddr phys, mword attr, mword v){
     do o = *e; while (o.val != new_val && !e->set (o.val, new_val));
     flush(v);    
 }
-
-void Hpt::reserve_stack(Quota &quota, mword v){
-    Pe_stack::stack = 0;
-    if(Pe::in_recover_from_stack_fault_mode || Pe::in_debug_mode || Cow_elt::would_have_been_cowed_in_place_phys0(v))
-        return;
-    v &= ~PAGE_MASK; 
-    Paddr phys;
-    mword a;
-    if(lookup(v, phys, a) && (a & Hpt::HPT_COW)){
-        Hpt *e = walk(quota, v, 0);
-        assert(e);
-        Pe_stack::stack = v;
-        Cow_elt::resolve_cow_fault(nullptr, e, v, phys, a);
-//        Pe_stack::remove_cow_for_detected_stacks(nullptr, this);
-    }
-}

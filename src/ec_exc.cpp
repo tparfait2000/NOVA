@@ -211,7 +211,9 @@ void Ec::handle_exc_db(Exc_regs *r) {
                 ++Counter::pmi_ss;
                 nb_inst_single_step++;
                 if(nb_inst_single_step > 300){
-                    Console::panic("Lost in Single stepping");
+                    Console::panic("SR_PMI Lost in Single stepping nb_inst_single_step %llu "
+                    "nbInstr_to_execute %llu first_run_instr_number %llu second_run_instr_number %llu", nb_inst_single_step, nbInstr_to_execute, 
+                            first_run_instr_number, second_run_instr_number);
                 }
                 if (nbInstr_to_execute > 0)
                     nbInstr_to_execute--;
@@ -269,7 +271,9 @@ void Ec::handle_exc_db(Exc_regs *r) {
             case SR_EQU:
                 ++Counter::pmi_ss;
                 if(nb_inst_single_step > 300) {
-                    Console::panic("Lost in Single stepping");
+                    Console::panic("SR_EQU Lost in Single stepping nb_inst_single_step %llu "
+                    "nbInstr_to_execute %llu first_run_instr_number %llu second_run_instr_number %llu", nb_inst_single_step, nbInstr_to_execute, 
+                            first_run_instr_number, second_run_instr_number);
                 }
                 nb_inst_single_step++;
                 if (nbInstr_to_execute > 0)
@@ -470,7 +474,7 @@ void Ec::check_memory(PE_stopby from) {
     Logstore::append_log_in_buffer(buff);    
     // Is cow_elts empty? If yes, and if we are not in recovering from stack fault or debuging our 
     // code, no memory to check
-    if (Cow_elt::is_empty() && !Pe::in_recover_from_stack_fault_mode && !Pe::in_debug_mode) {
+    if (Cow_elt::is_empty() && !Pe::in_debug_mode) {
         launch_state = UNLAUNCHED;
         reset_all();
         return;
@@ -617,49 +621,11 @@ void Ec::check_memory(PE_stopby from) {
             String::print(buff, "rip2 %lx", ec->utcb ? ec->regs_2.REG(ip) : Vmcs::read(Vmcs::GUEST_RIP));
             Logstore::append_log_in_buffer(buff);    
             if (Cow_elt::compare() ||reg_diff) {
-                if(Pe::in_recover_from_stack_fault_mode){
-                    Pd *pd = ec->getPd();
-                    Console::print("Checking failed : Ec %s  Pd: %s From: %d:%d launch_state: %d ", 
-                            ec->get_name(), pd->get_name(), prev_reason, from, launch_state);
-                }
-                /**
-                 * Following instructions must come in this order.
-                 * At this point, may be the failing check comes from guest stack change
-                 * First, we save PE system values
-                 */
-                uint64 nbInstr_to_execute_value = counter1 < Lapic::start_counter ? 
-                    MAX_INSTRUCTION + counter1 - exc_counter1 : counter1 - (Lapic::perf_max_count - 
-                        MAX_INSTRUCTION);
-                assert(nbInstr_to_execute < Lapic::perf_max_count);
-//                Console::debug_started = true;
-                int from_value = from;
-                int prev_reason_value = prev_reason;
-                ec->rollback();
-                ec->reset_all();
-                ec->restore_state0_data();
-//                Console::print_on = true;
-                /* Try recovering from stack change check failing.
-                 * Re-inforce this by !utcb, when we will be sure that stack Fail check is only 
-                 * related to guest OS
-                 */ 
-                if((from_value == prev_reason_value) && (!reg_diff) && 
-                        (!Pe::in_recover_from_stack_fault_mode)){
-                    debug_started_trace(0, "Rollback started %d", launch_state);  
-                    Pe::in_recover_from_stack_fault_mode = true;
-                    check_exit();
-                }
-                Pe::in_recover_from_stack_fault_mode = false;
-                /*
-                 * If we get here, it means that we have a bug or when in production, we have an SEU
-                 * This is for debugging the rollback part of the hardening program.
-                 * Before send in production, uncomment the previous check_exit();
-                 */ 
-// In production, we meust check_exit() to start the second redundancy round
-//                check_exit(); 
-                nbInstr_to_execute = nbInstr_to_execute_value;
-                Pe::in_debug_mode = true;
-                if(ec->utcb){
-                    ec->enable_step_debug(SR_DBG);
+                if(IN_PRODUCTION){
+                    Logstore::commit_buffer();
+                    ec->rollback();
+                    ec->reset_all();
+                    ec->restore_state0_data();
                     check_exit();
                 } else {
                     Pd *pd = ec->getPd();
@@ -670,13 +636,13 @@ void Ec::check_memory(PE_stopby from) {
                         Counter::nb_pe, Fpu::is_saved());
                     Logstore::dump("check_memory 2", true);
                     counter2 = nbInstr_to_execute ? counter2 + nbInstr_to_execute : 
-                        Lapic::read_instCounter();
+                    Lapic::read_instCounter();
                     /**
                      * Following instructions must come in this order.
                      * At this point, may be the failing check comes from guest stack change
                      * First, we save PE system values
                      */
-                    nbInstr_to_execute_value = counter1 < Lapic::start_counter ? 
+                    uint64 nbInstr_to_execute_value = counter1 < Lapic::start_counter ? 
                         MAX_INSTRUCTION + counter1 - exc_counter1 : counter1 - (Lapic::perf_max_count - 
                             MAX_INSTRUCTION);
                     assert(nbInstr_to_execute < Lapic::perf_max_count);

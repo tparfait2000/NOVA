@@ -93,7 +93,6 @@ public:
     static void restore_state1();
     static void rollback();
     static void place_phys0();
-    static bool would_have_been_cowed_in_place_phys0(mword);
     static void free(Cow_elt*);    
     static void debug_rollback();
 };
