@@ -143,7 +143,7 @@ Cow_elt* Cow_elt::is_mapped_elsewhere(Paddr phys) {
     Cow_elt *c = cow_elts->head(), *n = nullptr, *h = cow_elts->head();
     while (c) {
         if (c->phys_addr[0] == phys) {//frame already mapped elsewhere
-            trace_no_newline(0, "Is already mapped virt %lx Phys:%lx new_phys[0]:%lx new_phys[1]:%lx",
+            trace_no_newline(0, "Is already mapped virt %lx Phys:%lx new_phys[0]:%lx new_phys[1]:%lx ",
                     c->page_addr, c->phys_addr[0], c->phys_addr[1], c->phys_addr[2]);
             assert(!c->v_is_mapped_elsewhere);
             return c;
