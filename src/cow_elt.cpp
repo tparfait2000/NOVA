@@ -362,45 +362,8 @@ void Cow_elt::place_phys0() {
 //    bool is_ro = true;
     while(d) {
         next = d->next; // d may be dequeued and destroyed in this loop
-        if(d->age == -1){
-            cow_elts->dequeue(d);
-            free(d);
-        } else if(d->age > 0){
-        Paddr phys;
-            mword attrib, cow_attrib = d->attr;
-            size_t s = 0;
-            if (d->pte.is_hpt){
-                s = Pd::current->Space_mem::loc[Cpu::id].lookup(d->page_addr, phys, attrib);
-                attrib &= ~Hpt::HPT_W;
-                attrib |= Hpt::HPT_COW;
-                cow_attrib &= ~Hpt::HPT_W;
-                cow_attrib |= Hpt::HPT_COW; 
-            } else {
-                s = Ec::current->vtlb_lookup(d->page_addr, phys, attrib);    
-                attrib &= ~Vtlb::TLB_W;
-                attrib |= Vtlb::TLB_COW; 
-                cow_attrib &= ~Vtlb::TLB_W;
-                cow_attrib |= Vtlb::TLB_COW; 
-            }
-            if (s && phys == d->phys_addr[0] && attrib == cow_attrib) {
-                if(d->linear_add) {
-                    void *ptr0 = Hpt::remap_cow(Pd::kern.quota, d->phys_addr[0], 0);
-                    uint32 crc0 = Crc::compute(0, ptr0, PAGE_SIZE);
-                    if (d->crc != crc0) {
-                        copy_frames(d->phys_addr[1], d->phys_addr[2], d->phys_addr[0]);
-                        d->crc = crc0;
-                    }
-                } else if (d->crc != d->v_is_mapped_elsewhere->crc) {
-                    d->crc = d->v_is_mapped_elsewhere->crc;
-                }
-                d->update_pte(PHYS1, RW);
-//                is_ro = false;
-            } else {
-                cow_elts->dequeue(d);
-                free(d);
-            }
-        }
-        d->to_log("place_phys0");
+        cow_elts->dequeue(d);
+        free(d);
         d = (d == tail) ? nullptr : next;          
     }
 //    trace(0, "Pd %s Ec %s cow_elts size %lu %lu PE %u", Pd::current->get_name(), Ec::current->get_name(), 
