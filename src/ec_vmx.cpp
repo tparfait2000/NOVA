@@ -375,7 +375,7 @@ void Ec::vmx_disable_single_step() {
                     current->restore_state1();
                     nbInstr_to_execute = distance_instruction + nb_inst_single_step + 1;
                     nb_inst_single_step = 0;
-                    first_run_advanced = true;
+                    run_switched = true;
                     vmx_enable_single_step(SR_EQU);
                     ret_user_vmresume();
                 } else { // relaunch the first run without restoring the second execution state

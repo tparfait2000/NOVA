@@ -68,8 +68,8 @@ void Logstore::free_logs(size_t left, bool in_percent) {
  * @param log_depth : the number of log to be printed; default is 5; we will print
  * all logs if this is 0
  */
-void Logstore::dump(char const *funct_name, bool from_tail, size_t log_depth){
-    if(has_been_dumped)
+void Logstore::dump(char const *funct_name, bool from_tail, size_t log_depth, bool force){
+    if(has_been_dumped && !force)
         return;
     Logstore::commit_buffer();
     if(logs_in_table) {
