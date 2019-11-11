@@ -210,16 +210,16 @@ void Ec::handle_exc_db(Exc_regs *r) {
             {
                 ++Counter::pmi_ss;
                 nb_inst_single_step++;
-                if(nb_inst_single_step > 300){
+                if(nb_inst_single_step > nbInstr_to_execute + 5){
                     Console::panic("SR_PMI Lost in Single stepping nb_inst_single_step %llu "
-                    "nbInstr_to_execute %llu first_run_instr_number %llu second_run_instr_number %llu", nb_inst_single_step, nbInstr_to_execute, 
-                            first_run_instr_number, second_run_instr_number);
+                    "nbInstr_to_execute %llu first_run_instr_number %llu second_run_instr_number %llu Pd %s Ec %s", nb_inst_single_step, nbInstr_to_execute, 
+                            first_run_instr_number, second_run_instr_number, Pd::current->get_name(), Ec::current->get_name());
                 }
-                if (nbInstr_to_execute > 0)
-                    nbInstr_to_execute--;
+//                if (nbInstr_to_execute > 0)
+//                    nbInstr_to_execute--;
                 if (prev_rip == current->regs.REG(ip)) { // Rep Prefix
                     nb_inst_single_step--;
-                    nbInstr_to_execute++; // Re-adjust the number of instruction                  
+//                    nbInstr_to_execute++; // Re-adjust the number of instruction                  
                     
                     // It may happen that this is the final instruction
                     if (!current->compare_regs_mute()) {
@@ -231,18 +231,17 @@ void Ec::handle_exc_db(Exc_regs *r) {
                 }
                 prev_rip = current->regs.REG(ip);
                 // No need to compare if nbInstr_to_execute > 3 
-                if (nbInstr_to_execute > 3) {
+                if (nb_inst_single_step < nbInstr_to_execute - 2) {
                     current->regs.REG(fl) |= Cpu::EFL_TF;
                     return;
-                }
-                if (!current->compare_regs_mute()) {
-                    //                            check_instr_number_equals(2);
+                } else if (!current->compare_regs_mute()) {
+//                    check_instr_number_equals(2);
                     current->disable_step_debug();
                     check_memory(PES_SINGLE_STEP);
                     return;
                 } else {
                     current->regs.REG(fl) |= Cpu::EFL_TF;
-                    nbInstr_to_execute = 1;
+//                    nbInstr_to_execute = 1;
                     return;
                 }
                 break;
@@ -270,17 +269,17 @@ void Ec::handle_exc_db(Exc_regs *r) {
                 break;
             case SR_EQU:
                 ++Counter::pmi_ss;
-                if(nb_inst_single_step > 300) {
+                if(nb_inst_single_step > nbInstr_to_execute){
                     Console::panic("SR_EQU Lost in Single stepping nb_inst_single_step %llu "
                     "nbInstr_to_execute %llu first_run_instr_number %llu second_run_instr_number %llu", nb_inst_single_step, nbInstr_to_execute, 
                             first_run_instr_number, second_run_instr_number);
                 }
                 nb_inst_single_step++;
-                if (nbInstr_to_execute > 0)
-                    nbInstr_to_execute--;
+//                if (nbInstr_to_execute > 0)
+//                    nbInstr_to_execute--;
                 if (prev_rip == current->regs.REG(ip)) { // Rep Prefix
                     nb_inst_single_step--;
-                    nbInstr_to_execute++; // Re-adjust the number of instruction                  
+//                    nbInstr_to_execute++; // Re-adjust the number of instruction                  
                     
                     // It may happen that this is the final instruction
                     if (!current->compare_regs_mute()) {
@@ -298,11 +297,16 @@ void Ec::handle_exc_db(Exc_regs *r) {
                     return;
                 } else {
                     // single stepping the first run with 2 credits instructions
-                    if (nbInstr_to_execute == 0) { 
-                        current->restore_state1();
-                        nbInstr_to_execute = distance_instruction + nb_inst_single_step + 1;
+                    if (nb_inst_single_step == nbInstr_to_execute) { 
+                        if(Pe::inState1)
+                            current->restore_state2();
+                        else 
+                            current->restore_state1();   
+                        nbInstr_to_execute *= 2;
                         nb_inst_single_step = 0;
-                        first_run_advanced = true;
+//                        nbInstr_to_execute = distance_instruction + nb_inst_single_step + 1;
+//                        nb_inst_single_step = 0;
+                        run_switched = true;
                         current->regs.REG(fl) |= Cpu::EFL_TF;
                         return;
                     } else { // relaunch the first run without restoring the second execution state
@@ -572,7 +576,7 @@ void Ec::check_memory(PE_stopby from) {
                     max_instruction + counter2 - exc_counter2 : 
                     counter2 - (Lapic::perf_max_count - max_instruction);
                 assert(second_run_instr_number < Lapic::perf_max_count);
-                if((second_run_instr_number > max_instruction + 300) || 
+                if ((second_run_instr_number > max_instruction + 300) || 
                         (second_run_instr_number < max_instruction - 300)){
                     trace(0, "PMI served too early or too late counter2 %llx \nMust be dug deeper", 
                             counter2);
@@ -584,15 +588,31 @@ void Ec::check_memory(PE_stopby from) {
 //                      second_run_instr_number ? 2 : 1, first_run_instr_number, 
 //                      second_run_instr_number, Lapic::read_instCounter());
                 if (distance_instruction <= 2) {
-                    if (ec->compare_regs_mute()) {
+                    int cmp = ec->compare_regs_mute();
+                    if (cmp) {
                         nbInstr_to_execute = distance_instruction + 1;
-                        if(ec->utcb){
-                            prev_rip = current->regs.REG(ip);
-                            ec->enable_step_debug(SR_EQU);
-                            ret_user_iret();
+                        if (first_run_instr_number > second_run_instr_number) {
+                            if(ec->utcb) {
+                                prev_rip = current->regs.REG(ip);
+                                ec->enable_step_debug(SR_EQU);
+                                ret_user_iret();
+                            } else {
+                                prev_rip = Vmcs::read(Vmcs::GUEST_RIP);
+                                vmx_enable_single_step(SR_EQU);
+                            }
+                        } else if (first_run_instr_number < second_run_instr_number) {
+                            ec->restore_state1();
+                            if(ec->utcb) {
+                                prev_rip = current->regs.REG(ip);
+                                ec->enable_step_debug(SR_EQU);
+                                ret_user_iret();
+                            } else {
+                                prev_rip = Vmcs::read(Vmcs::GUEST_RIP);
+                                vmx_enable_single_step(SR_EQU);
+                            }
                         } else {
-                            prev_rip = Vmcs::read(Vmcs::GUEST_RIP);
-                            vmx_enable_single_step(SR_EQU);
+                            Console::panic("first_run_instr_number = second_run_instr_number but comparison failed "
+                            "first_run_instr_number %llu second_run_instr_number %llu cmp %s", first_run_instr_number, second_run_instr_number, reg_names[cmp]);
                         }
                     } else {
                         //                        check_instr_number_equals(5);                        
@@ -756,6 +776,7 @@ void Ec::reset_all() {
     reset_counter();
     prev_reason = 0;
     no_further_check = false;
+    run_switched = false;
     Pending_int::exec_pending_interrupt();
 }
 

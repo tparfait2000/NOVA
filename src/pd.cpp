@@ -36,7 +36,7 @@ INIT_PRIORITY(PRIO_BUDDY)
 ALIGNED(32) Pd Pd::kern(&Pd::kern);
 ALIGNED(32) Pd Pd::root(&Pd::root, NUM_EXC, 0x1f);
 
-const char *Pd::unprotected_pd_names[UNPROTECTED_PD_NUM] = {"init -> platform_drv", "init -> nic_drv", 
+const char *Pd::unprotected_pd_names[UNPROTECTED_PD_NUM] = {"init", "init -> platform_drv", "init -> nic_drv", 
 "init -> fb_drv", "init -> platform_drv -> fb_drv -> ", "init -> platform_drv -> nic_drv -> "};//Never forget to terminate this by nullptr
 
 Pd::Pd (Pd *own) : Kobject (PD, static_cast<Space_obj *>(own)), pt_cache (sizeof (Pt), 32), mdb_cache (sizeof (Mdb), 16), sm_cache (sizeof (Sm), 32), sc_cache (sizeof (Sc), 32), ec_cache (sizeof (Ec), 32), fpu_cache (sizeof (Fpu), 16){

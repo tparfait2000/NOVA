@@ -327,6 +327,19 @@ void Cow_elt::restore_state1() {
     }
 }
 
+/**
+ * Restore state1's frames by updating page table entries with the allocated frame2, in order to 
+ * make the first run catch up the second run
+ */
+void Cow_elt::restore_state2() {
+    Cow_elt *c = cow_elts->head(), *n = nullptr, *h = c;
+    while (c) {
+        c->update_pte(PHYS2, RW);
+        n = c->next;
+        c = (n == h) ? nullptr : n;
+    }
+}
+
 /*
  * upadate hpt or vtlb with phys_addr[0] value and attr
  * called when we have to re-execute the entire double execution

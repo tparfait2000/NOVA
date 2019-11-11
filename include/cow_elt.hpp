@@ -91,6 +91,7 @@ public:
     static bool compare();
     static void commit();
     static void restore_state1();
+    static void restore_state2();
     static void rollback();
     static void place_phys0();
     static void free(Cow_elt*);    

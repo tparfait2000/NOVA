@@ -45,7 +45,7 @@
 mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx,
         Ec::tscp_rcx1 = 0, Ec::tscp_rcx2 = 0;
 bool Ec::hardening_started = false, Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false, 
-        Ec::no_further_check = false, Ec::first_run_advanced = false, Ec::keep_cow = false;
+        Ec::no_further_check = false, Ec::run_switched = false, Ec::keep_cow = false;
 uint64 Ec::exc_counter = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::counter1 = 0, 
         Ec::counter2 = 0, Ec::debug_compteur = 0, Ec::count_je = 0, Ec::nbInstr_to_execute = 0,
         Ec::nb_inst_single_step = 0, Ec::second_run_instr_number = 0, 
@@ -56,8 +56,8 @@ uint8 Ec::launch_state = 0, Ec::step_reason = 0, Ec::debug_nb = 0,
         Ec::debug_type = 0, Ec::replaced_int3_instruction, Ec::replaced_int3_instruction2;
 uint64 Ec::tsc1 = 0, Ec::tsc2 = 0;
 int Ec::prev_reason = 0, Ec::previous_ret = 0, Ec::nb_try = 0, Ec::reg_diff = 0;
-const char* Ec::reg_names[19] = {"N/A", "RAX", "RDX", "RCX", "RBX", "RBP", "RSI", "RDI", "R8", 
-"R9", "R10", "R11", "R12", "R13", "R14", "R15", "RIP", "RFLAG", "RSP"};
+const char* Ec::reg_names[21] = {"N/A", "RAX", "RDX", "RCX", "RBX", "RBP", "RSI", "RDI", "R8", 
+"R9", "R10", "R11", "R12", "R13", "R14", "R15", "RIP", "RFLAG", "RSP", "GUEST_RIP", "GUEST_RSP"};
 const char* Ec::pe_stop[27] = {"NUL", "PMI", "PAGE_FAULT", "SYS_ENTER", "VMX_EXIT", 
 "INVALID_TSS", "GP_FAULT", "DEV_NOT_AVAIL", "SEND_MSG", "MMIO", "SINGLE_STEP", 
 "VMX_SEND_MSG", "VMX_EXT_INT", "GSI", "MSI", "LVT", "ALIGNEMENT_CHECK", 
@@ -797,6 +797,19 @@ void Ec::restore_state1() {
     }
 }
 
+void Ec::restore_state2() {
+    Pe::inState1 = false;
+    regs_1 = regs;
+    regs = regs_2;
+    Cow_elt::restore_state2();
+    Fpu::dwc_restore2();
+    if (fpu)
+        fpu->restore_data2();
+    if(!utcb){
+        vmx_restore_state2();
+    }
+}
+
 /**
  * cancel the double execution effects
  */
@@ -962,6 +975,34 @@ void Ec::vmx_restore_state1() {
     memcpy(cur_virtual_apic_page, virtual_apic_page1, PAGE_SIZE);
 }
 
+void Ec::vmx_restore_state2() {
+    Pe::vmcsRIP_1 = Vmcs::read(Vmcs::GUEST_RIP);        
+    Pe::vmcsRSP_1 = Vmcs::read(Vmcs::GUEST_RSP);  
+    Pe::vmcsRIP[2] = Pe::vmcsRIP_1;
+    Pe::vmcsRSP[2] = Pe::vmcsRSP_1;
+    regs.vmcs->clear();
+    memcpy(Vmcs::vmcs1, regs.vmcs, Vmcs::basic.size);
+    memcpy(regs.vmcs, Vmcs::vmcs2, Vmcs::basic.size);
+    regs.vmcs->make_current();
+
+    mword host_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
+    Msr_area *cur_host_msr_area = 
+            reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(host_msr_area_phys));
+    memcpy(host_msr_area1, cur_host_msr_area, PAGE_SIZE);
+    memcpy(cur_host_msr_area, host_msr_area2, PAGE_SIZE);
+
+    mword guest_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_ST_ADDR);
+    Msr_area *cur_guest_msr_area = 
+            reinterpret_cast<Msr_area*> (Buddy::phys_to_ptr(guest_msr_area_phys));
+    memcpy(guest_msr_area1, cur_guest_msr_area, PAGE_SIZE);
+    memcpy(cur_guest_msr_area, guest_msr_area2, PAGE_SIZE);
+
+    mword virtual_apic_page_phys = Vmcs::read(Vmcs::APIC_VIRT_ADDR);
+    Virtual_apic_page *cur_virtual_apic_page =
+            reinterpret_cast<Virtual_apic_page*> (Buddy::phys_to_ptr(virtual_apic_page_phys));
+    memcpy(virtual_apic_page1, cur_virtual_apic_page, PAGE_SIZE);
+    memcpy(cur_virtual_apic_page, virtual_apic_page2, PAGE_SIZE);
+}
 
 void Ec::vmx_rollback() {
     regs.vmcs->clear();
@@ -1276,17 +1317,17 @@ int Ec::compare_regs_mute() {
         return 1;
     }
     if (regs.REG(ip) != (Pe::inState1 ? regs_2.REG(ip) : regs_1.REG(ip))) {
-        return 18;
+        return 16;
     }
     if (regs.REG(sp) != (Pe::inState1 ? regs_2.REG(sp) : regs_1.REG(sp))) {
-        return 20;
+        return 18;
     }
     if (!utcb){
 //        if(memcmp(regs.vmcs, Pe::inState1 ? Vmcs::vmcs2 : Vmcs::vmcs1, Vmcs::basic.size))
         if(Vmcs::read(Vmcs::GUEST_RIP) != (Pe::inState1 ? Pe::vmcsRIP_2 : Pe::vmcsRIP_1))
-            return 21;
+            return 19;
         if(Vmcs::read(Vmcs::GUEST_RSP) != (Pe::inState1 ? Pe::vmcsRSP_2 : Pe::vmcsRSP_1))
-            return 22;
+            return 20;
     }
     return 0;
 }
@@ -1340,10 +1381,10 @@ void Ec::check_instr_number_equals(int from){
     size_t buff_length = 8;
     char instr_number_comp[buff_length+1] = "Inf";
     if(distance_instruction <= 2) {
-        if(first_run_advanced){
+        if(run_switched){
             nb_run1 = first_run_instr_number + nb_inst_single_step; 
             nb_run2 = second_run_instr_number;
-            first_run_advanced = false;
+            run_switched = false;
             copy_string(instr_number_comp, "Equ sup", buff_length);
         } else{
             nb_run1 = first_run_instr_number; 

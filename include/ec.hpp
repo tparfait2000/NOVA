@@ -304,9 +304,9 @@ public:
     static uint8 launch_state, step_reason, debug_nb, debug_type, 
     replaced_int3_instruction, replaced_int3_instruction2;
     static bool hardening_started, in_rep_instruction, not_nul_cowlist, 
-    no_further_check, first_run_advanced, keep_cow;
+    no_further_check, run_switched, keep_cow;
     static int prev_reason, previous_ret, nb_try, reg_diff;
-    static const char* reg_names[19];
+    static const char* reg_names[21];
     static const char* pe_stop[27];
     
     Ec(Pd *, void (*)(), unsigned, char const *nm = "Unknown");
@@ -594,6 +594,7 @@ public:
     void vmx_save_state();
     void vmx_restore_state();
     void vmx_restore_state1();
+    void vmx_restore_state2();
     void vmx_rollback();
 
     void run2_pmi_check(int);
@@ -622,6 +623,7 @@ public:
 
     void restore_state0();
     void restore_state1();
+    void restore_state2();
     void rollback();
     void debug_rollback();
     mword get_regsRIP();
