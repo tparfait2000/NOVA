@@ -52,8 +52,8 @@ type(t), page_addr(addr), attr(a), prev(nullptr), next(nullptr) {
         v_is_mapped_elsewhere = c;
         c->v_is_mapped_elsewhere = this;
     } else {
-    unsigned short ord = (t == NORMAL) ? 1 : 11;
-    linear_add = Buddy::allocator.alloc(ord, Pd::kern.quota, Buddy::NOFILL);
+        unsigned short ord = (t == NORMAL) ? 1 : 11;
+        linear_add = Buddy::allocator.alloc(ord, Pd::kern.quota, Buddy::NOFILL);
         phys_addr[1] = Buddy::ptr_to_phys(linear_add);
         phys_addr[2] = phys_addr[1] + (1UL << ((ord - 1) + PAGE_BITS));
         if (h) {
@@ -68,13 +68,13 @@ type(t), page_addr(addr), attr(a), prev(nullptr), next(nullptr) {
         crc = Crc::compute(0, reinterpret_cast<void*>(COW_ADDR), PAGE_SIZE); // phys should have been mapped on COW_ADDR by copy_frames()
     }
     // update page table entry with the newly allocated frame1
-    update_pte(PHYS1, RW);
+    update_pte(Pe::run_number == 0 ? PHYS1 : PHYS2, RW);
     number++;
     // For debugging purpose =====================================================
     m_fault_addr = f_addr;
-    ec_rip = Ec::current->get_reg(18);
-    ec_rcx = Ec::current->get_regsRCX();
-    ec_rsp = Ec::current->get_reg(19);
+    ec_rcx = Ec::current->get_reg(Ec::RCX);
+    ec_rip = Ec::current->get_reg(Ec::RIP);
+    ec_rsp = Ec::current->get_reg(Ec::RSP);
     if (Ec::current->is_virutalcpu()) {
         Paddr hpa_rcx_rip;
         mword attrib;
@@ -131,7 +131,7 @@ void Cow_elt::resolve_cow_fault(Vtlb* tlb, Hpt *hpt, mword virt, Paddr phys, mwo
     cow_elts->enqueue(c);
 //    Console::print("Cow error v: %lx attr %lx phys0: %lx  phys1: %lx  phys2: %lx", virt, c->attr, 
 //            c->phys_addr[0], c->phys_addr[1], c->phys_addr[2]);            
-        }
+}
 
 /**
  * Checks if the physical page was already in-use and listed in COW page list (cow_elts)
@@ -239,22 +239,24 @@ bool Cow_elt::compare() {
             
             char instr_buff[STR_MIN_LENGTH];
             instruction_in_hex(*reinterpret_cast<mword*> (rip_ptr), instr_buff);
-            Console::print("MISSMATCH Pd: %s PE %llu virt %lx: phys0:%lx phys1 %lx phys2 %lx "
-                    "rip %lx:%s rcx %lx rsp %lx:%lx MM %lx index %lu %lx val0: 0x%lx  val1: 0x%lx "
-                    "val2 0x%lx", 
-                    Pd::current->get_name(), Counter::nb_pe, c->m_fault_addr, c->phys_addr[0], 
-                    c->phys_addr[1], c->phys_addr[2], c->ec_rip, instr_buff, c->ec_rcx, c->ec_rsp, 
-                    c->ec_rsp_content, Pe::missmatch_addr, index, reinterpret_cast<mword>(reinterpret_cast<mword*>(c->page_addr) + index), val0, val1, val2);
-                        
+            String *s = new String(2*STR_MAX_LENGTH);
+            String::print(s->get_string(), "MISSMATCH Pd: %s PE %llu virt %lx: phys0:%lx phys1 %lx phys2 %lx "
+                "rip %lx:%s rcx %lx rsp %lx:%lx MM %lx index %lu %lx val0: 0x%lx  val1: 0x%lx "
+                "val2 0x%lx", Pd::current->get_name(), Counter::nb_pe, c->m_fault_addr, c->phys_addr[0], 
+                c->phys_addr[1], c->phys_addr[2], c->ec_rip, instr_buff, c->ec_rcx, c->ec_rsp, 
+                c->ec_rsp_content, Pe::missmatch_addr, index, reinterpret_cast<mword>(reinterpret_cast<mword*>(c->page_addr) + index), val0, val1, val2);
+            Logstore::add_entry_in_buffer(s->get_string());
+            trace(0, "%s", s->get_string());
+            delete s;
                 // if in development, we got a real bug, print info, 
                 // if in production, we got an SEU, just return true
             c = cow_elts->head(), n = nullptr, h = c;
-                while (c) {
+            while (c) {
                 trace(0, "Cow v: %lx  phys: %lx phys1: %lx  phys2: %lx", c->page_addr, c->phys_addr[0],
-                        c->phys_addr[1], c->phys_addr[2]);
-                    n = c->next;
+                    c->phys_addr[1], c->phys_addr[2]);
+                n = c->next;
                 c = (n == h) ? nullptr : n;
-                }
+            }
 //            Console::print_page(ptr0);
 //            Console::print_page(ptr1);
 //            Console::print_page(ptr2);
@@ -479,8 +481,8 @@ static inline void Cow_elt::operator delete (void *ptr) {
 
 void Cow_elt::to_log(const char* reason){
     char buff[2*STR_MAX_LENGTH];
-    String::print(buff, "%s d %lx %lx %lx %lx %d de %lx next %lx ", reason, page_addr, 
+    String::print(buff, "%s d %lx %lx %lx %lx %d de %lx next %lx %s", reason, page_addr, 
         phys_addr[0], phys_addr[1], phys_addr[2], age, v_is_mapped_elsewhere ? 
-        page_addr : 0, next ? next->page_addr:0);
+        page_addr : 0, next ? next->page_addr:0, pte.is_hpt ? "Hpt" : "VTLB");
     Logstore::add_entry_in_buffer(buff);    
 }
