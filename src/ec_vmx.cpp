@@ -203,41 +203,47 @@ void Ec::handle_vmx()
 
     mword reason = Vmcs::read (Vmcs::EXI_REASON) & 0xff;
     keep_cow = false;    
-    
+    unsigned reason_vec = 0;
     Counter::vmi[reason][Pe::run_number]++;
 
-    char buff[STR_MAX_LENGTH];
-    String::print(buff, "VMEXIT guest rip %lx rsp %lx flags %lx reason %s run_num %u ", 
+    char counter_buff[STR_MIN_LENGTH], buff[STR_MAX_LENGTH + 50];
+    if(Lapic::counter_vmexit_value > Lapic::perf_max_count - MAX_INSTRUCTION)
+        String::print(counter_buff, "%#llx", Lapic::counter_vmexit_value);
+    else
+        String::print(counter_buff, "%llu", Lapic::counter_vmexit_value);
+    size_t n = String::print(buff, "VMEXIT guest rip %lx rsp %lx flags %lx run_num %u counter %s:%#llx reason %s", 
             Vmcs::read(Vmcs::GUEST_RIP), Vmcs::read(Vmcs::GUEST_RSP), Vmcs::read(Vmcs::GUEST_RFLAGS), 
-            Vmcs::reason[reason], Pe::run_number);
-    Logstore::add_entry_in_buffer(buff);
-
-    if(reason == Vmcs::VMX_EXTINT){
-        unsigned vector = Vmcs::read (Vmcs::EXI_INTR_INFO) & 0xff;
-        debug_started_trace(TRACE_VMX, "VMExit reason %s:%d Guest rip %lx run %d counter %llx:%llx"
-                " rsp %lx", Vmcs::reason[reason], vector, Vmcs::read (Vmcs::GUEST_RIP), Pe::run_number, 
-                Lapic::read_instCounter(), Lapic::counter_read_value, Vmcs::read (Vmcs::GUEST_RSP));
-    } 
-    else if (reason == Vmcs::VMX_EXC_NMI){
+            Pe::run_number, counter_buff, Lapic::read_instCounter(), Vmcs::reason[reason]);
+    if(reason == Vmcs::VMX_EXTINT) {
+        reason_vec = Vmcs::read (Vmcs::EXI_INTR_INFO) & 0xff;
+        String::print(buff+n, " vec %u", reason_vec);
+    } else if(reason == Vmcs::VMX_EXC_NMI) {
         mword intr_info = Vmcs::read (Vmcs::EXI_INTR_INFO);
-        if((intr_info & 0x7ff) == 0x30e) {       // #PF
-            mword err = Vmcs::read (Vmcs::EXI_INTR_ERROR);
-            mword cr2 = Vmcs::read (Vmcs::EXI_QUALIFICATION);
-            debug_started_trace(TRACE_VMX, "VMExit reason %s:%lx:%lx Guest rip %lx run %d counter "
-                    "%llx rsp %lx", Vmcs::reason[reason], cr2, err, Vmcs::read (Vmcs::GUEST_RIP), Pe::run_number, 
-                    Lapic::read_instCounter(), Vmcs::read (Vmcs::GUEST_RSP));    
+        switch(intr_info & 0x7ff) {
+            case 0x202: // NMI
+                copy_string(buff+n, " NMI", STR_MAX_LENGTH + 50 - n);
+                break;
+            case 0x307: // #NM
+                copy_string(buff+n, " NM", STR_MAX_LENGTH + 50 - n);
+                break;
+            case 0x30e: // #PF
+                String::print(buff+n, " PF %lx:%lx ", Vmcs::read (Vmcs::EXI_QUALIFICATION), 
+                        Vmcs::read (Vmcs::EXI_INTR_ERROR));    
+                break;
+            default:
+                String::print(buff+n, " Don't know this VMX_EXTINT %lx", intr_info & 0x7ff);
         } 
     } else if (reason == Vmcs::VMX_MTF) {
-        
-    } else
-        debug_started_trace(TRACE_VMX, "VMExit reason %s Guest rip %lx run %d counter %llx:%llx "
-                "rsp %lx", Vmcs::reason[reason], Vmcs::read (Vmcs::GUEST_RIP), Pe::run_number, 
-                Lapic::read_instCounter(), Lapic::counter_read_value, Vmcs::read (Vmcs::GUEST_RSP));
-    
-//    if(reason == Vmcs::VMX_INTR_WINDOW){
-//        trace(0, "VMExit reason %s Guest rip %lx counter %llx run %d", Vmcs::reason[reason], 
-//                Vmcs::read (Vmcs::GUEST_RIP), Lapic::read_instCounter(), Pe::run_number);
-//    }
+        copy_string(buff+n, " VMX_MTF", STR_MAX_LENGTH + 50 - n);
+    }
+    Logstore::add_entry_in_buffer(buff);
+
+    if(Pe::run_number == 1 && step_reason == SR_NIL && run1_reason == PES_PMI && reason_vec != 164) {
+// What are your doing here? Actually, it means 2nd run exceeds 1st run and trigger exception
+// In this case, PMI must be pending and should be served just after IRET
+        reset_pmi = false;
+        ret_user_vmresume();
+    }
 
     switch (reason) {
         case Vmcs::VMX_EXC_NMI:     vmx_exception();
@@ -281,42 +287,59 @@ void Ec::vmx_disable_single_step() {
             step_reason = SR_NIL;
             break;
         case SR_PMI: {
+            char buff[STR_MAX_LENGTH];
             ++Counter::pmi_ss;
             nb_inst_single_step++;
             mword current_rip = Vmcs::read(Vmcs::GUEST_RIP);
-            if(Lapic::read_instCounter() > (Lapic::perf_max_count - MAX_INSTRUCTION + 300)){
-                prepare_checking();    
-                Logstore::dump("vmx_disable_single_step - SR_PMI");
-                Console::panic("SR_PMI Too much single stepping GuestRIP %lx nbSS %llx ", current_rip, nb_inst_single_step);
+            if(nb_inst_single_step > nbInstr_to_execute + 5) {
+                Console::panic("SR_PMI Run %d Lost in Single stepping nb_inst_single_step %llu "
+                "nbInstr_to_execute %llu first_run_instr_number %llu second_run_instr_number %llu Pd %s Ec %s", Pe::run_number, nb_inst_single_step, 
+                nbInstr_to_execute, first_run_instr_number, second_run_instr_number, Pd::current->get_name(), Ec::current->get_name());
             }
-            if (nbInstr_to_execute > 0)
-                nbInstr_to_execute--;
+//            if (nbInstr_to_execute > 0)
+//                nbInstr_to_execute--;
             if (prev_rip == current_rip) { // Rep Prefix
                 nb_inst_single_step--;
-                nbInstr_to_execute++; // Re-adjust the number of instruction                  
-                // Console::print("EIP: %lx  prev_rip: %lx MSR_PERF_FIXED_CTR0: %lld instr: %lx", 
-                // current->regs.REG(ip), prev_rip, Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), *reinterpret_cast<mword *>(current->regs.REG(ip)));
+//                nbInstr_to_execute++; // Re-adjust the number of instruction                  
+                
+                Register cmp = current->compare_regs();
                 // It may happen that this is the final instruction
-                if (!current->compare_regs()) {
-                    //                                check_instr_number_equals(1);
+                if (cmp) {
+                    String::print(buff, "SR_PMI Run %d REP_PREF %s is different %lx:%lx:%lx:%lx nbSS %llu nbInstToExec %llu Pd %s Ec %s", Pe::run_number, 
+                    reg_names[cmp], current->get_reg(cmp, 0), current->get_reg(cmp, 1), current->get_reg(cmp, 2), current->get_reg(cmp), 
+                    nb_inst_single_step, nbInstr_to_execute, Pd::current->get_name(), Ec::current->get_name());
+                    Logstore::add_entry_in_buffer(buff);
+                } else {
                     disable_mtf();
+                    if(Pe::inState1) {
+                        current->restore_state2();
+                    }
                     check_memory(PES_SINGLE_STEP);
+                    ret_user_vmresume();
                 }
             }
             prev_rip = current_rip;
             // No need to compare if nbInstr_to_execute > 3 
-            if (nbInstr_to_execute > 3) {
+            if (nb_inst_single_step < nbInstr_to_execute - 2) {
                 vmx_enable_single_step(SR_PMI);
                 ret_user_vmresume();
-            }
-            if (!current->compare_regs()) {
-                //                            check_instr_number_equals(2);
-                disable_mtf();
-                check_memory(PES_SINGLE_STEP);
             } else {
-                vmx_enable_single_step(SR_PMI);
-                nbInstr_to_execute = 1;
-                ret_user_vmresume();
+                Register cmp = current->compare_regs();
+                if (cmp) {
+                    String::print(buff, "SR_PMI Run %d : %s is different %lx:%lx:%lx:%lx nbSS %llu nbInstToExec %llu Pd %s Ec %s", Pe::run_number, 
+                    reg_names[cmp], current->get_reg(cmp, 0), current->get_reg(cmp, 1), current->get_reg(cmp, 2), current->get_reg(cmp), 
+                    nb_inst_single_step, nbInstr_to_execute, Pd::current->get_name(), Ec::current->get_name());
+                    Logstore::add_entry_in_buffer(buff);
+                    vmx_enable_single_step(SR_PMI);
+//                    nbInstr_to_execute = 1;
+                    ret_user_vmresume();
+                } else {
+                    disable_mtf();
+                    if(Pe::inState1) {
+                        current->restore_state2();
+                    }
+                    check_memory(PES_SINGLE_STEP);
+                }
             }
             break;
         }
@@ -341,47 +364,77 @@ void Ec::vmx_disable_single_step() {
             vmx_enable_single_step(SR_DBG);
         break;
         case SR_EQU: {
+            char buff[STR_MAX_LENGTH];
             ++Counter::pmi_ss;
             nb_inst_single_step++;
             mword current_rip = Vmcs::read(Vmcs::GUEST_RIP);
-            if(Lapic::read_instCounter() > (Lapic::perf_max_count - MAX_INSTRUCTION + 300)){
-                prepare_checking();    
-                Logstore::dump("vmx_disable_single_step - SR_EQU");
-                Console::panic("SR_EQU Too much single stepping GuestRIP %lx nbSS %llx ", 
-                        current_rip, nb_inst_single_step);
+            if(nb_inst_single_step > nbInstr_to_execute) {
+                Console::panic("SR_EQU Run %d Lost in Single stepping nb_inst_single_step %llu nbInstr_to_execute %llu "
+                "first_run_instr_number %llu second_run_instr_number %llu Pd %s Ec %s", Pe::run_number, nb_inst_single_step, nbInstr_to_execute, 
+                first_run_instr_number, second_run_instr_number, Pd::current->get_name(), Ec::current->get_name());
             }
-            if (nbInstr_to_execute > 0)
-                nbInstr_to_execute--;
+            nb_inst_single_step++;
+//            if (nbInstr_to_execute > 0)
+//                nbInstr_to_execute--;
             if (prev_rip == current_rip) { // Rep Prefix
                 nb_inst_single_step--;
-                nbInstr_to_execute++; // Re-adjust the number of instruction                  
-                // Console::print("EIP: %lx  prev_rip: %lx MSR_PERF_FIXED_CTR0: %lld instr: %lx", 
-                // current->regs.REG(ip), prev_rip, Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0), 
-                // *reinterpret_cast<mword *>(current->regs.REG(ip)));
+//                nbInstr_to_execute++; // Re-adjust the number of instruction                  
+                
                 // It may happen that this is the final instruction
-                if (!current->compare_regs()) {
-                    //                                check_instr_number_equals(3);
+                Register cmp = current->compare_regs();
+                if (cmp) {
+                    String::print(buff, "SR_EQU && REP_PREF Run %d %s is different %lx:%lx:%lx:%lx nbSS %llu nbInstToExec %llu Pd %s Ec %s", 
+                    Pe::run_number, reg_names[cmp], current->get_reg(cmp, 0), current->get_reg(cmp, 1), current->get_reg(cmp, 2), 
+                    current->get_reg(cmp), nb_inst_single_step, nbInstr_to_execute, Pd::current->get_name(), Ec::current->get_name());
+                    Logstore::add_entry_in_buffer(buff);
+                 } else {
                     disable_mtf();
-                    check_memory(PES_SINGLE_STEP);
+                    if(Pe::inState1) {
+                        current->restore_state2();
+                    }
+                    check_memory(PES_SINGLE_STEP);                    
+                    ret_user_vmresume();
                 }
             }
             //here, single stepping 2nd run should be ok
-            if (!current->compare_regs()) {// if ok?
-                //                            check_instr_number_equals(4);
-                disable_mtf();
-                check_memory(PES_SINGLE_STEP);
-            } else {
-                if (nbInstr_to_execute == 0) { // single stepping the first run with 2 credits instructions
-                    current->restore_state1();
-                    nbInstr_to_execute = distance_instruction + nb_inst_single_step + 1;
-                    nb_inst_single_step = 0;
-                    run_switched = true;
-                    vmx_enable_single_step(SR_EQU);
+            Register cmp = current->compare_regs();
+            if (cmp) {
+                String::print(buff, "SR_EQU Run %d %s is different %lx:%lx:%lx:%lx nbSS %llu nbInstToExec %llu Pd %s Ec %s", 
+                Pe::run_number, reg_names[cmp], current->get_reg(cmp, 0), current->get_reg(cmp, 1), current->get_reg(cmp, 2), 
+                current->get_reg(cmp), nb_inst_single_step, nbInstr_to_execute, Pd::current->get_name(), Ec::current->get_name());
+                Logstore::add_entry_in_buffer(buff);
+                // single stepping the first run with 2 credits instructions
+                if (nb_inst_single_step == nbInstr_to_execute) { 
+                    if(!run_switched) {
+                        if(Pe::inState1)
+                            current->restore_state2();
+                        else 
+                            current->restore_state1();   
+                        nbInstr_to_execute *= 2;
+                        nb_inst_single_step = 0;
+//                        nbInstr_to_execute = distance_instruction + nb_inst_single_step + 1;
+//                        nb_inst_single_step = 0;
+                        run_switched = true;
+                        enable_mtf();
+                    } else {
+                        Console::panic("SR_EQU Run %d run_switched but %s is different %lx:%lx:%lx:%lx nb_inst_single_step %llu "
+                            "nbInstr_to_execute %llu first_run_instr_number %llu second_run_instr_number %llu Pd %s Ec %s", 
+                            Pe::run_number, reg_names[cmp], current->get_reg(cmp, 0), current->get_reg(cmp, 1), current->get_reg(cmp, 1),
+                            current->get_reg(cmp), nb_inst_single_step, nbInstr_to_execute, first_run_instr_number, second_run_instr_number, 
+                            Pd::current->get_name(), Ec::current->get_name());                            
+                    }
                     ret_user_vmresume();
                 } else { // relaunch the first run without restoring the second execution state
-                    vmx_enable_single_step(SR_EQU);
+                    enable_mtf();
                     ret_user_vmresume();
                 }
+            } else {
+                disable_mtf();
+                if(Pe::inState1) {
+                    current->restore_state2();
+                }
+                check_memory(PES_SINGLE_STEP);     
+                ret_user_vmresume();                
             }
             break;
         }

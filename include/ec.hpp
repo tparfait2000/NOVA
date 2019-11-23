@@ -323,8 +323,7 @@ public:
         CMP_TWO_RUN = 1,
         STORE_RUN_STATE = 2,
     };
-    static mword prev_rip, last_rip, last_rcx, last_rsp, end_rip, end_rcx, instruction_value, 
-    tscp_rcx1, tscp_rcx2;
+    static mword prev_rip, instruction_value, tscp_rcx1, tscp_rcx2;
     static uint64 counter1, counter2, exc_counter, exc_counter1, exc_counter2, debug_compteur, 
     count_je, nbInstr_to_execute, tsc1, tsc2, nb_inst_single_step, second_run_instr_number, 
     first_run_instr_number, distance_instruction, second_max_instructions;
@@ -689,7 +688,7 @@ public:
     }
     mword get_reg(Register, int = 3);
     Register compare_regs(PE_stopby = PES_DEFAULT);
-    static void count_interrupt(mword);
+    static void count_interrupt(Exc_regs*);
     static void check_instr_number_equals(int);
     void start_debugging(Debug_type);
     static void debug_record_info();

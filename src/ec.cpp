@@ -42,8 +42,7 @@
 #include "pe.hpp"
 #include "log_store.hpp"
 
-mword Ec::prev_rip = 0, Ec::last_rip = 0, Ec::last_rcx = 0, Ec::end_rip, Ec::end_rcx,
-        Ec::tscp_rcx1 = 0, Ec::tscp_rcx2 = 0;
+mword Ec::prev_rip = 0, Ec::tscp_rcx1 = 0, Ec::tscp_rcx2 = 0;
 bool Ec::hardening_started = false, Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false, 
         Ec::no_further_check = false, Ec::run_switched = false, Ec::keep_cow = false,
         Ec::reset_pmi = true;
@@ -417,7 +416,13 @@ void Ec::ret_user_vmresume() {
         current->save_state0();
         launch_state = Ec::VMRESUME;
         Lapic::program_pmi();
+    } else if(Pe::run_number == 1 && step_reason == SR_NIL && reset_pmi) {
+        // This is necessary on Qemu with (linux kernel > 5.0.0.29) because due to unknow reason, 
+        // the MSR_PERF_FIXED_CTR0 does not get reset in check_memory. 
+        Lapic::program_pmi(second_max_instructions);              
     }
+    if(!reset_pmi)
+        reset_pmi = true;
 
     if (EXPECT_FALSE(Pd::current->gtlb.chk(Cpu::id))) {
         Pd::current->gtlb.clr(Cpu::id);
@@ -432,7 +437,7 @@ void Ec::ret_user_vmresume() {
     char buff[STR_MAX_LENGTH];
 //    String::print_page(buff, current->regs.REG(sp));
     String::print(buff, "VMResume : Run %d Ec %s Rip %lx Counter %llx", Pe::run_number, 
-    current->get_name(), current->get_reg(RIP), Lapic::read_instCounter());
+    current->get_name(), Vmcs::read(Vmcs::GUEST_RIP), Lapic::read_instCounter());
     Logstore::add_entry_in_buffer(buff);
     if(step_reason == SR_DBG)
         enable_mtf();
@@ -743,7 +748,7 @@ void Ec::enable_step_debug(Step_reason reason, mword fault_addr, Paddr fault_phy
         case SR_EQU:
         {
             uint8 *ptr = reinterpret_cast<uint8 *> (Hpt::remap_cow(Pd::kern.quota, 
-                    Ec::current->getPd()->Space_mem::loc[Cpu::id], end_rip, 3));
+                    Ec::current->getPd()->Space_mem::loc[Cpu::id], regs.REG(ip), 3));
             if (ptr && (*ptr == 0xf3 || *ptr == 0xf2)) {
                 Console::print("Rep prefix detected: Step reason %d addr %lx rcx %lx", reason, 
                         fault_addr, current->regs.REG(cx));
@@ -892,7 +897,6 @@ void Ec::save_state0() {
     Pe::c_regs[0] = regs_0;
     Pe::inState1 = false;
     Pe::run_number = 0;
-    Counter::nb_pe++;    
 }
 
 /**
@@ -1198,11 +1202,11 @@ mword Ec::get_reg(Register reg, int state) {
         case R15:
             return r.r15;
         case RIP:
-            return utcb ? r.REG(ip) : 0;
+            return utcb ? r.REG(ip) : Vmcs::read(Vmcs::GUEST_RIP);
         case RSP:
-            return utcb ? r.REG(sp) : 0;
+            return utcb ? r.REG(sp) : Vmcs::read(Vmcs::GUEST_RSP);
         case RFLAG:
-            return utcb ? r.REG(fl) : 0;
+            return utcb ? r.REG(fl) : Vmcs::read(Vmcs::GUEST_RFLAGS);
         case GUEST_RIP:
             return utcb ? 0 : Vmcs::read(Vmcs::GUEST_RIP); 
         case GUEST_RSP:
@@ -1304,7 +1308,8 @@ Ec::Register Ec::compare_regs(PE_stopby reason) {
     return NOREG;
 }
 
-void Ec::count_interrupt(mword vector){
+void Ec::count_interrupt(Exc_regs *r){
+    mword vector = r->vec;
     switch (vector) {
         case 0 ... VEC_GSI - 1:
             Counter::exc[vector][Pe::run_number]++;
@@ -1323,7 +1328,7 @@ void Ec::count_interrupt(mword vector){
             break;
     }
     uint8 *ptr = reinterpret_cast<uint8 *> (Hpt::remap_cow(Pd::kern.quota, 
-            Ec::current->getPd()->Space_mem::loc[Cpu::id], last_rip-1, 3, 2));
+        Pd::current->Space_mem::loc[Cpu::id], r->REG(ip)-1, 3, 2));
     if(!ptr)
         return;
     ptr += 1;

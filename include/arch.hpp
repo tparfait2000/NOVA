@@ -138,4 +138,29 @@
                         sysretq;
 
 #define RET_USER_EXC    iretq;
+
+#define LOAD_GPR_1      pop     PREG(15);               \
+                        pop     PREG(14);               \
+                        pop     PREG(13);               \
+                        pop     PREG(12);               \
+                        pop     PREG(11);               \
+                        pop     PREG(10);               \
+                        pop     PREG(9);                \
+                        pop     PREG(8);                \
+                        pop     PREG(di);               \
+                        pop     PREG(si);               \
+                        pop     PREG(bp);               \
+
+#define START_COUNTING  mov $0x38d,     PREG(cx);       \
+                        xor PREG(dx),   PREG(dx);       \
+                        mov $0xb,       PREG(ax);       \
+                        wrmsr;
+
+#define LOAD_GPR_2      pop     PREG(ax);               \
+                        pop     PREG(bx);               \
+                        pop     PREG(dx);               \
+                        pop     PREG(cx);               \
+                        pop     PREG(ax);
+  
+                
 #endif

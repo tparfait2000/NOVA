@@ -34,19 +34,15 @@
 
 unsigned    Lapic::freq_tsc;
 unsigned    Lapic::freq_bus;
-uint64 Lapic::counter = 0, Lapic::prev_counter, Lapic::max_tsc = 0, Lapic::start_counter, 
-        Lapic::perf_max_count, Lapic::counter_read_value; 
-uint32 Lapic::tour = 0, Lapic::tour1 = 0;
-const uint32 Lapic::max_info = 100000;
-uint64 Lapic::perf_compteur[max_info][2];
-mword Lapic::info[max_info][4];
+uint64 Lapic::perf_max_count, Lapic::counter_vmexit_value, Lapic::start_counter; 
 
 void Lapic::init_cpuid()
 {
     Paddr apic_base = Msr::read<Paddr>(Msr::IA32_APIC_BASE);
 
     Pd::kern.Space_mem::delreg (Pd::kern.quota, Pd::kern.mdb_cache, apic_base & ~PAGE_MASK);
-    Hptp (Hpt::current()).update (Pd::kern.quota, CPU_LOCAL_APIC, 0, Hpt::HPT_NX | Hpt::HPT_G | Hpt::HPT_UC | Hpt::HPT_W | Hpt::HPT_P, apic_base & ~PAGE_MASK);
+    Hptp (Hpt::current()).update (Pd::kern.quota, CPU_LOCAL_APIC, 0, Hpt::HPT_NX | 
+            Hpt::HPT_G | Hpt::HPT_UC | Hpt::HPT_W | Hpt::HPT_P, apic_base & ~PAGE_MASK);
 
     Cpu::id = Cpu::find_by_apic_id (Lapic::id());
 }
@@ -145,7 +141,8 @@ void Lapic::init(bool invariant_tsc)
     
     perf_max_count = (1ull<<Cpu::perf_bit_size);
 
-    trace (TRACE_APIC, "APIC:%#lx ID:%#x VER:%#x LVT:%#x (%s Mode)", apic_base & ~PAGE_MASK, id(), version(), lvt_max(), freq_bus ? "OS" : "DL");
+    trace (TRACE_APIC, "APIC:%#lx ID:%#x VER:%#x LVT:%#x (%s Mode)", 
+            apic_base & ~PAGE_MASK, id(), version(), lvt_max(), freq_bus ? "OS" : "DL");
 }
 
 void Lapic::send_ipi (unsigned cpu, unsigned vector, Delivery_mode dlv, Shorthand dsh){
@@ -179,8 +176,9 @@ void Lapic::timer_handler(){
 }
 
 void Lapic::lvt_vector (unsigned vector){    
+    Counter::print<1,16> (++Counter::lvt[vector - VEC_LVT][Pe::run_number], 
+            Console_vga::COLOR_LIGHT_BLUE, vector - VEC_LVT + SPN_LVT);
     if(vector == VEC_LVT_PERFM){
-        Counter::print<1,16> (++Counter::lvt[vector - VEC_LVT][Pe::run_number], Console_vga::COLOR_LIGHT_BLUE, vector - VEC_LVT + SPN_LVT);
         perfm_handler();
         return;
     }
@@ -222,17 +220,15 @@ void Lapic::ipi_vector (unsigned vector){
  * Called only from entry.S
  * Only used in case of virtualization
  */
-void Lapic::save_counter(){
+void Lapic::subtract_host_instructions(){
     unsigned bias = Pe::vmlaunch ? 44 : 10; // Pour calculer ces nombres, il faut activer le MTF (enable_mtf()).
     // le compteur contient alors le nombre d'instructions en mode privilegié + 1 instruction en machine virtuelle
-    counter_read_value = Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0); 
-    uint64 deduced_cmpteurValue = counter_read_value - bias;
-    counter = counter_read_value>start_counter? deduced_cmpteurValue : 
-        counter_read_value < bias ? perf_max_count + counter_read_value - bias : deduced_cmpteurValue; 
+    counter_vmexit_value = Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0); 
+    uint64 deduced_cmpteurValue = counter_vmexit_value - bias, 
+            counter = counter_vmexit_value>start_counter? deduced_cmpteurValue : 
+        counter_vmexit_value < bias ? perf_max_count + counter_vmexit_value - bias : deduced_cmpteurValue; 
     
     Msr::write(Msr::MSR_PERF_FIXED_CTR0, counter); //0x44 is the number of hypervisor's instruction for now
-    Ec::last_rip = Vmcs::read(Vmcs::GUEST_RIP);
-    Ec::last_rcx = Ec::current->get_regsRCX();
 }    
 
 void Lapic::activate_pmi() {
@@ -259,8 +255,6 @@ void Lapic::program_pmi(uint64 number) {
     //executed and be updated with a dummy value
     Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0x0);    
     Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);
-    tour = 0;
-    prev_counter = start_counter;
 }
 
 /**
@@ -274,7 +268,6 @@ void Lapic::program_pmi2(uint64 number) {
     Msr::write(Msr::MSR_PERF_FIXED_CTR0, start_counter);
     Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0x0);    
     Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);
-    prev_counter = start_counter;
 }
 
 /**
@@ -288,89 +281,4 @@ void Lapic::cancel_pmi() {
     Msr::write(Msr::MSR_PERF_FIXED_CTR0, start_counter);
     Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0x0);    
     Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);
-    prev_counter = start_counter;
-}
-
-void Lapic::print_compteur(){
-    Console::print(" tour %u tour1 %u\n     Compteur1    run  EIP   Reason     #Instr1     ExpectedCmpt   |    Compteur2  run  EIP  Reason  #Instr2", tour, tour1);
-    uint32 half = tour1;
-    if(tour<half)
-        return;
-    for(uint32 i=0; i<tour-half; i++){
-        Console::print("[%3u] %12llx %3lx %6lx %6ld   %10lu    %12llx   | %12llx   %lx   %6lx   %ld    %10lu", i, perf_compteur[i][0], 
-                info[i][0], info[i][1], info[i][2], info[i][3], perf_compteur[i][1], perf_compteur[i+half][0], info[i+half][0], info[i+half][1], info[i+half][2], info[i+half][3]);
-        perf_compteur[i][0] = info[i][0] = info[i][1] = info[i][2] = info[i][3] = perf_compteur[i][1] = perf_compteur[i+half][0] = info[i+half][0] = info[i+half][1] = info[i+half][2] = info[i+half][3] = 0;
-    }
-    if(tour%2 != 0 && tour > 2*tour1){
-        Console::print("[%3u] %12llx %3lx %6lx %6ld   %10lu    %12llx", half+1, perf_compteur[half+1][0], 
-                info[half+1][0], info[half+1][1], info[half+1][2], info[half+1][3], perf_compteur[half+1][1]);
-        perf_compteur[half+1][0] = info[half+1][0] = info[half+1][1] = info[half+1][2] = info[half+1][3] = perf_compteur[half+1][1] = 0;
-    }
-    if(tour1 > tour/2)
-        for(uint32 i=tour-half; i<half; i++){
-            Console::print("[%3u] %12llx %3lx %6lx %6ld   %10lu    %12llx", i, perf_compteur[i][0], 
-                info[i][0], info[i][1], info[i][2], info[half+1][3], perf_compteur[i][1]);
-            perf_compteur[i][0] = info[i][0] = info[i][1] = info[i][2] = info[half+1][3] = perf_compteur[i][1] = 0;
-        }
-}
-
-void Lapic::write_perf(mword reason){
-    perf_compteur[tour][0] = counter;
-    info[tour][0] = Pe::run_number;
-    info[tour][1] = Ec::last_rip;
-    info[tour][2] = reason;
-    info[tour][3] = diff_counter();
-    tour++;
-    prev_counter = counter;
-}
-
-void Lapic::stop_kernel_counting(){
-    Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);    
-}
-
-void Lapic::compute_expected_info(uint32 exc_count, int pmi){
-//    Console::print("compute_expected_info: Tour %u exc_count %u pmi %d", tour, exc_count, pmi);
-    uint32 i = tour - exc_count;
-    for(uint32 j=i; j<tour-1; j++){
-        switch(pmi){
-            case 3002:
-                perf_compteur[j][1] = perf_compteur[j][0];
-                break;
-            case 5972:
-                perf_compteur[j][1] = perf_max_count - perf_compteur[tour-1][0] + perf_compteur[j][0];
-                break;
-            default:
-                ;
-        }
-    }
-    if(tour == exc_count)
-        tour1 = tour;
-    else{
-        tour1 = exc_count;
-//        Console::print("Tour n'est pas egal a exc_count");
-    }
-}
-
-bool Lapic::too_few_instr(){
-    return (read_instCounter() - prev_counter) < MAX_INSTRUCTION/10;
-}
-
-uint64 Lapic::nb_executed_instr(){
-    uint64 compteur_value = Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0);
-    return compteur_value >= start_counter ? compteur_value - start_counter : perf_max_count - start_counter + compteur_value; 
-}
-
-uint32 Lapic::diff_counter(){
-    if(counter>prev_counter){
-        if(counter<start_counter || prev_counter>=start_counter) return static_cast<uint32>(counter-prev_counter);
-        else if(prev_counter<start_counter) return static_cast<uint32>(counter-start_counter); // no way to make counter - prev_counter
-        else Console::print("counter>prev_counter %llx %llx %llx", prev_counter, counter, start_counter);
-    }else if(counter<prev_counter){
-        if(prev_counter<start_counter || counter>start_counter)  Console::print("Aberation counter<prev_counter %llx %llx %llx", prev_counter, counter, start_counter);
-        else if(counter<start_counter) return static_cast<uint32>(perf_max_count - prev_counter + counter); 
-        else Console::print("counter<prev_counter %llx %llx %llx", prev_counter, counter, start_counter);
-    }else //counter == prev_counter
-        return 0; // No instruction was executed, probability to stop at the same number consecutively is weak
-    
-    return 0;
 }

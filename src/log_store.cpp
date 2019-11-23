@@ -266,10 +266,10 @@ void Table_logs::free_logs(size_t left, bool in_percent) {
             e = i_end;
         }
     }
-    trace(0, "log_number %lu left %lu start %lu cursor %lu i_start %lu i_end %lu "
-            "s %lu e %lu", log_number, left, start, cursor, i_start, i_end, s, e);
+    trace(0, "log_number %lu left %lu total %lu start %lu cursor %lu i_start %lu i_end %lu "
+            "s %lu e %lu", log_number, left, total_logs, start, cursor, i_start, i_end, s, e);
     start = e;
-        }
+}
 
 /**
  * 

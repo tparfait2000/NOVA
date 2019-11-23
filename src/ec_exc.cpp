@@ -159,20 +159,20 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
      * If we get here, something went seriously wrong
      * The following are for debugging purpose
      */
-    mword eip = r->REG(ip);
-    trace(0, "eip0: %lx(%#lx)  rax_0: %lx", regs_0.REG(ip), regs_0.REG(cx), regs_0.REG(ax));
-    trace(0, "eip1: %lx(%#lx)  rax_1: %lx", regs_1.REG(ip), regs_1.REG(cx), regs_1.REG(ax));
-    trace(0, "eip2: %lx(%#lx)  rax_2: %lx", regs_2.REG(ip), regs_2.REG(cx), regs_2.REG(ax));
-    char buff[STR_MAX_LENGTH];
     mword *ptr = reinterpret_cast<mword*>(Hpt::remap_cow(Pd::kern.quota, 
-            Ec::current->getPd()->Space_mem::loc[Cpu::id], eip, 3, sizeof(mword)));
+            Ec::current->getPd()->Space_mem::loc[Cpu::id], r->REG(ip), 3, sizeof(mword)));
     assert(ptr);
-    instruction_in_hex(*ptr, buff);
-    trace(0, "GP Here: Ec: %s  Pd: %s ip %lx(%#lx) val: %s Lapic::counter %llx user %s",
-            ec->get_name(), ec->getPd()->get_name(), eip, r->ARG_IP, buff, 
-            Lapic::read_instCounter(), r->user() ? "true" : "false");
-    Counter::dump();
+    char inst_buff[STR_MAX_LENGTH];
+    instruction_in_hex(*ptr, inst_buff);
+    String *buffer = new String(2*STR_MAX_LENGTH);
+    String::print(buffer->get_string(), "GP in %s: Ec: %s  Pd: %s EIP %#lx:%#lx:%#lx:%#lx(%s)",
+    r->user() ? "USER" : "KERNEL", ec->get_name(), ec->getPd()->get_name(), regs_0.REG(ip), 
+    regs_1.REG(ip), regs_2.REG(ip), r->REG(ip), inst_buff);
+    Logstore::add_entry_in_buffer(buffer->get_string());
+    trace(0, "%s", buffer->get_string());
+    delete buffer;
     Logstore::dump("handle_exc_gp", true);
+    Counter::dump();
     ec->start_debugging(Debug_type::STORE_RUN_STATE);
     return false;
 }
@@ -225,9 +225,9 @@ void Ec::handle_exc_db(Exc_regs *r) {
                     // It may happen that this is the final instruction
                     Register cmp = current->compare_regs();
                     if (cmp) {
-                        String::print(buff, "SR_PMI Run %d REP_PREF %s is different %lx:%lx:%lx:%lx nbSS %llu nbInstToExec %llu", Pe::run_number, 
+                        String::print(buff, "SR_PMI Run %d REP_PREF %s is different %lx:%lx:%lx:%lx nbSS %llu nbInstToExec %llu Pd %s Ec %s", Pe::run_number, 
                         reg_names[cmp], current->get_reg(cmp, 0), current->get_reg(cmp, 1), current->get_reg(cmp, 2), current->get_reg(cmp), 
-                        nb_inst_single_step, nbInstr_to_execute);
+                        nb_inst_single_step, nbInstr_to_execute, Pd::current->get_name(), Ec::current->get_name());
                         Logstore::add_entry_in_buffer(buff);
                     } else {
                         // check_instr_number_equals(1);
@@ -247,8 +247,9 @@ void Ec::handle_exc_db(Exc_regs *r) {
                 } else {
                     Register cmp = current->compare_regs();
                     if (cmp) {
-                        String::print(buff, "SR_PMI Run %d : %s is different %lx:%lx:%lx:%lx nbSS %llu nbInstToExec %llu", Pe::run_number, 
-                        reg_names[cmp], current->get_reg(cmp, 0), current->get_reg(cmp, 1), current->get_reg(cmp, 2), current->get_reg(cmp), nb_inst_single_step, nbInstr_to_execute);
+                        String::print(buff, "SR_PMI Run %d : %s is different %lx:%lx:%lx:%lx nbSS %llu nbInstToExec %llu Pd %s Ec %s", Pe::run_number, 
+                        reg_names[cmp], current->get_reg(cmp, 0), current->get_reg(cmp, 1), current->get_reg(cmp, 2), current->get_reg(cmp), 
+                        nb_inst_single_step, nbInstr_to_execute, Pd::current->get_name(), Ec::current->get_name());
                         Logstore::add_entry_in_buffer(buff);
                         current->regs.REG(fl) |= Cpu::EFL_TF;
     //                    nbInstr_to_execute = 1;
@@ -292,8 +293,8 @@ void Ec::handle_exc_db(Exc_regs *r) {
                 ++Counter::pmi_ss;
                 if(nb_inst_single_step > nbInstr_to_execute){
                     Console::panic("SR_EQU Run %d Lost in Single stepping nb_inst_single_step %llu nbInstr_to_execute %llu "
-                    "first_run_instr_number %llu second_run_instr_number %llu", Pe::run_number, nb_inst_single_step, nbInstr_to_execute, 
-                            first_run_instr_number, second_run_instr_number);
+                    "first_run_instr_number %llu second_run_instr_number %llu Pd %s Ec %s", Pe::run_number, nb_inst_single_step, nbInstr_to_execute, 
+                    first_run_instr_number, second_run_instr_number, Pd::current->get_name(), Ec::current->get_name());
                 }
                 nb_inst_single_step++;
 //                if (nbInstr_to_execute > 0)
@@ -305,9 +306,9 @@ void Ec::handle_exc_db(Exc_regs *r) {
                     // It may happen that this is the final instruction
                     Register cmp = current->compare_regs();
                     if (cmp) {
-                        String::print(buff, "SR_EQU && REP_PREF Run %d %s is different %lx:%lx:%lx:%lx nbSS %llu nbInstToExec %llu", 
-                            Pe::run_number, reg_names[cmp], current->get_reg(cmp, 0), current->get_reg(cmp, 1), current->get_reg(cmp, 2), 
-                            current->get_reg(cmp), nb_inst_single_step, nbInstr_to_execute);
+                        String::print(buff, "SR_EQU && REP_PREF Run %d %s is different %lx:%lx:%lx:%lx nbSS %llu nbInstToExec %llu Pd %s Ec %s", 
+                        Pe::run_number, reg_names[cmp], current->get_reg(cmp, 0), current->get_reg(cmp, 1), current->get_reg(cmp, 2), 
+                        current->get_reg(cmp), nb_inst_single_step, nbInstr_to_execute, Pd::current->get_name(), Ec::current->get_name());
                         Logstore::add_entry_in_buffer(buff);
                     } else {
                         // check_instr_number_equals(3);
@@ -322,9 +323,9 @@ void Ec::handle_exc_db(Exc_regs *r) {
                 //here, single stepping 2nd run should be ok
                 Register cmp = current->compare_regs();
                 if (cmp) {
-                    String::print(buff, "SR_EQU Run %d %s is different %lx:%lx:%lx:%lx nbSS %llu nbInstToExec %llu", 
-                        Pe::run_number, reg_names[cmp], current->get_reg(cmp, 0), current->get_reg(cmp, 1), 
-                        current->get_reg(cmp, 2), current->get_reg(cmp), nb_inst_single_step, nbInstr_to_execute);
+                    String::print(buff, "SR_EQU Run %d %s is different %lx:%lx:%lx:%lx nbSS %llu nbInstToExec %llu Pd %s Ec %s", 
+                    Pe::run_number, reg_names[cmp], current->get_reg(cmp, 0), current->get_reg(cmp, 1), current->get_reg(cmp, 2), 
+                    current->get_reg(cmp), nb_inst_single_step, nbInstr_to_execute, Pd::current->get_name(), Ec::current->get_name());
                     Logstore::add_entry_in_buffer(buff);
                     // single stepping the first run with 2 credits instructions
                     if (nb_inst_single_step == nbInstr_to_execute) { 
@@ -545,8 +546,6 @@ void Ec::check_memory(PE_stopby from) {
             ec->restore_state0();
             counter1 = Lapic::read_instCounter();
             if (from == PES_PMI) {
-                end_rip = last_rip;
-                end_rcx = last_rcx;
                 exc_counter1 = exc_counter;
                 counter1 = Lapic::read_instCounter();
                 /*
@@ -560,11 +559,11 @@ void Ec::check_memory(PE_stopby from) {
                 assert(first_run_instr_number < Lapic::perf_max_count);
                 if (current->utcb) {
                     uint8 *ptr = reinterpret_cast<uint8 *> (Hpt::remap_cow(Pd::kern.quota, 
-                        Pd::current->Space_mem::loc[Cpu::id], end_rip, 3));
+                        Pd::current->Space_mem::loc[Cpu::id], current->regs.REG(ip), 3));
                     if (ptr && (*ptr == 0xf3 || *ptr == 0xf2)) {
                         instruction_in_hex(*(reinterpret_cast<mword *> (ptr)), buff);
-                        trace(0, "Rep prefix in Run1 %lx: %s rcx %lx", end_rip, buff, 
-                            end_rcx);
+                        trace(0, "Rep prefix in Run1 %lx: %s rcx %lx", current->regs.REG(ip), 
+                            buff, current->regs.REG(cx));
                         in_rep_instruction = true;
                         Cpu::disable_fast_string();
                     }
@@ -839,6 +838,7 @@ void Ec::reset_counter() {
     Counter::cow_fault = 0;
     Counter::used_cows_in_old_cow_elts = 0;
     Lapic::program_pmi();
+    Counter::nb_pe++;    
 }
 /**
  * Reset state data and counters
@@ -858,10 +858,10 @@ void Ec::reset_all() {
  */
 void Ec::start_debugging(Debug_type dt) {
     debug_type = dt;
-    rollback();
-    //                ec->reset_all();
-    //                check_exit();
+    debug_rollback();
+    reset_all();
     Pe::run_number = 0;
+    Pe::inState1 = false;
     nbInstr_to_execute = first_run_instr_number;
     restore_state0_data();
     launch_state = Ec::IRET;
@@ -907,10 +907,8 @@ void Ec::prepare_checking(){
 }
 
 void Ec::save_regs(Exc_regs *r) {
-    last_rip = r->REG(ip);
-    last_rcx = r->REG(cx);
     exc_counter++;
-    count_interrupt(r->vec);
+    count_interrupt(r);
     char buff[STR_MAX_LENGTH];
     if(r->vec == Cpu::EXC_PF) {
         String::print(buff, "PAGE FAULT rip %lx run_num %u addr %lx Counter %llx", 

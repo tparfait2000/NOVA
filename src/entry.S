@@ -271,7 +271,7 @@ entry_vmx:              push    %REG(ax)
                         mov     $(CPU_LOCAL_STCK + PAGE_SIZE), %REG(sp)
                         SAVE_FLAGS
                         SAVE_GPR
-                        call save_counter
+                        call subtract_host_instructions
                         LOAD_GPR
                         LOAD_FLAGS
                         jmp     vmx_handler

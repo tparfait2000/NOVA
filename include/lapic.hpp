@@ -105,14 +105,7 @@ class Lapic
     public:
         static unsigned freq_tsc;
         static unsigned freq_bus;
-        static uint64 prev_tsc;
-        static uint64 end_time, begin_time, counter, prev_counter, start_counter, 
-        perf_max_count, counter_read_value;
-        static bool timeout_to_check, timeout_expired;
-        static uint32 tour, tour1;
-        static const uint32 max_info;
-        static uint64 perf_compteur[][2]; 
-        static mword info[][4];
+        static uint64 start_counter, perf_max_count, counter_vmexit_value;
         /**
          * Formules fondamentales 
          * ----- Delta TSC -----
@@ -121,10 +114,6 @@ class Lapic
          * ----- Delta IRC (Initial Reset Count) ----
          * Delta IRC = Delta T * Frequence bus        
          */
-        static unsigned const max_time = 1000; // 1000 => 1µs (ou 1000ns) si freq_tsc/1000000
-                                               // 1000 => 1000µs (ou 1ms) si freq_tsc/1000 
-        static uint64 max_tsc;
-         
         ALWAYS_INLINE
         static inline unsigned id()
         {
@@ -178,9 +167,7 @@ class Lapic
         static void ipi_vector (unsigned) asm ("ipi_vector");
         
         REGPARM (0)
-        static void save_counter (void) asm ("save_counter");
-        REGPARM (0)
-        static void stop_kernel_counting (void) asm ("stop_kernel_counting");  
+        static void subtract_host_instructions (void) asm ("subtract_host_instructions");
         
         static void activate_pmi();
         
@@ -189,13 +176,6 @@ class Lapic
         static void program_pmi(uint64 number = 0);
         static void program_pmi2(uint64);
         static void cancel_pmi();
-        static void print_compteur();
-        static void write_perf(mword);
-        static void compute_expected_info(uint32, int);
-        static bool too_few_instr();
-        static void check_dwc();
-        static uint64 nb_executed_instr();
-        static uint32 diff_counter();
         static void exec_lvt(unsigned, bool);
         
 };
