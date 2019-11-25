@@ -457,7 +457,6 @@ void Ec::handle_exc(Exc_regs *r) {
     if(Pe::run_number == 1 && step_reason == SR_NIL && run1_reason == PES_PMI) {
 // What are your doing here? Actually, it means 2nd run exceeds 1st run and trigger exception
 // In this case, PMI must be pending and should be served just after IRET
-        reset_pmi = false;
         return;
     }
 
@@ -586,7 +585,7 @@ void Ec::check_memory(PE_stopby from) {
                 }
             } else {
                 second_max_instructions = MAX_INSTRUCTION;
-                Lapic::cancel_pmi();
+                Lapic::program_pmi();
                 String::print(buff, "After cancel %llx", Lapic::read_instCounter());
                 Logstore::add_entry_in_buffer(buff);
             }

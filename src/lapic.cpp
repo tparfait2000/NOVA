@@ -255,6 +255,14 @@ void Lapic::program_pmi(uint64 number) {
     //executed and be updated with a dummy value
     Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0x0);    
     Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);
+    //Qemu oddities : loop here until the counter get reset
+    int i = 5;
+    while(i && start_counter != Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0)){
+        Msr::write(Msr::MSR_PERF_FIXED_CTR0, start_counter);
+        Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0x0);    
+        Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);
+        i--;
+    }
 }
 
 /**
@@ -278,7 +286,18 @@ void Lapic::program_pmi2(uint64 number) {
 void Lapic::cancel_pmi() {
     start_counter = perf_max_count - MAX_INSTRUCTION;
 //    set_lvt(LAPIC_LVT_PERFM, DLV_FIXED, VEC_LVT_PERFM);
+    uint64 old_val =  Lapic::read_instCounter();
+    char buff[STR_MAX_LENGTH];
     Msr::write(Msr::MSR_PERF_FIXED_CTR0, start_counter);
     Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0x0);    
     Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);
+    int i = 5;
+    while(i && start_counter != Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0)){
+        Msr::write(Msr::MSR_PERF_FIXED_CTR0, start_counter);
+        Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0x0);    
+        Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);
+        i--;
+    }
+    String::print(buff, "cancel_pmi old %llx new %llx i %d", old_val, Lapic::read_instCounter(), i);
+    Logstore::add_entry_in_buffer(buff);
 }

@@ -44,8 +44,7 @@
 
 mword Ec::prev_rip = 0, Ec::tscp_rcx1 = 0, Ec::tscp_rcx2 = 0;
 bool Ec::hardening_started = false, Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false, 
-        Ec::no_further_check = false, Ec::run_switched = false, Ec::keep_cow = false,
-        Ec::reset_pmi = true;
+        Ec::no_further_check = false, Ec::run_switched = false, Ec::keep_cow = false;
 uint64 Ec::exc_counter = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::counter1 = 0, 
         Ec::counter2 = 0, Ec::debug_compteur = 0, Ec::count_je = 0, Ec::nbInstr_to_execute = 0,
         Ec::nb_inst_single_step = 0, Ec::second_run_instr_number = 0, 
@@ -344,11 +343,13 @@ void Ec::ret_user_sysexit() {
 
         current->save_state0();
         launch_state = Ec::SYSEXIT;
-    } else if(Pe::run_number == 1 && step_reason == SR_NIL && reset_pmi) {
+    } /* else if(Pe::run_number == 1 && step_reason == SR_NIL && reset_pmi) {
         // This is necessary on Qemu with (linux kernel > 5.0.0.29) because due to unknow reason, 
         // the MSR_PERF_FIXED_CTR0 does not get reset in check_memory. 
         Lapic::program_pmi(second_max_instructions);   
     }
+    if(!reset_pmi)
+        reset_pmi = true;*/
     char buff[STR_MAX_LENGTH];
 //    String::print_page(buff, current->regs.REG(sp));
     String::print(buff, "Sysreting : Run %d Ec %s Rip %lx Counter %llx", Pe::run_number, 
@@ -374,13 +375,13 @@ void Ec::ret_user_iret() {
 
         current->save_state0();
         launch_state = Ec::IRET;
-    } else if(Pe::run_number == 1 && step_reason == SR_NIL && reset_pmi) {
+    }/* else if(Pe::run_number == 1 && step_reason == SR_NIL && reset_pmi) {
         // This is necessary on Qemu with (linux kernel > 5.0.0.29) because due to unknow reason, 
         // the MSR_PERF_FIXED_CTR0 does not get reset in check_memory. 
         Lapic::program_pmi(second_max_instructions);              
     }
     if(!reset_pmi)
-        reset_pmi = true;
+        reset_pmi = true;*/
     char buff[STR_MAX_LENGTH];
 //    String::print_page(buff, current->regs.REG(sp));
     String::print(buff, "Ireting : Run %d Ec %s Rip %lx Counter %llx", Pe::run_number, 
@@ -416,13 +417,13 @@ void Ec::ret_user_vmresume() {
         current->save_state0();
         launch_state = Ec::VMRESUME;
         Lapic::program_pmi();
-    } else if(Pe::run_number == 1 && step_reason == SR_NIL && reset_pmi) {
+    } /*else if(Pe::run_number == 1 && step_reason == SR_NIL && reset_pmi) {
         // This is necessary on Qemu with (linux kernel > 5.0.0.29) because due to unknow reason, 
         // the MSR_PERF_FIXED_CTR0 does not get reset in check_memory. 
         Lapic::program_pmi(second_max_instructions);              
     }
     if(!reset_pmi)
-        reset_pmi = true;
+        reset_pmi = true;*/
 
     if (EXPECT_FALSE(Pd::current->gtlb.chk(Cpu::id))) {
         Pd::current->gtlb.clr(Cpu::id);

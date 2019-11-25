@@ -241,7 +241,6 @@ void Ec::handle_vmx()
     if(Pe::run_number == 1 && step_reason == SR_NIL && run1_reason == PES_PMI && reason_vec != 164) {
 // What are your doing here? Actually, it means 2nd run exceeds 1st run and trigger exception
 // In this case, PMI must be pending and should be served just after IRET
-        reset_pmi = false;
         ret_user_vmresume();
     }
 
