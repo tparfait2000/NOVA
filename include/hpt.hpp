@@ -142,7 +142,6 @@ public:
     void print_table(Quota &quota, mword); 
         
     Paddr replace_cow(Quota &quota, mword, mword, mword);
-    void replace_cow_n(Quota &quota, mword, int, mword, mword);
     static void print(char const *s, mword v);
     static void set_cow_page(mword virt, mword &entry);
     void cow_update(Paddr, mword, mword);

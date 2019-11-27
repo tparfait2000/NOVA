@@ -622,7 +622,7 @@ void Ec::check_memory(PE_stopby from) {
                 }
                 exc_counter2 = exc_counter;
                 counter2 = Lapic::read_instCounter();
-                Lapic::cancel_pmi();
+                Lapic::program_pmi();
                 /*
                  * Here we assume that Lapic::start_counter = (Lapic::perf_max_count - 
                  * MAX_INSTRUCTION) ie 0xFFFFFFF00000. So when counter overflows, counter2 will 

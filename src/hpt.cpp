@@ -209,11 +209,6 @@ Paddr Hpt::replace_cow(Quota &quota, mword v, Paddr p, mword a) {
     return e->addr();
 }
 
-void Hpt::replace_cow_n(Quota &quota, mword v, int n, Paddr p, mword a) {
-    for (int i = 0; i< n; i++)
-        replace_cow(quota, v+i*PAGE_SIZE, p+i*PAGE_SIZE, a);
-}
-
 void Hpt::print(char const *s, mword v){
     Console::print("%s %lx", s, v);
 }
