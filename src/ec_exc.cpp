@@ -165,9 +165,9 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
     char inst_buff[STR_MAX_LENGTH];
     instruction_in_hex(*ptr, inst_buff);
     String *buffer = new String(2*STR_MAX_LENGTH);
-    String::print(buffer->get_string(), "GP in %s: Ec: %s  Pd: %s EIP %#lx:%#lx:%#lx:%#lx(%s)",
+    String::print(buffer->get_string(), "GP in %s: Ec: %s  Pd: %s EIP %#lx:%#lx:%#lx:%#lx(%s), rdi %#lx",
     r->user() ? "USER" : "KERNEL", ec->get_name(), ec->getPd()->get_name(), regs_0.REG(ip), 
-    regs_1.REG(ip), regs_2.REG(ip), r->REG(ip), inst_buff);
+    regs_1.REG(ip), regs_2.REG(ip), r->REG(ip), inst_buff, r->REG(di));
     Logstore::add_entry_in_buffer(buffer->get_string());
     trace(0, "%s", buffer->get_string());
     delete buffer;
@@ -270,19 +270,13 @@ void Ec::handle_exc_db(Exc_regs *r) {
                 return;
                 break;
             case SR_DBG:
-//                if (nb_inst_single_step > nbInstr_to_execute) {
-//                    if (Pe::run_number == 0) {
-//                        trace(0, "Relaunching for the second run");
-//                        current->restore_state();
-//                        nb_inst_single_step = 0;
-//                        Pe::run_number++;
-//                        check_exit();
-//                    } else {
-//                        Console::panic("SR_DBG Finish");
-//                    }
-//                } else 
-                {
+                if (nb_inst_single_step > nbInstr_to_execute) {
+                    Console::panic("SR_DBG Finish");
+                } else {
                     current->regs.REG(fl) |= Cpu::EFL_TF;
+                    char buff[STR_MAX_LENGTH];
+                    String::print(buff, "%llu IP %lx", nb_inst_single_step, current->regs.REG(ip)); 
+                    Logstore::add_entry_in_buffer(buff);
                     nb_inst_single_step++;
                     return;
                 }
@@ -380,6 +374,8 @@ void Ec::handle_exc_db(Exc_regs *r) {
 bool Ec::handle_deterministic_exception(mword vec, PE_stopby &stop_reason) {
     keep_cow = false;
     switch (vec) {
+        case Cpu::EXC_INV:
+            return (stop_reason = PES_DEV_NOT_AVAIL);
         case Cpu::EXC_NM:
             return (stop_reason = PES_DEV_NOT_AVAIL);
         case Cpu::EXC_TS:
@@ -476,7 +472,12 @@ void Ec::handle_exc(Exc_regs *r) {
             Console::panic("NMI not handled yet");
             return;
 
-        // Device not available
+        // Non Maskable Interrupt
+        case Cpu::EXC_INV:
+            Console::panic("Invalid Opcode");
+            return;
+
+            // Device not available
         case Cpu::EXC_NM:
             handle_exc_nm();
             return;
@@ -538,8 +539,9 @@ void Ec::check_memory(PE_stopby from) {
     }
     Ec *ec = current;
     switch (Pe::run_number) {
-        case 0: // First run
-            String::print(buff, "rip1 %lx", ec->utcb ? ec->regs.REG(ip) : Vmcs::read(Vmcs::GUEST_RIP));
+        case 0:// First run
+            String::print(buff, "rip1 %lx", ec->utcb ? from == PES_SYS_ENTER ? ec->regs.ARG_IP : 
+                ec->regs.REG(ip) : Vmcs::read(Vmcs::GUEST_RIP));
             Logstore::append_log_in_buffer(buff);    
             run1_reason = from;
             ec->restore_state0();
@@ -709,7 +711,8 @@ void Ec::check_memory(PE_stopby from) {
         {
             prepare_checking();    
             int reg_diff = ec->compare_regs(from);
-            String::print(buff, "rip2 %lx", ec->utcb ? ec->regs_2.REG(ip) : Vmcs::read(Vmcs::GUEST_RIP));
+            String::print(buff, "rip2 %lx", ec->utcb ? from == PES_SYS_ENTER ? 
+                ec->regs.ARG_IP : ec->regs_2.REG(ip) : Vmcs::read(Vmcs::GUEST_RIP));
             Logstore::append_log_in_buffer(buff);    
             if (Cow_elt::compare() || reg_diff) {
                 if(IN_PRODUCTION){

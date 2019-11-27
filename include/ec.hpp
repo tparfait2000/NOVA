@@ -250,15 +250,16 @@ public:
     };
 
     enum Step_reason {
-        SR_NIL = 0,
-        SR_MMIO = 1,
-        SR_PIO = 2,
-        SR_RDTSC = 3,
-        SR_PMI = 4,
-        SR_GP = 5,
-        SR_DBG = 6,
-        SR_EQU = 7,
-        SR_VMIO = 8,
+        SR_NIL      = 0,
+        SR_MMIO     = 1,
+        SR_PIO      = 2,
+        SR_RDTSC    = 3,
+        SR_PMI      = 4,
+        SR_GP       = 5,
+        SR_DBG      = 6,
+        SR_EQU      = 7,
+        SR_VMIO     = 8,
+        SR_GPF      = 9,
     };
 
     enum PE_stopby {

@@ -353,7 +353,7 @@ void Ec::ret_user_sysexit() {
     char buff[STR_MAX_LENGTH];
 //    String::print_page(buff, current->regs.REG(sp));
     String::print(buff, "Sysreting : Run %d Ec %s Rip %lx Counter %llx", Pe::run_number, 
-    current->get_name(), current->get_reg(RIP), Lapic::read_instCounter());
+    current->get_name(), current->regs.ARG_IP, Lapic::read_instCounter());
     Logstore::add_entry_in_buffer(buff);
     if (step_reason == SR_NIL) {
         asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : 
@@ -878,8 +878,8 @@ void Ec::debug_rollback() {
 void Ec::save_state0() {
     regs_0 = regs;
     char buff[STR_MAX_LENGTH];
-    String::print(buff, "PE %llu Pd %s Ec %s Rip0 %lx", Counter::nb_pe, 
-            getPd()->get_name(), get_name(), regs.REG(ip));
+    String::print(buff, "PE %llu Pd %s Ec %s Rip0 %lx:%lx", Counter::nb_pe, 
+            getPd()->get_name(), get_name(), regs.ARG_IP, regs.REG(ip));
     Logstore::add_log_in_buffer(buff);
     Cow_elt::place_phys0();
     Fpu::dwc_save(); // If FPU activated, save fpu state
@@ -1284,7 +1284,7 @@ Ec::Register Ec::compare_regs(PE_stopby reason) {
     }
     // following checks are not valid if reason is Sysenter
     if (reason == PES_SYS_ENTER) 
-        return NOREG;
+        return NOREG;        
     if(utcb){
         if (regs.REG(ip) != (Pe::inState1 ? regs_2.REG(ip) : regs_1.REG(ip))) {
             return RIP;
