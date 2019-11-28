@@ -211,7 +211,7 @@ void Sc::rke_handler()
 void Sc::operator delete (void *ptr)
 {
     Pd * pd = static_cast<Sc *>(ptr)->ec->pd;
-    pd->sm_cache.free (ptr, pd->quota);
+    pd->sc_cache.free (ptr, pd->quota);
 }
 
 void Sc::pre_free(Rcu_elem * a)

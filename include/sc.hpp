@@ -113,7 +113,7 @@ class Sc : public Kobject, public Refcount
         static void schedule (bool = false, bool = true);
 
         ALWAYS_INLINE
-        static inline void *operator new (size_t, Pd &pd) { return pd.sm_cache.alloc(pd.quota); }
+        static inline void *operator new (size_t, Pd &pd) { return pd.sc_cache.alloc(pd.quota); }
 
         static void operator delete (void *ptr);
 };
