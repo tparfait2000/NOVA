@@ -221,9 +221,10 @@ void Lapic::ipi_vector (unsigned vector){
  * Only used in case of virtualization
  */
 void Lapic::subtract_host_instructions(){
-    unsigned bias = Pe::vmlaunch ? 44 : 10; // Pour calculer ces nombres, il faut activer le MTF (enable_mtf()).
+    unsigned bias = Pe::vmlaunch ? 14 : 13; // Pour calculer ces nombres, il faut activer le MTF (enable_mtf()).
     // le compteur contient alors le nombre d'instructions en mode privilegié + 1 instruction en machine virtuelle
     counter_vmexit_value = Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0); 
+    assert(counter_vmexit_value >= bias);
     uint64 deduced_cmpteurValue = counter_vmexit_value - bias, 
             counter = counter_vmexit_value>start_counter? deduced_cmpteurValue : 
         counter_vmexit_value < bias ? perf_max_count + counter_vmexit_value - bias : deduced_cmpteurValue; 

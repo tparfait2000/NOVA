@@ -617,8 +617,8 @@ public:
     void save_state0();
     void restore_state0_data();
 
-    void vmx_save_state();
-    void vmx_restore_state();
+    void vmx_save_state0();
+    void vmx_restore_state0();
     void vmx_restore_state1();
     void vmx_restore_state2();
     void vmx_rollback();
@@ -694,7 +694,6 @@ public:
     void start_debugging(Debug_type);
     static void debug_record_info();
     static void step_debug();
-    static void prepare_checking();
     size_t vtlb_lookup(uint64, Paddr&, mword&);
     //        size_t get_cow_number() { return cow_elts.size(); }
     //        bool is_cow_elts_empty() { return !cow_elts.head(); }

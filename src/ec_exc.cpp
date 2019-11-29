@@ -709,7 +709,6 @@ void Ec::check_memory(PE_stopby from) {
                 }
             }
         {
-            prepare_checking();    
             int reg_diff = ec->compare_regs(from);
             String::print(buff, "rip2 %lx", ec->utcb ? from == PES_SYS_ENTER ? 
                 ec->regs.ARG_IP : ec->regs_2.REG(ip) : Vmcs::read(Vmcs::GUEST_RIP));
@@ -883,28 +882,6 @@ void Ec::debug_record_info() {
             break;
         default:
             Console::panic("Undefined debug type %u", debug_type);
-    }
-}
-
-/**
- * For debugging purpose, and to update current thread register after each run
- */
-void Ec::prepare_checking(){
-    Cpu_regs regs = current->regs;
-    if (Pe::inState1){
-        current->regs_1 = regs;
-        Pe::c_regs[1] = regs;   
-        if(!current->utcb){
-            Pe::vmcsRIP_1 = Vmcs::read(Vmcs::GUEST_RIP);        
-            Pe::vmcsRSP_1 = Vmcs::read(Vmcs::GUEST_RSP);  
-        }
-    } else {
-        current->regs_2 = regs;
-        Pe::c_regs[3] = regs;            
-        if(!current->utcb){
-            Pe::vmcsRIP_2 = Vmcs::read(Vmcs::GUEST_RIP);        
-            Pe::vmcsRSP_2 = Vmcs::read(Vmcs::GUEST_RSP);   
-        }
     }
 }
 

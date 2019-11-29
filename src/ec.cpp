@@ -343,13 +343,7 @@ void Ec::ret_user_sysexit() {
 
         current->save_state0();
         launch_state = Ec::SYSEXIT;
-    } /* else if(Pe::run_number == 1 && step_reason == SR_NIL && reset_pmi) {
-        // This is necessary on Qemu with (linux kernel > 5.0.0.29) because due to unknow reason, 
-        // the MSR_PERF_FIXED_CTR0 does not get reset in check_memory. 
-        Lapic::program_pmi(second_max_instructions);   
     }
-    if(!reset_pmi)
-        reset_pmi = true;*/
     char buff[STR_MAX_LENGTH];
 //    String::print_page(buff, current->regs.REG(sp));
     String::print(buff, "Sysreting : Run %d Ec %s Rip %lx Counter %llx", Pe::run_number, 
@@ -375,13 +369,7 @@ void Ec::ret_user_iret() {
 
         current->save_state0();
         launch_state = Ec::IRET;
-    }/* else if(Pe::run_number == 1 && step_reason == SR_NIL && reset_pmi) {
-        // This is necessary on Qemu with (linux kernel > 5.0.0.29) because due to unknow reason, 
-        // the MSR_PERF_FIXED_CTR0 does not get reset in check_memory. 
-        Lapic::program_pmi(second_max_instructions);              
     }
-    if(!reset_pmi)
-        reset_pmi = true;*/
     char buff[STR_MAX_LENGTH];
 //    String::print_page(buff, current->regs.REG(sp));
     String::print(buff, "Ireting : Run %d Ec %s Rip %lx Counter %llx", Pe::run_number, 
@@ -417,13 +405,7 @@ void Ec::ret_user_vmresume() {
         current->save_state0();
         launch_state = Ec::VMRESUME;
         Lapic::program_pmi();
-    } /*else if(Pe::run_number == 1 && step_reason == SR_NIL && reset_pmi) {
-        // This is necessary on Qemu with (linux kernel > 5.0.0.29) because due to unknow reason, 
-        // the MSR_PERF_FIXED_CTR0 does not get reset in check_memory. 
-        Lapic::program_pmi(second_max_instructions);              
     }
-    if(!reset_pmi)
-        reset_pmi = true;*/
 
     if (EXPECT_FALSE(Pd::current->gtlb.chk(Cpu::id))) {
         Pd::current->gtlb.clr(Cpu::id);
@@ -436,35 +418,16 @@ void Ec::ret_user_vmresume() {
     if (EXPECT_FALSE(get_cr2() != current->regs.cr2))
         set_cr2(current->regs.cr2);
     char buff[STR_MAX_LENGTH];
-//    String::print_page(buff, current->regs.REG(sp));
     String::print(buff, "VMResume : Run %d Ec %s Rip %lx Counter %llx", Pe::run_number, 
     current->get_name(), Vmcs::read(Vmcs::GUEST_RIP), Lapic::read_instCounter());
     Logstore::add_entry_in_buffer(buff);
     if(step_reason == SR_DBG)
         enable_mtf();
-    asm volatile ("mov %2," EXPAND(PREG(sp);)
-                EXPAND(SAVE_GPR)
-                "movb $0x0, %0;"
-                "lea %1," EXPAND(PREG(sp); LOAD_GPR)
-                "push " EXPAND(PREG(ax);)
-                "push " EXPAND(PREG(cx);)
-                "push " EXPAND(PREG(dx);)
-                "mov $0x38d," EXPAND(PREG(cx);)
-                "xor " EXPAND(PREG(dx)) ", " EXPAND(PREG(dx);)
-                "mov $0xb," EXPAND(PREG(ax);)
-                "wrmsr;"  
-                "pop " EXPAND(PREG(dx);)
-                "pop " EXPAND(PREG(cx);)
-                "pop " EXPAND(PREG(ax);)
-                "vmresume;" // VMRESUME is not counted as instruction; we don't know why
-                "mov %3," EXPAND(PREG(sp);)
-                EXPAND(LOAD_GPR)
-                "movb $0x1, %0;"
-                "lea %1," EXPAND(PREG(sp); LOAD_GPR)
-                "vmlaunch;"
-                "mov %2," EXPAND(PREG(sp);)
-                : "=m" (Pe::vmlaunch) : "m" (current->regs), "i" (CPU_LOCAL_STCK + PAGE_SIZE), "i" 
-                (CPU_LOCAL_STCK + PAGE_SIZE - 0x80) : "memory");
+    asm volatile ("lea %0," EXPAND (PREG(sp); LOAD_GPR_COUNT)
+                  "vmresume;"
+                  "vmlaunch;"
+                  "mov %1," EXPAND (PREG(sp);)
+                  : : "m" (current->regs), "i" (CPU_LOCAL_STCK + PAGE_SIZE) : "memory");
 
     trace(0, "VM entry failed with error %#lx", Vmcs::read(Vmcs::VMX_INST_ERROR));
 
@@ -810,7 +773,7 @@ void Ec::restore_state0() {
     if (fpu)
         fpu->restore_data();
     if(!utcb){
-        vmx_restore_state();
+        vmx_restore_state0();
     }
     Pe::c_regs[1] = regs_1;
     Pe::c_regs[2] = regs_0;
@@ -818,7 +781,6 @@ void Ec::restore_state0() {
 
 void Ec::restore_state1() {
     Pe::inState1 = true;
-    Pe::run_number = 0;
     regs_2 = regs;
     regs = regs_1;
     Cow_elt::restore_state1();
@@ -828,11 +790,11 @@ void Ec::restore_state1() {
     if(!utcb){
         vmx_restore_state1();
     }
+    Pe::run_number = 0;
 }
 
 void Ec::restore_state2() {
     Pe::inState1 = false;
-    Pe::run_number = 1;
     regs_1 = regs;
     regs = regs_2;
     Cow_elt::restore_state2();
@@ -842,6 +804,7 @@ void Ec::restore_state2() {
     if(!utcb){
         vmx_restore_state2();
     }
+    Pe::run_number = 1;
 }
 
 /**
@@ -892,7 +855,7 @@ void Ec::save_state0() {
 //        mword cr0_shadow = current->regs.cr0_shadow, cr3_shadow = current->regs.cr3_shadow, 
 //              cr4_shadow = current->regs.cr4_shadow; 
 //        regs.vtlb->reserve_stack(cr0_shadow, cr3_shadow, cr4_shadow);
-        vmx_save_state();        
+        vmx_save_state0();        
     }
     Lapic::program_pmi();
     Pe::c_regs[0] = regs_0;
@@ -915,14 +878,14 @@ void Ec::restore_state0_data() {
 //        mword cr0_shadow = current->regs.cr0_shadow, cr3_shadow = current->regs.cr3_shadow, 
 //          cr4_shadow = current->regs.cr4_shadow; 
 //        regs.vtlb->reserve_stack(cr0_shadow, cr3_shadow, cr4_shadow);
-        vmx_save_state();        
+        vmx_save_state0();        
     }
     Pe::c_regs[0] = regs_0;
     Pe::inState1 = false;
     Pe::run_number = 0;
 }
 
-void Ec::vmx_save_state() {
+void Ec::vmx_save_state0() {
    //    save_vm_stack();
     mword host_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
     Msr_area *cur_host_msr_area = reinterpret_cast<Msr_area*> 
@@ -942,27 +905,17 @@ void Ec::vmx_save_state() {
     regs.vmcs->clear();
     memcpy(Vmcs::vmcs0, regs.vmcs, Vmcs::basic.size);
     regs.vmcs->make_current();
-    Pe::vmcsRIP_0 = Vmcs::read(Vmcs::GUEST_RIP);   
-    Pe::vmcsRSP_0 = Vmcs::read(Vmcs::GUEST_RSP);   
-    Pe::vmcsRIP[0] = Pe::vmcsRIP_0;     
-    Pe::vmcsRSP[0] = Pe::vmcsRSP_0;   
+    Pe::guest_rip[0] = Vmcs::read(Vmcs::GUEST_RIP);   
+    Pe::guest_rsp[0] = Vmcs::read(Vmcs::GUEST_RSP);   
 }
 
-void Ec::vmx_restore_state() {
-//    if (!utcb) {
-//        regs.vtlb->flush(true);
-//    }
-
-    Pe::vmcsRIP_1 = Vmcs::read(Vmcs::GUEST_RIP);        
-    Pe::vmcsRSP_1 = Vmcs::read(Vmcs::GUEST_RSP);  
-    Pe::vmcsRIP[1] = Pe::vmcsRIP_1;
-    Pe::vmcsRSP[1] = Pe::vmcsRSP_1;
+void Ec::vmx_restore_state0() {
+    Pe::guest_rip[1] = Vmcs::read(Vmcs::GUEST_RIP);        
+    Pe::guest_rsp[1] = Vmcs::read(Vmcs::GUEST_RSP);  
     regs.vmcs->clear();
     memcpy(Vmcs::vmcs1, regs.vmcs, Vmcs::basic.size);
     memcpy(regs.vmcs, Vmcs::vmcs0, Vmcs::basic.size);
     regs.vmcs->make_current();
-    Pe::vmcsRIP[2] = Vmcs::read(Vmcs::GUEST_RIP);
-    Pe::vmcsRSP[2] = Vmcs::read(Vmcs::GUEST_RSP);
     
     mword host_msr_area_phys = Vmcs::read(Vmcs::EXI_MSR_LD_ADDR);
     Msr_area *cur_host_msr_area = reinterpret_cast<Msr_area*> 
@@ -984,10 +937,9 @@ void Ec::vmx_restore_state() {
 }
 
 void Ec::vmx_restore_state1() {
-    Pe::vmcsRIP_2 = Vmcs::read(Vmcs::GUEST_RIP);        
-    Pe::vmcsRSP_2 = Vmcs::read(Vmcs::GUEST_RSP);  
-    Pe::vmcsRIP[3] = Pe::vmcsRIP_2;
-    Pe::vmcsRSP[3] = Pe::vmcsRSP_2;
+    assert(Pe::run_number == 1);
+    Pe::guest_rip[2] = Vmcs::read(Vmcs::GUEST_RIP);        
+    Pe::guest_rsp[2] = Vmcs::read(Vmcs::GUEST_RSP);        
     regs.vmcs->clear();
     memcpy(Vmcs::vmcs2, regs.vmcs, Vmcs::basic.size);
     memcpy(regs.vmcs, Vmcs::vmcs1, Vmcs::basic.size);
@@ -1013,10 +965,9 @@ void Ec::vmx_restore_state1() {
 }
 
 void Ec::vmx_restore_state2() {
-    Pe::vmcsRIP_1 = Vmcs::read(Vmcs::GUEST_RIP);        
-    Pe::vmcsRSP_1 = Vmcs::read(Vmcs::GUEST_RSP);  
-    Pe::vmcsRIP[2] = Pe::vmcsRIP_1;
-    Pe::vmcsRSP[2] = Pe::vmcsRSP_1;
+    assert(Pe::run_number == 0);
+    Pe::guest_rip[1] = Vmcs::read(Vmcs::GUEST_RIP);        
+    Pe::guest_rsp[1] = Vmcs::read(Vmcs::GUEST_RSP);        
     regs.vmcs->clear();
     memcpy(Vmcs::vmcs1, regs.vmcs, Vmcs::basic.size);
     memcpy(regs.vmcs, Vmcs::vmcs2, Vmcs::basic.size);
@@ -1203,17 +1154,17 @@ mword Ec::get_reg(Register reg, int state) {
         case R15:
             return r.r15;
         case RIP:
-            return utcb ? r.REG(ip) : Vmcs::read(Vmcs::GUEST_RIP);
+            return utcb ? r.REG(ip) : state ? (state == 1 ? Pe::guest_rip[1] : (state == 2 ? Pe::guest_rip[2] : Vmcs::read(Vmcs::GUEST_RIP))) : Pe::guest_rip[0];
         case RSP:
-            return utcb ? r.REG(sp) : Vmcs::read(Vmcs::GUEST_RSP);
+            return utcb ? r.REG(sp) : state ? (state == 1 ? Pe::guest_rsp[1] : (state == 2 ? Pe::guest_rsp[2] : Vmcs::read(Vmcs::GUEST_RSP))) : Pe::guest_rsp[0];
         case RFLAG:
-            return utcb ? r.REG(fl) : Vmcs::read(Vmcs::GUEST_RFLAGS);
+            return utcb ? r.REG(fl) : state ? (state == 1 ? Pe::guest_rflags[1] : (state == 2 ? Pe::guest_rflags[2] : Vmcs::read(Vmcs::GUEST_RFLAGS))) : Pe::guest_rflags[0];
         case GUEST_RIP:
-            return utcb ? 0 : Vmcs::read(Vmcs::GUEST_RIP); 
+            return utcb ? 0 : state ? (state == 1 ? Pe::guest_rip[1] : (state == 2 ? Pe::guest_rip[2] : Vmcs::read(Vmcs::GUEST_RIP))) : Pe::guest_rip[0];
         case GUEST_RSP:
-            return utcb ? 0 : Vmcs::read(Vmcs::GUEST_RSP);
+            return utcb ? 0 : state ? (state == 1 ? Pe::guest_rsp[1] : (state == 2 ? Pe::guest_rsp[2] : Vmcs::read(Vmcs::GUEST_RSP))) : Pe::guest_rsp[0];
         case GUEST_RFLAG:
-            return utcb ? 0 : Vmcs::read(Vmcs::GUEST_RFLAGS);
+            return utcb ? 0 : state ? (state == 1 ? Pe::guest_rflags[1] : (state == 2 ? Pe::guest_rflags[2] : Vmcs::read(Vmcs::GUEST_RFLAGS))) : Pe::guest_rflags[0];
         case FPU_DATA:
             return FPU_DATA;
         case FPU_STATE:
@@ -1299,9 +1250,9 @@ Ec::Register Ec::compare_regs(PE_stopby reason) {
 //        }        
     } else {
 //        if(memcmp(regs.vmcs, Pe::inState1 ? Vmcs::vmcs2 : Vmcs::vmcs1, Vmcs::basic.size))
-        if(Vmcs::read(Vmcs::GUEST_RIP) != (Pe::inState1 ? Pe::vmcsRIP_2 : Pe::vmcsRIP_1))
+        if(Vmcs::read(Vmcs::GUEST_RIP) != (Pe::inState1 ? Pe::guest_rip[2] : Pe::guest_rip[1]))
             return GUEST_RIP;
-        if(Vmcs::read(Vmcs::GUEST_RSP) != (Pe::inState1 ? Pe::vmcsRSP_2 : Pe::vmcsRSP_1))
+        if(Vmcs::read(Vmcs::GUEST_RSP) != (Pe::inState1 ? Pe::guest_rsp[2] : Pe::guest_rsp[1]))
             return GUEST_RSP;
 //        if(Vmcs::read(Vmcs::GUEST_RFLAGS) != (Pe::inState1 ? Pe::vmcsRFLAG_2 : Pe::vmcsRFLG_1))
 //            return GUEST_RFLAG;
