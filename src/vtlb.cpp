@@ -120,6 +120,7 @@ Vtlb::Reason Vtlb::miss (Exc_regs *regs, mword virt, mword &error)
     size_t gsize = gwalk (regs, virt, phys, attr, error);
 
     if (EXPECT_FALSE (!gsize)) {
+        Ec::check_memory(Ec::PES_VMX_EXC);
         Counter::vtlb_gpf++;
         String::print(buff, "VTLB GLA_GPA Pe %llu virt %lx gpa %lx attr %lx err %lx", 
             Counter::nb_pe, virt, phys, attr, error);
@@ -130,6 +131,7 @@ Vtlb::Reason Vtlb::miss (Exc_regs *regs, mword virt, mword &error)
     size_t hsize = hwalk (phys, host, attr, error);
 
     if (EXPECT_FALSE (!hsize)) {
+        Ec::check_memory(Ec::PES_VMX_EXC);
         regs->nst_fault = phys;
         regs->nst_error = error;
         Counter::vtlb_hpf++;
@@ -177,7 +179,9 @@ Vtlb::Reason Vtlb::miss (Exc_regs *regs, mword virt, mword &error)
 
             attr |= TLB_S;
         }
-        
+        if(tlb->is_cow(virt, phys, error))
+            return SUCCESS;
+        Ec::check_memory(Ec::PES_VMX_EXC);
         if(attr & TLB_W){
             attr &= ~TLB_W;
             attr |= TLB_COW;
@@ -243,44 +247,28 @@ void Vtlb::flush (bool full)
 bool Vtlb::is_cow(mword virt, mword gpa, mword error){
     if(!(error & ERR_W))
         return false;
-    unsigned l = max();
-    unsigned b = bpl();
-
-    for(Vtlb *tlb = this;; tlb = static_cast<Vtlb *> (Buddy::phys_to_ptr(tlb->addr()))) {
-
-        unsigned shift = --l * b + PAGE_BITS;
-        tlb += virt >> shift & ((1UL << b) - 1);
-//        asm volatile ("" :: "m" (tlb)); // to avoid gdb "optimized out"
-//        asm volatile ("" :: "m" (l)); // to avoid gdb "optimized out"
-        if (!tlb)
-            return false;
-        
-        if (EXPECT_FALSE(!tlb->val))
-            return false;
-
-        if (EXPECT_FALSE(l && !tlb->super()))
-                continue;            
-        mword tlb_attr = tlb->attr(); 
-        if((tlb_attr & TLB_COW) && (tlb_attr & TLB_P)) {
-            mword hpa, ept_attr;
-            size_t size = Pd::current->Space_mem::ept.lookup (gpa, hpa, ept_attr);
-            char buff[STR_MAX_LENGTH + 50];
-            size_t n = String::print(buff, "TLB_COW Pe %llu v: %lx tlb->addr: %lx attr %lx gpa %lx hpa %lx size %lx", 
-                Counter::nb_pe, virt, tlb->addr(), tlb_attr, gpa, hpa, size);
-            if (size && (tlb->addr() == (hpa & ~PAGE_MASK))) { 
-                Counter::vtlb_cow_fault++;   
-                assert(virt != Pe_stack::stack); 
-                Cow_elt::resolve_cow_fault(tlb, nullptr, virt, tlb->addr(), tlb->attr());
-                String::print(buff+n, " IS_COW new tlb->val %llx", tlb->val);
-                Logstore::add_entry_in_buffer(buff);
-                return true;            
-            } else {
-                Logstore::add_entry_in_buffer(buff);
-                return false;
-            }
+    if((error & ERR_U) || (error & ERR_P))
+        return false;
+    mword tlb_attr = attr(); 
+    if((tlb_attr & TLB_COW) && (tlb_attr & TLB_P) && !(tlb_attr & TLB_W)) {
+        mword hpa, ept_attr;
+        size_t size = Pd::current->Space_mem::ept.lookup (gpa, hpa, ept_attr);
+        char buff[STR_MAX_LENGTH + 50];
+        size_t n = String::print(buff, "TLB_COW Pe %llu v: %lx tlb->addr: %lx attr %lx gpa %lx hpa %lx size %lx", 
+            Counter::nb_pe, virt, addr(), tlb_attr, gpa, hpa, size);
+        if (size && (addr() == (hpa & ~PAGE_MASK))) { 
+            Counter::vtlb_cow_fault++;   
+            assert(virt != Pe_stack::stack); 
+            Cow_elt::resolve_cow_fault(this, nullptr, virt, addr(), tlb_attr);
+            String::print(buff+n, " IS_COW new tlb->val %llx", val);
+            Logstore::add_entry_in_buffer(buff);
+            return true;            
         } else {
+            Logstore::add_entry_in_buffer(buff);
             return false;
         }
+    } else {
+        return false;
     }
 }
 
@@ -320,41 +308,5 @@ size_t Vtlb::lookup(uint64 v, Paddr &p, mword &a) {
         a = e->attr();
 
         return s;
-    }
-}
-
-size_t Vtlb::gla_to_gpa (mword cr0_shadow, mword cr3_shadow, mword cr4_shadow, mword gla, mword &gpa)
-{
-    if (EXPECT_FALSE (!(cr0_shadow & Cpu::CR0_PG))) {
-        gpa = gla;
-        return ~0UL;
-    }
-
-    bool pse = cr4_shadow & (Cpu::CR4_PSE | Cpu::CR4_PAE);
-    
-    unsigned lev = 2;
-
-    for (uint32 e, *pte= reinterpret_cast<uint32 *>(cr3_shadow & ~PAGE_MASK);; pte = reinterpret_cast<uint32 *>(e & ~PAGE_MASK)) {
-
-        unsigned shift = --lev * 10 + PAGE_BITS;
-        pte += gla >> shift & ((1UL << 10) - 1);
-
-        if (User::peek (pte, e) != ~0UL) {
-            gpa = reinterpret_cast<Paddr>(pte);
-            return ~0UL;
-        }
-
-        if (EXPECT_FALSE (!(e & TLB_P)))
-            return 0;
-
-        if (lev && (!pse || !(e & TLB_S))) {
-            continue;
-        }
-
-        size_t size = 1UL << shift;
-
-        gpa = (e & ~PAGE_MASK) | (gla & (size - 1));
-
-        return size;
     }
 }
