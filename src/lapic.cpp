@@ -221,15 +221,15 @@ void Lapic::ipi_vector (unsigned vector){
  * Only used in case of virtualization
  */
 void Lapic::subtract_host_instructions(){
-    unsigned bias = Pe::vmlaunch ? 14 : 13; // Pour calculer ces nombres, il faut activer le MTF (enable_mtf()).
+    unsigned bias = 10; // Pour calculer ces nombres, il faut activer le MTF (enable_mtf()).
     // le compteur contient alors le nombre d'instructions en mode privilegié + 1 instruction en machine virtuelle
     counter_vmexit_value = Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0); 
-    assert(counter_vmexit_value >= bias);
-    uint64 deduced_cmpteurValue = counter_vmexit_value - bias, 
-            counter = counter_vmexit_value>start_counter? deduced_cmpteurValue : 
-        counter_vmexit_value < bias ? perf_max_count + counter_vmexit_value - bias : deduced_cmpteurValue; 
+//    assert(counter_vmexit_value > start_counter ? counter_vmexit_value - start_counter > bias :
+//        true);
+    uint64 deduced_counteur_value = counter_vmexit_value >= bias ? counter_vmexit_value - bias : 
+        perf_max_count + counter_vmexit_value - bias; 
     
-    Msr::write(Msr::MSR_PERF_FIXED_CTR0, counter); //0x44 is the number of hypervisor's instruction for now
+    Msr::write(Msr::MSR_PERF_FIXED_CTR0, deduced_counteur_value); //11 is the number of hypervisor's instruction for now
 }    
 
 void Lapic::activate_pmi() {
@@ -251,17 +251,7 @@ uint64 Lapic::read_instCounter() {
 void Lapic::program_pmi(uint64 number) {
     start_counter = number ? perf_max_count - number : perf_max_count - MAX_INSTRUCTION;
 //    set_lvt(LAPIC_LVT_PERFM, DLV_FIXED, VEC_LVT_PERFM);
-    Msr::write(Msr::MSR_PERF_FIXED_CTR0, start_counter);
-    //Qemu oddities : MSR_PERF_FIXED_CTRL must be the last PMU instruction to be 
-    //executed and be updated with a dummy value
     Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0x0);    
+    Msr::write(Msr::MSR_PERF_FIXED_CTR0, start_counter);
     Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);
-    //Qemu oddities : loop here until the counter get reset
-    int i = 5;
-    while(i && start_counter != Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0)){
-        Msr::write(Msr::MSR_PERF_FIXED_CTR0, start_counter);
-        Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0x0);    
-        Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);
-        i--;
-    }
 }

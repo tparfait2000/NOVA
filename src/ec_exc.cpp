@@ -204,7 +204,6 @@ void Ec::handle_exc_db(Exc_regs *r) {
                 }
                 current->disable_step_debug();
                 launch_state = UNLAUNCHED;
-                reset_all();
                 return;
             case SR_PMI:
             {
@@ -546,6 +545,7 @@ void Ec::check_memory(PE_stopby from) {
             run1_reason = from;
             ec->restore_state0();
             counter1 = Lapic::read_instCounter();
+            second_max_instructions = MAX_INSTRUCTION;
             if (from == PES_PMI) {
                 exc_counter1 = exc_counter;
                 counter1 = Lapic::read_instCounter();
@@ -577,25 +577,18 @@ void Ec::check_memory(PE_stopby from) {
                  */
                 if((first_run_instr_number > MAX_INSTRUCTION + 300) || 
                         (first_run_instr_number < MAX_INSTRUCTION - 300)){
-                    trace(0, "PMI served too early or too late counter1 %llx \nMust be dug deeper", 
-                            counter1);
-                    second_max_instructions = first_run_instr_number;
-                    Lapic::program_pmi(first_run_instr_number);                                        
-                } else {
-                    second_max_instructions = MAX_INSTRUCTION;
-                    Lapic::program_pmi();                    
+                    String::print(buff, "PMI served too early or too late first_run_instr_number %llu "
+                    "counter1 %llx \nMust be dug deeper", first_run_instr_number, counter1);
+                    Logstore::add_entry_in_buffer(buff);
+                    Console::panic("%s", buff);          
                 }
-            } else {
-                second_max_instructions = MAX_INSTRUCTION;
-                Lapic::program_pmi();
-                String::print(buff, "After cancel %llx", Lapic::read_instCounter());
-                Logstore::add_entry_in_buffer(buff);
-            }
+            } 
             Pe::run_number++;
             exc_counter = 0;
             if(step_reason == SR_DBG){
                 nb_inst_single_step = 0;
             }
+            Lapic::program_pmi();
             check_exit();
             break;
         case 1: // Second run

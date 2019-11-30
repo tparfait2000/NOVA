@@ -27,3 +27,8 @@
                         if (EXPECT_FALSE (!(X)))                                                            \
                             Console::panic ("Assertion \"%s\" failed at %s:%d:%s", #X, __FILE__, __LINE__, __PRETTY_FUNCTION__); \
                     } while (0)
+
+#define assert_value(X, Y)   do {                                                                                    \
+                        if (EXPECT_FALSE (!(X)))                                                            \
+                            Console::panic ("Assertion \"%s\" failed at %s:%d:%s Value %s", #X, __FILE__, __LINE__, __PRETTY_FUNCTION__, Y); \
+                    } while (0)

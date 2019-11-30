@@ -267,6 +267,7 @@ void Ec::handle_vmx()
 }
 
 void Ec::vmx_disable_single_step() {
+    char buff[STR_MAX_LENGTH+50];
     switch(step_reason){
         case SR_RDTSC:
             disable_mtf();
@@ -274,14 +275,15 @@ void Ec::vmx_disable_single_step() {
             step_reason = SR_NIL;
             break;
         case SR_PMI: {
-            char buff[STR_MAX_LENGTH];
             ++Counter::pmi_ss;
             nb_inst_single_step++;
             mword current_rip = Vmcs::read(Vmcs::GUEST_RIP);
             if(nb_inst_single_step > nbInstr_to_execute + 5) {
-                Console::panic("SR_PMI Run %d Lost in Single stepping nb_inst_single_step %llu "
+                String::print(buff, "SR_PMI Run %d Lost in Single stepping nb_inst_single_step %llu "
                 "nbInstr_to_execute %llu first_run_instr_number %llu second_run_instr_number %llu Pd %s Ec %s", Pe::run_number, nb_inst_single_step, 
                 nbInstr_to_execute, first_run_instr_number, second_run_instr_number, Pd::current->get_name(), Ec::current->get_name());
+                Logstore::add_entry_in_buffer(buff);
+                Console::panic("%s", buff);
             }
 //            if (nbInstr_to_execute > 0)
 //                nbInstr_to_execute--;
@@ -344,21 +346,21 @@ void Ec::vmx_disable_single_step() {
                 if (nb_inst_single_step < nbInstr_to_execute) {
                     nb_inst_single_step++;
                 } else {
-                    Logstore::dump("vmx_disable_single_step - SR_DBG", false);
                     Console::panic("SR_DBG Finish");
                 }
             }
             vmx_enable_single_step(SR_DBG);
         break;
         case SR_EQU: {
-            char buff[STR_MAX_LENGTH];
             ++Counter::pmi_ss;
             nb_inst_single_step++;
             mword current_rip = Vmcs::read(Vmcs::GUEST_RIP);
             if(nb_inst_single_step > nbInstr_to_execute) {
-                Console::panic("SR_EQU Run %d Lost in Single stepping nb_inst_single_step %llu nbInstr_to_execute %llu "
+                String::print(buff, "SR_EQU Run %d Lost in Single stepping nb_inst_single_step %llu nbInstr_to_execute %llu "
                 "first_run_instr_number %llu second_run_instr_number %llu Pd %s Ec %s", Pe::run_number, nb_inst_single_step, nbInstr_to_execute, 
                 first_run_instr_number, second_run_instr_number, Pd::current->get_name(), Ec::current->get_name());
+                Logstore::add_entry_in_buffer(buff);
+                Console::panic("%s", buff);
             }
             nb_inst_single_step++;
 //            if (nbInstr_to_execute > 0)
@@ -404,11 +406,13 @@ void Ec::vmx_disable_single_step() {
                         run_switched = true;
                         enable_mtf();
                     } else {
-                        Console::panic("SR_EQU Run %d run_switched but %s is different %lx:%lx:%lx:%lx nb_inst_single_step %llu "
-                            "nbInstr_to_execute %llu first_run_instr_number %llu second_run_instr_number %llu Pd %s Ec %s", 
-                            Pe::run_number, reg_names[cmp], current->get_reg(cmp, 0), current->get_reg(cmp, 1), current->get_reg(cmp, 1),
-                            current->get_reg(cmp), nb_inst_single_step, nbInstr_to_execute, first_run_instr_number, second_run_instr_number, 
-                            Pd::current->get_name(), Ec::current->get_name());                            
+                        String::print(buff, "SR_EQU Run %d run_switched but %s is different %lx:%lx:%lx:%lx nb_inst_single_step %llu "
+                        "nbInstr_to_execute %llu first_run_instr_number %llu second_run_instr_number %llu Pd %s Ec %s", 
+                        Pe::run_number, reg_names[cmp], current->get_reg(cmp, 0), current->get_reg(cmp, 1), current->get_reg(cmp, 1),
+                        current->get_reg(cmp), nb_inst_single_step, nbInstr_to_execute, first_run_instr_number, second_run_instr_number, 
+                        Pd::current->get_name(), Ec::current->get_name());
+                        Logstore::add_entry_in_buffer(buff);
+                        Console::panic("%s", buff);                            
                     }
                     ret_user_vmresume();
                 } else { // relaunch the first run without restoring the second execution state
