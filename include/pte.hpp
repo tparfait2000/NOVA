@@ -24,6 +24,7 @@
 #include "atomic.hpp"
 #include "buddy.hpp"
 #include "x86.hpp"
+#include "cow_field.hpp"
 /**
  * P: Type (Hpt, Dpt or Ept)
  * E: length (mword (64 bits or 32 bits)
@@ -114,7 +115,7 @@ public:
 
     size_t lookup(E, Paddr &, mword &);
 
-    bool update(Quota &quota, E, mword, E, mword, Type = TYPE_UP, bool set_cow = false);
+    bool update(Quota &quota, E, mword, E, mword, Type = TYPE_UP, Queue<Cow_field>* = nullptr);
 
     void clear(Quota &quota, bool (*) (Paddr, mword, unsigned) = nullptr, bool (*) (unsigned, mword) = nullptr);
 

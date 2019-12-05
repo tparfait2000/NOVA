@@ -603,8 +603,8 @@ public:
     REGPARM(1)
     static void vm_check_memory(int = 0);
     REGPARM(1)
-    static void save_regs(Exc_regs *) asm ("save_regs");
-
+    static void trace_interrupt(Exc_regs *) asm ("trace_interrupt");
+    static void trace_sysenter() asm ("trace_sysenter");
     bool is_temporal_exc();
     bool is_io_exc(mword = 0);
 

@@ -28,6 +28,7 @@
 #include "stdio.hpp"
 #include "svm.hpp"
 #include "vectors.hpp"
+#include "ec.hpp"
 
 mword Space_mem::did_c [4096 / 8 / sizeof(mword)];
 mword Space_mem::did_f = 0;
@@ -40,10 +41,10 @@ void Space_mem::init (Quota &quota, unsigned cpu)
     }
 }
 
-bool Space_mem::update (Quota_guard &quota, Mdb *mdb, mword r, bool set_cow)
+bool Space_mem::update (Quota_guard &quota, Mdb *mdb, mword r, bool to_be_cowed)
 {
     assert (this == mdb->space && this != &Pd::kern);
-
+        
     Lock_guard <Spinlock> guard (mdb->node_lock);
 
     Paddr p = mdb->node_phys << PAGE_BITS;
@@ -110,17 +111,21 @@ bool Space_mem::update (Quota_guard &quota, Mdb *mdb, mword r, bool set_cow)
     mword ord = min (o, Hpt::ord);
     bool f = false;
     
+    mword new_a = Hpt::hw_attr (a);
+    if(to_be_cowed && new_a) {
+        new_a = set_cow(b, p, new_a);
+    }
     for (unsigned long i = 0; i < 1UL << (o - ord); i++) {
         if (!r && !hpt.check(quota, ord)) {
             Cpu::hazard |= HZD_OOM;
             return f;
         }
-        if(ord < Hpt::bpl() || !(a & Hpt::HPT_W))
-            f |= hpt.update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), Hpt::hw_attr (a), r ? Hpt::TYPE_DN : Hpt::TYPE_UP, set_cow);
-        else{
+        if(ord < Hpt::bpl() || !(a & Hpt::HPT_W)  || !to_be_cowed)
+            f |= hpt.update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), new_a, r ? Hpt::TYPE_DN : Hpt::TYPE_UP, new_a == a ? nullptr : &cow_fields);
+        else {
             mword max_ord = ord - Hpt::bpl() + 1;
             for(unsigned long j = 0; j < 1UL << max_ord; j++)
-                f |= hpt.update (quota, b + i * (1UL << (ord + PAGE_BITS)) + j * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), Hpt::bpl() - 1, p + i * (1UL << (ord + PAGE_BITS)) + j * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), Hpt::hw_attr (a), r ? Hpt::TYPE_DN : Hpt::TYPE_UP, set_cow);
+                f |= hpt.update (quota, b + i * (1UL << (ord + PAGE_BITS)) + j * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), Hpt::bpl() - 1, p + i * (1UL << (ord + PAGE_BITS)) + j * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), new_a, r ? Hpt::TYPE_DN : Hpt::TYPE_UP, new_a == a ? nullptr : &cow_fields);
         }
     }
 
@@ -136,12 +141,12 @@ bool Space_mem::update (Quota_guard &quota, Mdb *mdb, mword r, bool set_cow)
                     return (r || f);
                 }
 
-                if(ord < Hpt::bpl() || !(a & Hpt::HPT_W))
-                    loc[j].update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), Hpt::hw_attr (a), Hpt::TYPE_DF, set_cow);
+                if(ord < Hpt::bpl() || !(a & Hpt::HPT_W) || !to_be_cowed)
+                    loc[j].update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), new_a, Hpt::TYPE_DF);
                 else{
                     mword max_ord = ord - Hpt::bpl() + 1;
                     for(unsigned long k = 0; k < 1UL << max_ord; k++)
-                        loc[j].update (quota, b + i * (1UL << (ord + PAGE_BITS)) + k * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), Hpt::bpl() - 1, p + i * (1UL << (ord + PAGE_BITS)) + k * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), Hpt::hw_attr (a), Hpt::TYPE_DF, set_cow);
+                        loc[j].update (quota, b + i * (1UL << (ord + PAGE_BITS)) + k * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), Hpt::bpl() - 1, p + i * (1UL << (ord + PAGE_BITS)) + k * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), new_a, Hpt::TYPE_DF);
                 }
             }
         }
@@ -250,5 +255,70 @@ bool Space_mem::remove_utcb (mword b)
         return true;
     }
 
+    return false;
+}
+
+Space_mem::~Space_mem() {
+    if (did == NO_PCID)
+       return;
+
+    mword i = did / (sizeof(did_c[0]) * 8);
+    mword b = did % (sizeof(did_c[0]) * 8);
+
+    assert (!((i == 0 && b == 0) || (i == 0 && b == 1)));
+    assert (i <= LAST_PCID);
+
+    bool s = Atomic::test_clr_bit (did_c[i], b);
+    assert(s);
+    Cow_field *c = nullptr;
+    while(cow_fields.dequeue(c = cow_fields.head()))
+        delete c;            
+}
+
+mword Space_mem::set_cow(mword virt, Paddr phys, mword attrib) {
+    if ((virt < USER_ADDR) && (attrib & Hpt::HPT_P) && (attrib & Hpt::HPT_U)) {
+        phys &= ~(PAGE_MASK | Hpt::HPT_NX); // normalize p
+        if (Hip::is_mmio(phys)) {
+            attrib &= ~Hpt::HPT_P;
+        } else if (attrib & Hpt::HPT_W) {
+            attrib &= ~Hpt::HPT_W;
+        }
+    }
+    return attrib;
+}
+
+bool Space_mem::is_cow_fault(Quota &quota, mword virt, mword err) {
+    Paddr phys;
+    mword a;
+    size_t s = loc[Cpu::id].lookup(virt, phys, a);
+    if(s && (a & Hpt::HPT_U) && Cow_field::is_cowed(&cow_fields, phys, virt)) {
+        Ec *ec = Ec::current;
+        Pd *pd = ec->getPd();
+        if(!(a & Hpt::HPT_P) && Hip::is_mmio(phys)) {
+            ec->check_memory(Ec::PES_MMIO);
+            loc[Cpu::id].replace_cow(quota, virt, phys, a | Hpt::HPT_P); 
+            ec->enable_step_debug(Ec::SR_MMIO, virt, phys, a);
+        } else if((err & Hpt::ERR_W) && !(a & Hpt::HPT_W)) {
+            assert(virt < USER_ADDR);               
+            if(Ec::step_reason && (Ec::step_reason != Ec::SR_DBG) && (Ec::step_reason != Ec::SR_GP)) {
+                //Cow error in single stepping : why this? we don't know; qemu oddities
+                if (Ec::step_reason != Ec::SR_PIO)
+                    Console::print("Cow error in single stepping v: %lx  phys: %lx  Pd: %s step_reason %d",
+                            virt, phys, pd->get_name(), Ec::step_reason);
+                Logstore::dump("Hpt::is_cow_fault");
+                if (ec->is_io_exc()) {
+                    replace_cow(quota, virt, phys, a | Hpt::HPT_W);
+                    return true;
+                } else {// IO instruction already executed but still in single stepping
+                    ec->disable_step_debug();
+                    if (Ec::launch_state)
+                        Ec::launch_state = Ec::UNLAUNCHED;
+                }
+            }
+
+            loc[Cpu::id].resolve_cow(quota, virt, phys, a);
+        }
+        return true;
+    } 
     return false;
 }

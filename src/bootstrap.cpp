@@ -52,6 +52,7 @@ void bootstrap()
         root_sc->remote_enqueue();
     }
 
+    Hip::list_memory();
     Lapic::activate_pmi();
     Logstore::log_on = true;
 //    Console::print_on = true;

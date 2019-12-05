@@ -99,28 +99,27 @@ size_t Pte<P, E, L, B, F>::lookup(E v, Paddr &p, mword &a) {
 }
 
 template <typename P, typename E, unsigned L, unsigned B, bool F>
-bool Pte<P, E, L, B, F>::update(Quota &quota, E v, mword o, E p, mword a, Type t, bool set_cow) {
+bool Pte<P, E, L, B, F>::update(Quota &quota, E v, mword o, E p, mword a, Type t, 
+        Queue<Cow_field> *cow_field) {
     unsigned long l = o / B, n = 1UL << o % B, s;
 
     P *e = walk(quota, v, l, t == TYPE_UP);
 
     if (!e)
         return false;
-
-//    if(((v & ~PAGE_MASK) == SPC_LOCAL_IOP) || ((v & ~PAGE_MASK) == SPC_LOCAL_IOP + PAGE_SIZE))
-//        Console::print("PIOMAPP  v: %16lx  p: %16lx", v, p);
+    
     if (a) {
         p |= P::order (o % B) | (l ? P::PTE_S : 0) | a;
         s = 1UL << (l * B + PAGE_BITS);
-        if (set_cow) {
-            P::set_cow_page(v, p);
-        }
     } else
         p = s = 0;
 
     bool flush_tlb = false;
 
-    for (unsigned long i = 0; i < n; e[i].val = p, i++, p += s) {
+    for (unsigned long i = 0; i < n; e[i].val = p, i++, p += s, v += s) {
+                                
+        if(cow_field)
+            Cow_field::set_cow(cow_field, p, v);
 
         if (l && e[i].val != p)
             flush_tlb = true;

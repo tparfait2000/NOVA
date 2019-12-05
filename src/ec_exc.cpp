@@ -401,7 +401,7 @@ bool Ec::handle_exc_pf(Exc_regs *r) {
 
     // Is this page fault due to our hardenning code?
     if ((r->err & Hpt::ERR_U) && 
-            Pd::current->Space_mem::loc[Cpu::id].is_cow_fault(Pd::current->quota, addr, r->err))
+            Pd::current->Space_mem::is_cow_fault(Pd::current->quota, addr, r->err))
         return true;
     // From here, this is a native page fault. Nova got to resolve this.
     if (r->cs & 3){ // if page fault is user space one
@@ -878,7 +878,7 @@ void Ec::debug_record_info() {
     }
 }
 
-void Ec::save_regs(Exc_regs *r) {
+void Ec::trace_interrupt(Exc_regs *r) {
     exc_counter++;
     count_interrupt(r);
     char buff[STR_MAX_LENGTH];
@@ -890,6 +890,14 @@ void Ec::save_regs(Exc_regs *r) {
         Pe::run_number, r->vec, Lapic::read_instCounter());
     }
 //    trace(0, "%s", buff);
+    Logstore::add_entry_in_buffer(buff);
+    return;
+}
+
+void Ec::trace_sysenter(){
+    char buff[STR_MAX_LENGTH];
+    String::print(buff, "SysEnter rip %lx run_num %u Counter %llx", 
+    current->regs.ARG_IP, Pe::run_number, Lapic::read_instCounter());
     Logstore::add_entry_in_buffer(buff);
     return;
 }

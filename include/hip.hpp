@@ -146,5 +146,6 @@ public:
     static void add_check();   
     
     static bool is_mmio(const Paddr);
-    static void list_mmio();
+    static void list_memory();
+    static mword get_phys_memory_base(const Paddr);
 };

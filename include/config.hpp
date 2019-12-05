@@ -70,5 +70,9 @@
 #define LOG_PERCENT_TO_BE_LEFT  10
 #define LOG_ENTRY_MAX           1*LOG_MAX
 
-#define ENTRY_OFFSET    PAGE_SIZE
-#define BUFFER_ORDER    2
+#define ENTRY_OFFSET                PAGE_SIZE
+#define BUFFER_ORDER                2
+
+#define FIELD_BITS                   16
+#define FIELD_SIZE                  (1 << FIELD_BITS)
+#define FIELD_MASK                   (FIELD_SIZE - 1)

@@ -148,53 +148,6 @@ void *Hpt::remap_cow(Quota &quota, Paddr phys, uint8 offset, uint8 span) {
     return reinterpret_cast<void *> (new_addr + addr_offset);
 }
 
-bool Hpt::is_cow_fault(Quota &quota, mword v, mword err) {
-    Paddr phys;
-    mword a;
-    size_t s = lookup(v, phys, a);
-    if (s && (a & Hpt::HPT_COW) && (a & Hpt::HPT_U)) {
-        //        Ec::cow_count++;
-        Ec *ec = Ec::current;
-        Pd *pd = ec->getPd();
-        if (!(a & Hpt::HPT_P) && (a & Hpt::PTE_COW_IO)) { //Memory mapped IO
-            ec->check_memory(Ec::PES_MMIO);
-            replace_cow(quota, v, phys, a | Hpt::HPT_P); 
-            ec->enable_step_debug(Ec::SR_MMIO, v, phys, a);
-            return true;
-        } else if ((err & Hpt::ERR_W) && !(a & Hpt::HPT_W)) {
-            if (v >= USER_ADDR) {
-                Console::panic("Normally, this must not happen since this is not a user space here but..");               
-                replace_cow(quota, v, phys, a | Hpt::HPT_W);
-                //              Console::print("Cow Error above USER_ADDR");
-            } else {
-                if (Ec::step_reason && (Ec::step_reason != Ec::SR_DBG) && (Ec::step_reason != Ec::SR_GP)) {//Cow error in single stepping : why this? we don't know; qemu oddities
-                    if (Ec::step_reason != Ec::SR_PIO)
-                        Console::print("Cow error in single stepping v: %lx  phys: %lx  Pd: %s step_reason %d",
-                                v, phys, pd->get_name(), Ec::step_reason);
-                    Logstore::dump("Hpt::is_cow_fault");
-                    if (ec->is_io_exc()) {
-                        replace_cow(quota, v, phys, a | Hpt::HPT_W);
-                        return true;
-                    } else {// IO instruction already executed but still in single stepping
-                        ec->disable_step_debug();
-                        if (Ec::launch_state)
-                            Ec::launch_state = Ec::UNLAUNCHED;
-                    }
-                }
-                
-                Hpt *e = walk(quota, v, 0); // mword l = (bit_scan_reverse(v ^ USSER_ADDR) - PAGE_BITS) / bpl() = 3; but 3 doesnot work
-
-                assert(e);
-                assert(v != Pe_stack::stack);
-                Cow_elt::resolve_cow_fault(nullptr, e, v, phys, a);
-            }
-            return true;
-        } else
-            return false;
-    } else
-        return false;
-}
-
 Paddr Hpt::replace_cow(Quota &quota, mword v, Paddr p, mword a) {
     v &= ~PAGE_MASK; 
     p &= ~PAGE_MASK; 
@@ -213,19 +166,6 @@ void Hpt::print(char const *s, mword v){
     Console::print("%s %lx", s, v);
 }
 
-void Hpt::set_cow_page(mword virt, mword &entry) {
-    if ((virt < USER_ADDR) && (entry & HPT_P) && (entry & HPT_U)) {
-        if (Hip::is_mmio(entry & ~(PAGE_MASK|HPT_NX))) {
-            entry |= HPT_COW | HPT_COW_IO;
-            entry &= ~HPT_P;
-        } else if (entry & HPT_W) {
-            entry |= HPT_COW;
-            entry &= ~HPT_COW_IO;
-            entry &= ~HPT_W;
-        }
-    }
-}
-
 /**
  * This update is very specific to our copy on write because it is relative to the entry 
  * directely. So, no page walking is needed.
@@ -239,4 +179,10 @@ void Hpt::cow_update(Paddr phys, mword attr, mword v){
     mword new_val = phys | attr;
     do o = *e; while (o.val != new_val && !e->set (o.val, new_val));
     flush(v);    
+}
+
+void Hpt::resolve_cow(Quota &quota, mword v, Paddr phys, mword a) {
+    Hpt *e = walk(quota, v, 0); // mword l = (bit_scan_reverse(v ^ USSER_ADDR) - PAGE_BITS) / bpl() = 3; but 3 doesnot work
+    assert(e);
+    Cow_elt::resolve_cow_fault(nullptr, e, v, phys, a);
 }

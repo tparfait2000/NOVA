@@ -64,7 +64,8 @@ public:
     
     Cow_elt(mword, Paddr, mword, Hpt*, Vtlb*, Page_type = NORMAL, mword = 0);
     Cow_elt(const Cow_elt& orig);
-    ~Cow_elt();
+    ALWAYS_INLINE
+    inline ~Cow_elt();
     
     void update_pte(Physic, Right);
     void to_log(const char*);

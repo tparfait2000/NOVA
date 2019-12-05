@@ -23,6 +23,7 @@
 
 #include "arch.hpp"
 #include "pte.hpp"
+#include "cow_field.hpp"
 
 class Hpt : public Pte<Hpt, mword, PTE_LEV, PTE_BPL, false> {
 private:
@@ -136,15 +137,13 @@ public:
     static void *remap_cow(Quota &quota, Hpt, mword, uint8 = 0, uint8 = 1);
     
     static void *remap_cow(Quota &quota, Paddr, uint8 = 0, uint8 = 1);
-
-    bool is_cow_fault(Quota &quota, mword, mword);
     
     void print_table(Quota &quota, mword); 
         
     Paddr replace_cow(Quota &quota, mword, mword, mword);
     static void print(char const *s, mword v);
-    static void set_cow_page(mword virt, mword &entry);
     void cow_update(Paddr, mword, mword);
+    void resolve_cow(Quota&, mword, Paddr, mword);
     
 };
 

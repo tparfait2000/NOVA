@@ -88,7 +88,7 @@ INTRGATE                \DPL
                         SAVE_FLAGS
                         SAVE_GPR
                         mov     %REG(bx), %ARG_1
-                        call save_regs
+                        call trace_interrupt
                         LOAD_GPR
                         LOAD_FLAGS
 2:
@@ -243,6 +243,7 @@ entry_sysenter:         LOAD_KSP
                         mov     $(CPU_LOCAL_STCK + PAGE_SIZE), %REG(sp)
                         SAVE_FLAGS
                         SAVE_GPR
+                        call    trace_sysenter
                         mov     $3, %ARG_1              //PES_SYSENTER
                         call    memory_checker
                         LOAD_GPR

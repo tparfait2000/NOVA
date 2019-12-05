@@ -356,7 +356,7 @@ bool Hip::is_mmio(const Paddr phys){
     return true;
 }
 
-void Hip::list_mmio(){
+void Hip::list_memory(){
     Hip *h = hip();
     mword const mem_cnt = (h->length - h->mem_offs) / h->mem_size;
     for (uint32 i = 0; i < mem_cnt; i++){
@@ -366,4 +366,16 @@ void Hip::list_mmio(){
                     align_dn(mem.addr + mem.size, PAGE_SIZE), mem.size);
         }
     }
+}
+
+mword Hip::get_phys_memory_base(const Paddr phys) {
+    Hip *h = hip();
+    mword const mem_cnt = (h->length - h->mem_offs) / h->mem_size;
+    for (uint32 i = 0; i < mem_cnt; i++){
+        Hip_mem mem = h->mem_desc[i];
+        if(mem.type == Hip_mem::AVAILABLE && phys >= align_up(mem.addr, PAGE_SIZE) &&                 // Core rounds the start to the upper page boundary
+            phys <= align_dn(mem.addr + mem.size, PAGE_SIZE))
+            return phys - align_up(mem.addr, PAGE_SIZE);
+    }
+    return 0;
 }

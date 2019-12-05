@@ -209,8 +209,7 @@ void Buddy::free (mword virt, Quota &quota)
         }
     }
 
-    Logstore::dump("Buddy::free", false);
-    Console::panic ("Invalid memory free");
+    Console::panic ("Invalid memory free %lx", virt);
 }
 
 void Quota::dump(void * pd, bool all)

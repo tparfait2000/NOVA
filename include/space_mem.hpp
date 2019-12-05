@@ -27,6 +27,7 @@
 #include "ept.hpp"
 #include "hpt.hpp"
 #include "space.hpp"
+#include "cow_field.hpp"
 
 class Pd;
 
@@ -47,6 +48,7 @@ class Space_mem : public Space
         Cpuset cpus;
         Cpuset htlb;
         Cpuset gtlb;
+        Queue<Cow_field> cow_fields = {};
 
         static mword did_c [4096 / 8 / sizeof(mword)];
         static mword did_f;
@@ -88,22 +90,12 @@ class Space_mem : public Space
             }
         }
 
-        ALWAYS_INLINE
-        inline ~Space_mem()
-        {
-            if (did == NO_PCID)
-               return;
-
-            mword i = did / (sizeof(did_c[0]) * 8);
-            mword b = did % (sizeof(did_c[0]) * 8);
-
-            assert (!((i == 0 && b == 0) || (i == 0 && b == 1)));
-            assert (i <= LAST_PCID);
-
-            bool s = Atomic::test_clr_bit (did_c[i], b);
-            assert(s);
-        }
-
+        ~Space_mem();
+       
+        Space_mem &operator=(Space_mem const &);
+        
+        Space_mem(const Space_mem&);
+        
         ALWAYS_INLINE
         inline size_t lookup (mword virt, Paddr &phys)
         {
@@ -112,9 +104,12 @@ class Space_mem : public Space
         }
 
         ALWAYS_INLINE
-        inline void insert (Quota &quota, mword virt, unsigned o, mword attr, Paddr phys, bool set_cow = false)
+        inline void insert (Quota &quota, mword virt, unsigned o, mword attr, Paddr phys, bool to_be_cowed = false)
         {
-            hpt.update (quota, virt, o, phys, attr, Hpt::TYPE_UP, set_cow);
+            mword new_attr = attr;
+            if(to_be_cowed && new_attr)
+                new_attr = set_cow(virt, phys, new_attr);
+            hpt.update (quota, virt, o, phys, new_attr, Hpt::TYPE_UP, new_attr == attr ? nullptr : &cow_fields);
         }
 
         ALWAYS_INLINE
@@ -144,4 +139,8 @@ class Space_mem : public Space
 
         ALWAYS_INLINE
         inline mword sticky_sub(mword s) { return s & 0x4; }
+        
+        mword set_cow(mword, Paddr, mword);
+
+        bool is_cow_fault(Quota&, mword, mword);
 };
