@@ -119,7 +119,7 @@ bool Pte<P, E, L, B, F>::update(Quota &quota, E v, mword o, E p, mword a, Type t
     for (unsigned long i = 0; i < n; e[i].val = p, i++, p += s, v += s) {
                                 
         if(cow_field)
-            Cow_field::set_cow(cow_field, p, v);
+            Cow_field::set_cow(cow_field, v);
 
         if (l && e[i].val != p)
             flush_tlb = true;

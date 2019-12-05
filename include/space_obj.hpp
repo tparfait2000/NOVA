@@ -28,7 +28,6 @@ class Space_mem;
 class Space_obj : public Space
 {
     private:
-        bool useless_var = false;
 
         ALWAYS_INLINE
         static inline mword idx_to_virt (unsigned long idx)

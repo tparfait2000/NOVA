@@ -416,11 +416,9 @@ void Cow_elt::update_pte(Physic phys_type, Right right){
         switch(right) {
         case RO:
             a &= ~Hpt::HPT_W;
-            a |= Hpt::HPT_COW;
             break;
         case RW:
             a |= Hpt::HPT_W;
-            a &= ~Hpt::HPT_COW;
             break;
         }
         pte.hpt->cow_update(phys, a, page_addr); 
@@ -428,11 +426,9 @@ void Cow_elt::update_pte(Physic phys_type, Right right){
         switch(right) {
         case RO:
             a &= ~Vtlb::TLB_W;
-            a |= Vtlb::TLB_COW;
             break;
         case RW:
             a |= Vtlb::TLB_W;
-            a &= ~Vtlb::TLB_COW;
             break;
         }
        pte.vtlb->cow_update(phys, a); 

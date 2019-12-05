@@ -34,13 +34,10 @@ class Ept : public Pte<Ept, uint64, 4, 9, false>
         EPT_X = 1UL << 2,
         EPT_I = 1UL << 6,
         EPT_S = 1UL << 7,
-        EPT_COW = 1UL << 11,
 
         PTE_P = EPT_R | EPT_W | EPT_X,
         PTE_S = EPT_S,
         PTE_N = EPT_R | EPT_W | EPT_X,
-        PTE_COW = EPT_COW,
-        PTE_COW_IO = PTE_COW >> 1,
         PTE_W = EPT_W,
         PTE_U = 0,
     };
@@ -66,9 +63,5 @@ class Ept : public Pte<Ept, uint64, 4, 9, false>
     
     static void print(char const *s, uint64 v){
         Console::print("%s %llx", s, v);
-    }
-    
-    static void set_cow_page(uint64 virt, uint64 &entry) {
-        Console::print("set_cow_page in EPT %llx %llx", virt, entry);
     }
 };

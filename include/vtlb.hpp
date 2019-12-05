@@ -63,7 +63,6 @@ class Vtlb : public Pte<Vtlb, uint64, 3,  9, false>
             TLB_G   = 1UL << 8,
             TLB_F   = 1UL << 9,
             TLB_M   = 1UL << 10,
-            TLB_COW = 1UL << 11,
             
             PTE_P   = TLB_P,
             PTE_S   = TLB_S,

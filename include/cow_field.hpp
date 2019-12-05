@@ -24,12 +24,12 @@ class Cow_field {
     friend class Queue<Cow_field>;
     static Slab_cache cache;
 private:
-    mword* cow_bit_field = nullptr, *phys_cow_bit_field = nullptr;
-    size_t phys_mem_block_index = ~0ull, mem_block_index = ~0ull; // Such a block index does not exist; blocks span from 0 to 0xFFFFFFFFF
+    mword* cow_bit_field = nullptr;
+    size_t mem_block_index = ~0ull; // Such a block index does not exist; blocks span from 0 to 0xFFFFFFFFF
     Cow_field *prev = nullptr, *next = nullptr;
 
 public:
-    Cow_field(Paddr, mword);
+    Cow_field(mword);
     Cow_field(const Cow_field&);
     ~Cow_field();
     
@@ -40,12 +40,12 @@ public:
     
     Cow_field &operator=(Cow_field const &);
     
-    static void set_cow(Queue<Cow_field>*, Paddr, mword);
+    static void set_cow(Queue<Cow_field>*, mword);
 
-    bool set_cow(Paddr, mword);
+    bool set_cow(mword);
     
-    static bool is_cowed(Queue<Cow_field>*, Paddr, mword);
+    static bool is_cowed(Queue<Cow_field>*, mword);
 
-    bool is_cowed(Paddr, mword, bool&);
+    bool is_cowed(mword, bool&);
 };
 

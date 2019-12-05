@@ -184,7 +184,7 @@ Vtlb::Reason Vtlb::miss (Exc_regs *regs, mword virt, mword &error)
         Ec::check_memory(Ec::PES_VMX_EXC);
         if(attr & TLB_W){
             attr &= ~TLB_W;
-            attr |= TLB_COW;
+            Cow_field::set_cow(&Pd::current->Space_mem::cow_fields, phys);
         }
         tlb->val = static_cast<typeof tlb->val>((host & ~((1UL << shift) - 1)) | attr | TLB_D | TLB_A);
 //        trace (TRACE_VTLB, "VTLB Miss SUCCESS CR3:%#010lx A:%#010lx P:%#010lx A:%#lx E:%#lx TLB:%#016llx GuestIP %#lx", 
@@ -250,7 +250,7 @@ bool Vtlb::is_cow(mword virt, mword gpa, mword error){
     if((error & ERR_U) || (error & ERR_P))
         return false;
     mword tlb_attr = attr(); 
-    if((tlb_attr & TLB_COW) && (tlb_attr & TLB_P) && !(tlb_attr & TLB_W)) {
+    if(Cow_field::is_cowed(&Pd::current->Space_mem::cow_fields, gpa) && (tlb_attr & TLB_P) && !(tlb_attr & TLB_W)) {
         mword hpa, ept_attr;
         size_t size = Pd::current->Space_mem::ept.lookup (gpa, hpa, ept_attr);
         char buff[STR_MAX_LENGTH + 50];

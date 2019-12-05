@@ -30,22 +30,15 @@ public:
         DPT_R = 1UL << 0,
         DPT_W = 1UL << 1,
         DPT_S = 1UL << 7,
-        DPT_COW = 1UL << 11,
 
         PTE_P = DPT_R | DPT_W,
         PTE_S = DPT_S,
         PTE_N = DPT_R | DPT_W,
-        PTE_COW = DPT_COW,
-        PTE_COW_IO = PTE_COW >> 1,
         PTE_W = DPT_W,
         PTE_U = 0,
     };
     
     static void print(char const *s, uint64 v){
         Console::print("%s %llx", s, v);
-    }
-    
-    static void set_cow_page(uint64 virt, uint64 &entry) {
-        Console::print("set_cow_page in DPT %llx %llx", virt, entry);
     }
 };

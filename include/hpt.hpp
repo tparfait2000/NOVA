@@ -54,9 +54,6 @@ public:
         HPT_S   = 1UL << 7,
         HPT_G   = 1UL << 8,
 
-//      PTE_COW marks copy-on-write page table entries.
-        HPT_COW_IO = 1UL << 10,
-        HPT_COW = 1UL << 11,
 #ifdef __x86_64__
         HPT_NX  = 1UL << 63,
 #else
@@ -71,8 +68,6 @@ public:
     };
     
     enum {
-        PTE_COW = HPT_COW,
-        PTE_COW_IO = PTE_COW >> 1,
         PTE_W = HPT_W,
     };
 

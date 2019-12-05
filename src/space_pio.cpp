@@ -67,7 +67,7 @@ bool Space_pio::update (Quota &quota, Mdb *mdb, mword r, bool set_cow)
         update (quota, true, mdb->node_base + i, mdb->node_attr & ~r);
     
     if(set_cow){
-        space_mem()->hpt.update(quota, SPC_LOCAL_IOP, 1, bmp_full1, Hpt::HPT_NX | Hpt::HPT_D | Hpt::HPT_A | Hpt::HPT_W | Hpt::HPT_P | Hpt::HPT_COW_IO);
+        space_mem()->hpt.update(quota, SPC_LOCAL_IOP, 1, bmp_full1, Hpt::HPT_NX | Hpt::HPT_D | Hpt::HPT_A | Hpt::HPT_W | Hpt::HPT_P);
         if(gbmp){
             mword *gbmp_virt = static_cast<mword *>(Buddy::phys_to_ptr (gbmp));
             mword *gbmp_backup_virt = static_cast<mword *>(Buddy::phys_to_ptr (gbmp_backup));
@@ -89,7 +89,7 @@ void Space_pio::page_fault (mword addr, mword error)
 }
 
 void Space_pio::disable_pio(Quota &quota){
-    space_mem()->loc[Cpu::id].update(quota, SPC_LOCAL_IOP, 2, bmp_full1, Hpt::HPT_NX | Hpt::HPT_D | Hpt::HPT_A | Hpt::HPT_W | Hpt::HPT_P | Hpt::HPT_COW_IO);
+    space_mem()->loc[Cpu::id].update(quota, SPC_LOCAL_IOP, 2, bmp_full1, Hpt::HPT_NX | Hpt::HPT_D | Hpt::HPT_A | Hpt::HPT_W | Hpt::HPT_P);
     if(gbmp){
         mword *gbmp_virt = static_cast<mword *>(Buddy::phys_to_ptr (gbmp));
         mword *bmp_full1_virt = static_cast<mword *>(Buddy::phys_to_ptr (bmp_full1));
@@ -98,7 +98,7 @@ void Space_pio::disable_pio(Quota &quota){
 }
 
 void Space_pio::enable_pio(Quota &quota){
-    space_mem()->loc[Cpu::id].update(quota, SPC_LOCAL_IOP, 1, hbmp, Hpt::HPT_NX | Hpt::HPT_D | Hpt::HPT_A | Hpt::HPT_W | Hpt::HPT_P | Hpt::HPT_COW_IO);
+    space_mem()->loc[Cpu::id].update(quota, SPC_LOCAL_IOP, 1, hbmp, Hpt::HPT_NX | Hpt::HPT_D | Hpt::HPT_A | Hpt::HPT_W | Hpt::HPT_P);
     if(gbmp){
         mword *gbmp_virt = static_cast<mword *>(Buddy::phys_to_ptr (gbmp));
         mword *gbmp_backup_virt = static_cast<mword *>(Buddy::phys_to_ptr (gbmp_backup));

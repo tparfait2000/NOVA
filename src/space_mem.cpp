@@ -291,7 +291,7 @@ bool Space_mem::is_cow_fault(Quota &quota, mword virt, mword err) {
     Paddr phys;
     mword a;
     size_t s = loc[Cpu::id].lookup(virt, phys, a);
-    if(s && (a & Hpt::HPT_U) && Cow_field::is_cowed(&cow_fields, phys, virt)) {
+    if(s && (a & Hpt::HPT_U) && Cow_field::is_cowed(&cow_fields, virt)) {
         Ec *ec = Ec::current;
         Pd *pd = ec->getPd();
         if(!(a & Hpt::HPT_P) && Hip::is_mmio(phys)) {
