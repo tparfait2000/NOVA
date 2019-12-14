@@ -423,7 +423,7 @@ void Ec::sys_create_ec()
     Pt *pt = cap_pt.obj()->type() == Kobject::PT ? static_cast<Pt *>(cap_pt.obj()) : nullptr;
 
     Ec *ec = new (*pd) Ec (Pd::current, r->sel(), pd, r->flags() & 1 ? static_cast<void (*)()>(send_msg<ret_user_iret>) : nullptr, r->cpu(), r->evt(), r->utcb(), r->esp(), pt, r->name());
-
+            
     if (!Space_obj::insert_root (pd->quota, ec)) {
         trace (TRACE_ERROR, "%s: Non-NULL CAP (%#lx)", __func__, r->sel());
         Ec::destroy (ec, *ec->pd);

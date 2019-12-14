@@ -66,7 +66,7 @@
 #define DEBUG_STATE_MASK         ((1 << DEBUG_STATE_BITS) - 1)
 
 #define IN_PRODUCTION            0
-#define LOG_MAX                 30000
+#define LOG_MAX                 70000
 #define LOG_PERCENT_TO_BE_LEFT  10
 #define LOG_ENTRY_MAX           1*LOG_MAX
 

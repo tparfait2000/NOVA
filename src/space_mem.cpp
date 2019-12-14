@@ -113,7 +113,7 @@ bool Space_mem::update (Quota_guard &quota, Mdb *mdb, mword r, bool to_be_cowed)
     
     mword new_a = Hpt::hw_attr (a);
     if(to_be_cowed && new_a) {
-        new_a = set_cow(b, p, new_a);
+        new_a = cowed_attrib(b, p, new_a);
     }
     for (unsigned long i = 0; i < 1UL << (o - ord); i++) {
         if (!r && !hpt.check(quota, ord)) {
@@ -121,11 +121,11 @@ bool Space_mem::update (Quota_guard &quota, Mdb *mdb, mword r, bool to_be_cowed)
             return f;
         }
         if(ord < Hpt::bpl() || !(a & Hpt::HPT_W)  || !to_be_cowed)
-            f |= hpt.update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), new_a, r ? Hpt::TYPE_DN : Hpt::TYPE_UP, new_a == a ? nullptr : &cow_fields);
+            f |= hpt.update (quota, b + i * (1UL << (ord + PAGE_BITS)), ord, p + i * (1UL << (ord + PAGE_BITS)), new_a, r ? Hpt::TYPE_DN : Hpt::TYPE_UP, &cow_fields, new_a != a);
         else {
             mword max_ord = ord - Hpt::bpl() + 1;
             for(unsigned long j = 0; j < 1UL << max_ord; j++)
-                f |= hpt.update (quota, b + i * (1UL << (ord + PAGE_BITS)) + j * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), Hpt::bpl() - 1, p + i * (1UL << (ord + PAGE_BITS)) + j * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), new_a, r ? Hpt::TYPE_DN : Hpt::TYPE_UP, new_a == a ? nullptr : &cow_fields);
+                f |= hpt.update (quota, b + i * (1UL << (ord + PAGE_BITS)) + j * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), Hpt::bpl() - 1, p + i * (1UL << (ord + PAGE_BITS)) + j * (1UL << (Hpt::bpl() + PAGE_BITS - 1)), new_a, r ? Hpt::TYPE_DN : Hpt::TYPE_UP, &cow_fields, new_a != a);
         }
     }
 
@@ -275,7 +275,7 @@ Space_mem::~Space_mem() {
         delete c;            
 }
 
-mword Space_mem::set_cow(mword virt, Paddr phys, mword attrib) {
+mword Space_mem::cowed_attrib(mword virt, Paddr phys, mword attrib) {
     if ((virt < USER_ADDR) && (attrib & Hpt::HPT_P) && (attrib & Hpt::HPT_U)) {
         phys &= ~(PAGE_MASK | Hpt::HPT_NX); // normalize p
         if (Hip::is_mmio(phys)) {

@@ -588,7 +588,7 @@ void Ec::check_memory(PE_stopby from) {
             if(step_reason == SR_DBG){
                 nb_inst_single_step = 0;
             }
-            Lapic::program_pmi();
+            Lapic::program_pmi(ec->utcb ? 0 : Lapic::perf_max_count);
             check_exit();
             break;
         case 1: // Second run
@@ -610,8 +610,8 @@ void Ec::check_memory(PE_stopby from) {
                         check_exit();
                     
                     Logstore::dump("check_memory 1", true);
-                    trace(0, "Attention : from >< prevreason %d:%d counter1 %llx "
-                    "counter2 %llx", run1_reason, from, counter1, Lapic::read_instCounter());
+                    trace(0, "Attention : from >< prevreason %s%s counter1 %llx "
+                    "counter2 %llx", pe_stop[run1_reason], pe_stop[from], counter1, Lapic::read_instCounter());
                 }
                 exc_counter2 = exc_counter;
                 counter2 = Lapic::read_instCounter();
@@ -831,7 +831,7 @@ void Ec::reset_counter() {
     distance_instruction = first_run_instr_number = second_run_instr_number = second_max_instructions = 0;
     Counter::cow_fault = 0;
     Counter::used_cows_in_old_cow_elts = 0;
-    Lapic::program_pmi();
+//    Lapic::program_pmi();
     Counter::nb_pe++;    
 }
 /**

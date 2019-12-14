@@ -221,15 +221,9 @@ void Lapic::ipi_vector (unsigned vector){
  * Only used in case of virtualization
  */
 void Lapic::subtract_host_instructions(){
-    unsigned bias = 10; // Pour calculer ces nombres, il faut activer le MTF (enable_mtf()).
-    // le compteur contient alors le nombre d'instructions en mode privilegié + 1 instruction en machine virtuelle
     counter_vmexit_value = Msr::read<uint64>(Msr::MSR_PERF_FIXED_CTR0); 
-//    assert(counter_vmexit_value > start_counter ? counter_vmexit_value - start_counter > bias :
-//        true);
-    uint64 deduced_counteur_value = counter_vmexit_value >= bias ? counter_vmexit_value - bias : 
-        perf_max_count + counter_vmexit_value - bias; 
-    
-    Msr::write(Msr::MSR_PERF_FIXED_CTR0, deduced_counteur_value); //11 is the number of hypervisor's instruction for now
+//    if(counter_vmexit_value < start_counter)
+//        assert(counter_vmexit_value < 300); // 300 instructions after a PMI is not valid anymore
 }    
 
 void Lapic::activate_pmi() {

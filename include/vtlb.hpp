@@ -85,8 +85,8 @@ class Vtlb : public Pte<Vtlb, uint64, 3,  9, false>
         void flush (mword);
         void flush (bool);
         
-        static Reason miss (Exc_regs *, mword, mword &);
-        bool is_cow(mword, mword, mword);
+        static Reason miss (Exc_regs *, mword, mword&, Queue<Cow_field>* = nullptr);
+        bool is_cow(mword, mword, mword, Queue<Cow_field>*);
         void cow_update(Paddr, mword);
         size_t lookup(uint64, Paddr&, mword&);
         

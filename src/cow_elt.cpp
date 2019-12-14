@@ -32,11 +32,10 @@ type(t), page_addr(addr), attr(a), prev(nullptr), next(nullptr) {
      * if you don't have a good reason to. When phys is already mapped elsewhere, 
      * a new Cow_elt is necessary to save data relative to the current cow fault.
      */
-    Cow_elt *c = is_mapped_elsewhere(phys); 
+    Cow_elt *c = is_mapped_elsewhere(phys, addr); 
     if(c){
 // This page fault occurs in a virtual address that points to an already mapped (and in-use) 
 // physical frame, Do not triplicate frame to the newly allocated frames; use the existing ones
-        Console::print("virt %lx Pe %llu", addr, Counter::nb_pe);
         linear_add = nullptr;
         phys_addr[1] = c->phys_addr[1];
         phys_addr[2] = c->phys_addr[2];
@@ -139,13 +138,16 @@ void Cow_elt::resolve_cow_fault(Vtlb* tlb, Hpt *hpt, mword virt, Paddr phys, mwo
  * @param phys
  * @return 
  */
-Cow_elt* Cow_elt::is_mapped_elsewhere(Paddr phys) {
+Cow_elt* Cow_elt::is_mapped_elsewhere(Paddr phys, mword virt) {
     Cow_elt *c = cow_elts->head(), *n = nullptr, *h = cow_elts->head();
     while (c) {
         if (c->phys_addr[0] == phys) {//frame already mapped elsewhere
-            trace_no_newline(0, "Is already mapped virt %lx Phys:%lx new_phys[0]:%lx new_phys[1]:%lx ",
-                    c->page_addr, c->phys_addr[0], c->phys_addr[1], c->phys_addr[2]);
-            assert(!c->v_is_mapped_elsewhere);
+            char buff[STR_MAX_LENGTH];
+            String::print(buff, "Phys de virt = %lx Is already mapped virt %lx Phys:%lx new_phys[0]:%lx new_phys[1]:%lx ",
+                virt, c->page_addr, c->phys_addr[0], c->phys_addr[1], c->phys_addr[2]);
+            Logstore::add_entry_in_buffer(buff);
+            trace(0, "%s", buff);
+//            assert(!c->v_is_mapped_elsewhere);
             return c;
         }
         n = c->next;
@@ -273,10 +275,9 @@ bool Cow_elt::compare() {
  * We can now copy memories back to frame0, destroy cow_elts 
  */
 void Cow_elt::commit() {
-    Cow_elt *c = cow_elts->head(), *tail = cow_elts->tail(), *next = nullptr;
+    Cow_elt *c = cow_elts->head(), *h = c, *next = nullptr;
     size_t count = 0;
     while (c) {
-        //        Console::print("c %p", c);
         asm volatile ("" ::"m" (c)); // to avoid gdb "optimized out"                        
         Cow_elt *ce = c->v_is_mapped_elsewhere;
         if (c->linear_add) { 
@@ -296,7 +297,7 @@ void Cow_elt::commit() {
         // if ce->phys_addr[0] is used elsewhere. Becareful, cloned cow_elt also has null linear_addr
             assert(ce); // Mandatory
             c->age = ce->age;    
-                }
+        }
         c->update_pte(PHYS0,c->pte.is_hpt?RW:RO);
 
 //        char buff[STR_MAX_LENGTH];
@@ -307,7 +308,7 @@ void Cow_elt::commit() {
         count++;
     
         next = c->next;
-        c = (c == tail) ? nullptr : next;
+        c = (next == h) ? nullptr : next;
     }
     cow_elts = nullptr;
 //    trace(0, "cow_elts %p Pd_cow %p size %lu %lu", &cow_elts, &Pd::current->cow_elts, cow_elts->size(), 
@@ -368,21 +369,14 @@ void Cow_elt::debug_rollback() {
 }
 
 /**
- * updating page table entries of previous COW with the allocated frame1
- * @param is_vcpu : true if VM, false ordinary process
+ * reset pages to their original frames
  */
 void Cow_elt::place_phys0() {
     cow_elts = &Pd::current->cow_elts;
-    Cow_elt *d = cow_elts->head(), *tail = cow_elts->tail(), *next =nullptr;
-//    bool is_ro = true;
-    while(d) {
-        next = d->next; // d may be dequeued and destroyed in this loop
-        cow_elts->dequeue(d);
+    Cow_elt *d = nullptr;
+    while(cow_elts->dequeue(d = cow_elts->head())) {
         free(d);
-        d = (d == tail) ? nullptr : next;          
     }
-//    trace(0, "Pd %s Ec %s cow_elts size %lu %lu PE %u", Pd::current->get_name(), Ec::current->get_name(), 
-//            cow_elts->size(), Pd::current->cow_elts.size(), Counter::nb_pe);
 }
 
 void Cow_elt::free(Cow_elt* c){
@@ -447,6 +441,6 @@ void Cow_elt::to_log(const char* reason){
     char buff[2*STR_MAX_LENGTH];
     String::print(buff, "%s d %lx %lx %lx %lx %d de %lx next %lx %s", reason, page_addr, 
         phys_addr[0], phys_addr[1], phys_addr[2], age, v_is_mapped_elsewhere ? 
-        page_addr : 0, next ? next->page_addr:0, pte.is_hpt ? "Hpt" : "VTLB");
+        v_is_mapped_elsewhere->page_addr : 0, next ? next->page_addr:0, pte.is_hpt ? "Hpt" : "VTLB");
     Logstore::add_entry_in_buffer(buff);    
 }

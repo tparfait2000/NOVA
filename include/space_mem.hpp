@@ -108,8 +108,8 @@ class Space_mem : public Space
         {
             mword new_attr = attr;
             if(to_be_cowed && new_attr)
-                new_attr = set_cow(virt, phys, new_attr);
-            hpt.update (quota, virt, o, phys, new_attr, Hpt::TYPE_UP, new_attr == attr ? nullptr : &cow_fields);
+                new_attr = cowed_attrib(virt, phys, new_attr);
+            hpt.update (quota, virt, o, phys, new_attr, Hpt::TYPE_UP, new_attr == attr ? nullptr : &cow_fields, new_attr != attr);
         }
 
         ALWAYS_INLINE
@@ -140,7 +140,7 @@ class Space_mem : public Space
         ALWAYS_INLINE
         inline mword sticky_sub(mword s) { return s & 0x4; }
         
-        mword set_cow(mword, Paddr, mword);
+        static mword cowed_attrib(mword, Paddr, mword);
 
         bool is_cow_fault(Quota&, mword, mword);
 };

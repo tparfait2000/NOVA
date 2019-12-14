@@ -45,22 +45,22 @@ protected:
     P *walk(Quota &quota, E, unsigned long, bool = true);
 
     ALWAYS_INLINE
-        inline bool present() const { return val & P::PTE_P; }
+    inline bool present() const { return val & P::PTE_P; }
 
     ALWAYS_INLINE
-        inline bool super() const { return val & P::PTE_S; }
+    inline bool super() const { return val & P::PTE_S; }
 
     ALWAYS_INLINE
-        inline mword attr() const { return static_cast<mword>(val) & PAGE_MASK; }
+    inline mword attr() const { return static_cast<mword>(val) & PAGE_MASK; }
 
     ALWAYS_INLINE
-        inline Paddr addr() const { return static_cast<Paddr>(val) & ~((1UL << order()) - 1); }
+    inline Paddr addr() const { return static_cast<Paddr>(val) & ~((1UL << order()) - 1); }
 
     ALWAYS_INLINE
-        inline mword order() const { return PAGE_BITS; }
+    inline mword order() const { return PAGE_BITS; }
 
     ALWAYS_INLINE
-        static inline mword order (mword) { return 0; }
+    static inline mword order (mword) { return 0; }
 
     ALWAYS_INLINE
     inline bool set (E o, E v)
@@ -84,9 +84,16 @@ protected:
     }
 
     ALWAYS_INLINE
-        static inline void destroy(Pte *obj, Quota &quota) { obj->~Pte(); Buddy::allocator.free (reinterpret_cast<mword>(obj), quota); }
+    static inline void destroy(Pte *obj, Quota &quota, mword v = ~0ull, Queue<Cow_field> *cf = nullptr) { 
+        if(cf) {
+            assert(v != ~0ull);
+            Cow_field::set_cow(cf, v, false);
+        }
+        obj->~Pte(); 
+        Buddy::allocator.free (reinterpret_cast<mword>(obj), quota); 
+    }
 
-    void free_up(Quota &quota, unsigned l, P *, mword, bool (*) (Paddr, mword, unsigned), bool (*) (unsigned, mword));
+    void free_up(Quota &quota, unsigned l, P *, mword, bool (*) (Paddr, mword, unsigned), bool (*) (unsigned, mword), Queue<Cow_field>* = nullptr);
 
 public:
 
@@ -105,19 +112,19 @@ public:
     };
 
     ALWAYS_INLINE
-        static inline unsigned bpl() { return B; }
+    static inline unsigned bpl() { return B; }
 
     ALWAYS_INLINE
-        static inline unsigned max() { return L; }
+    static inline unsigned max() { return L; }
 
     ALWAYS_INLINE
-        inline E root (Quota &quota, mword l = L - 1) { return Buddy::ptr_to_phys (walk (quota, 0, l)); }
+    inline E root (Quota &quota, mword l = L - 1) { return Buddy::ptr_to_phys (walk (quota, 0, l)); }
 
     size_t lookup(E, Paddr &, mword &);
 
-    bool update(Quota &quota, E, mword, E, mword, Type = TYPE_UP, Queue<Cow_field>* = nullptr);
+    bool update(Quota &quota, E, mword, E, mword, Type = TYPE_UP, Queue<Cow_field>* = nullptr, bool = false);
 
-    void clear(Quota &quota, bool (*) (Paddr, mword, unsigned) = nullptr, bool (*) (unsigned, mword) = nullptr);
+    void clear(Quota &quota, bool (*) (Paddr, mword, unsigned) = nullptr, bool (*) (unsigned, mword) = nullptr, Queue<Cow_field>* = nullptr);
 
     bool check(Quota_guard &qg, mword o) {
         return qg.check(o / (4096 / sizeof (E)) + L);
@@ -125,15 +132,7 @@ public:
     
     void print_walk(Quota &quota, E, mword);
     
-    E get_val(){
-        return val;
-    }
-    
     bool pub_super() const {
         return val & P::PTE_S;
-    }
-    
-    Paddr get_addr() const {
-        return static_cast<Paddr> (val) & ~((1UL << order()) - 1);
     }
 };

@@ -404,7 +404,6 @@ void Ec::ret_user_vmresume() {
 
         current->save_state0();
         launch_state = Ec::VMRESUME;
-        Lapic::program_pmi();
     }
 
     if (EXPECT_FALSE(Pd::current->gtlb.chk(Cpu::id))) {
@@ -418,13 +417,16 @@ void Ec::ret_user_vmresume() {
     if (EXPECT_FALSE(get_cr2() != current->regs.cr2))
         set_cr2(current->regs.cr2);
     char buff[STR_MAX_LENGTH];
-    String::print(buff, "VMResume : Run %d Ec %s Rip %lx Counter %llx", Pe::run_number, 
-    current->get_name(), Vmcs::read(Vmcs::GUEST_RIP), Lapic::read_instCounter());
+    String::print(buff, "VMResume : Run %d Ec %s Rip %lx CS %lx Counter %llx", Pe::run_number, 
+    current->get_name(), Vmcs::read(Vmcs::GUEST_RIP), Vmcs::read(Vmcs::GUEST_SEL_CS), Lapic::read_instCounter());
     Logstore::add_entry_in_buffer(buff);
     if(step_reason == SR_DBG)
         enable_mtf();
     asm volatile ("lea %0," EXPAND (PREG(sp); LOAD_GPR_COUNT)
-                  "vmresume;"
+                  "vmresume;" 
+    //vmresume does not count as instruction, at least if not succeeded. 
+    //Just remove it and you will notice that rdmsr will yield same rax value.
+                  EXPAND(RESET_COUNTER)
                   "vmlaunch;"
                   "mov %1," EXPAND (PREG(sp);)
                   : : "m" (current->regs), "i" (CPU_LOCAL_STCK + PAGE_SIZE) : "memory");
@@ -851,13 +853,14 @@ void Ec::save_state0() {
     if(utcb){
 // Ce n'est pas optimal car avec ceci on ne peut plus profiter des PE dont le cow_elts est vide
 //        Pd::current->Space_mem::loc[Cpu::id].reserve_stack(Pd::current->quota, regs.REG(sp));
+        Lapic::program_pmi();
     } else {
 //        mword cr0_shadow = current->regs.cr0_shadow, cr3_shadow = current->regs.cr3_shadow, 
 //              cr4_shadow = current->regs.cr4_shadow; 
 //        regs.vtlb->reserve_stack(cr0_shadow, cr3_shadow, cr4_shadow);
         vmx_save_state0();        
+        Lapic::program_pmi(Lapic::perf_max_count);
     }
-    Lapic::program_pmi();
     Pe::c_regs[0] = regs_0;
     Pe::inState1 = false;
     Pe::run_number = 0;

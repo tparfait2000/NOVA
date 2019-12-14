@@ -63,7 +63,7 @@ void Ec::vmx_exception()
             mword err = Vmcs::read (Vmcs::EXI_INTR_ERROR);
             mword cr2 = Vmcs::read (Vmcs::EXI_QUALIFICATION);
             
-            switch (Vtlb::miss (&current->regs, cr2, err)) {
+            switch (Vtlb::miss (&current->regs, cr2, err, &current->cow_fields)) {
 
                 case Vtlb::GPA_HPA:
                     current->regs.dst_portal = Vmcs::VMX_EPT_VIOLATION;
@@ -199,9 +199,9 @@ void Ec::handle_vmx()
         String::print(counter_buff, "%#llx", Lapic::counter_vmexit_value);
     else
         String::print(counter_buff, "%llu", Lapic::counter_vmexit_value);
-    size_t n = String::print(buff, "VMEXIT guest rip %lx rsp %lx flags %lx run_num %u counter %s:%#llx reason %s", 
+    size_t n = String::print(buff, "VMEXIT guest rip %lx rsp %lx flags %lx CS %lx run_num %u counter %s:%#llx reason %s", 
             Vmcs::read(Vmcs::GUEST_RIP), Vmcs::read(Vmcs::GUEST_RSP), Vmcs::read(Vmcs::GUEST_RFLAGS), 
-            Pe::run_number, counter_buff, Lapic::read_instCounter(), Vmcs::reason[reason]);
+            Vmcs::read(Vmcs::GUEST_SEL_CS), Pe::run_number, counter_buff, Lapic::read_instCounter(), Vmcs::reason[reason]);
     if(reason == Vmcs::VMX_EXTINT) {
         reason_vec = Vmcs::read (Vmcs::EXI_INTR_INFO) & 0xff;
         String::print(buff+n, " vec %u", reason_vec);

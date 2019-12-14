@@ -44,37 +44,10 @@ P *Pte<P, E, L, B, F>::walk(Quota &quota, E v, unsigned long n, bool a) {
                 return nullptr;
 
             if (!e->set (0, Buddy::ptr_to_phys (p = new (quota) P) | (l == L ? 0 : P::PTE_N)))
-                Pte::destroy(p, quota);
+                Pte::destroy(p, quota); // no need to delete cow_field for the first entry level
         }
     }
 }
-
-//template <typename P, typename E, unsigned L, unsigned B, bool F>
-//void Pte<P, E, L, B, F>::print_walk(Quota &quota, E v, mword l) {
-//    unsigned long n = 1UL << B;
-//    bool v_not_print = true;
-//    P *e = static_cast<P *> (this);
-//
-//    if (!e)
-//        return;
-//        
-//    for (unsigned long i = 0; i < n; i++) {
-//
-//        if (!e[i].val)
-//            continue;
-//        
-//        P *e1 = static_cast<P *> (Buddy::phys_to_ptr(e->addr()));
-//        if(v_not_print){
-//           Console::print("--- Print for v %lx n: %u-----", v, n);
-//           v_not_print = false;
-//        }
-//        Console::print("e[%u].val %lx", i, e[i].val);
-//        
-//        if (e[i].super()) {
-//            Console::print("Big");
-//        }
-//    }
-//}
 
 template <typename P, typename E, unsigned L, unsigned B, bool F>
 size_t Pte<P, E, L, B, F>::lookup(E v, Paddr &p, mword &a) {
@@ -100,7 +73,7 @@ size_t Pte<P, E, L, B, F>::lookup(E v, Paddr &p, mword &a) {
 
 template <typename P, typename E, unsigned L, unsigned B, bool F>
 bool Pte<P, E, L, B, F>::update(Quota &quota, E v, mword o, E p, mword a, Type t, 
-        Queue<Cow_field> *cow_field) {
+        Queue<Cow_field> *cow_field, bool is_cowed) {
     unsigned long l = o / B, n = 1UL << o % B, s;
 
     P *e = walk(quota, v, l, t == TYPE_UP);
@@ -118,8 +91,8 @@ bool Pte<P, E, L, B, F>::update(Quota &quota, E v, mword o, E p, mword a, Type t
 
     for (unsigned long i = 0; i < n; e[i].val = p, i++, p += s, v += s) {
                                 
-        if(cow_field)
-            Cow_field::set_cow(cow_field, v);
+        if(cow_field && !l)
+            Cow_field::set_cow(cow_field, v, is_cowed);
 
         if (l && e[i].val != p)
             flush_tlb = true;
@@ -131,6 +104,7 @@ bool Pte<P, E, L, B, F>::update(Quota &quota, E v, mword o, E p, mword a, Type t
             continue;
 
         if (l && !e[i].super()) {
+            // No need to delete cowfield because l is greater than 0 (-> big page)
             Pte::destroy(static_cast<P *> (Buddy::phys_to_ptr(e[i].addr())), quota);
             flush_tlb = true;
         }
@@ -143,19 +117,21 @@ bool Pte<P, E, L, B, F>::update(Quota &quota, E v, mword o, E p, mword a, Type t
 }
 
 template <typename P, typename E, unsigned L, unsigned B, bool F>
-void Pte<P, E, L, B, F>::clear(Quota &quota, bool (*d) (Paddr, mword, unsigned), bool (*il) (unsigned, mword)) {
+void Pte<P, E, L, B, F>::clear(Quota &quota, bool (*d) (Paddr, mword, unsigned), 
+        bool (*il) (unsigned, mword), Queue<Cow_field> *cf) {
     if (!val)
         return;
 
     P * e = static_cast<P *> (Buddy::phys_to_ptr(this->addr()));
 
-    e->free_up(quota, L - 1, e, 0, d, il);
+    e->free_up(quota, L - 1, e, 0, d, il, cf);
 
-    Pte::destroy(e, quota);
+    Pte::destroy(e, quota); // No need to delete cow_field for the first level entry
 }
 
 template <typename P, typename E, unsigned L, unsigned B, bool F>
-void Pte<P, E, L, B, F>::free_up(Quota &quota, unsigned l, P * e, mword v, bool (*d)(Paddr, mword, unsigned), bool (*il) (unsigned, mword)) {
+void Pte<P, E, L, B, F>::free_up(Quota &quota, unsigned l, P * e, mword v, 
+        bool (*d)(Paddr, mword, unsigned), bool (*il) (unsigned, mword), Queue<Cow_field> *cf) {
     if (!e)
         return;
 
@@ -170,7 +146,7 @@ void Pte<P, E, L, B, F>::free_up(Quota &quota, unsigned l, P * e, mword v, bool 
             p->free_up(quota, l - 1, p, virt, d, il);
 
         if (!d || d(e[i].addr(), virt, l))
-            Pte::destroy(p, quota);
+            Pte::destroy(p, quota, virt, cf);
     }
 }
 

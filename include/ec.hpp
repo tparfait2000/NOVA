@@ -56,7 +56,7 @@ private:
     Ec * prev;
     Ec * next;
     Fpu * fpu;
-
+    Queue<Cow_field> cow_fields = {};
     union {
 
         struct {

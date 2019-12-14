@@ -29,6 +29,7 @@
 #include "pe_stack.hpp"
 #include "log.hpp"
 #include "pe.hpp"
+#include "hip.hpp"
 
 size_t Vtlb::gwalk (Exc_regs *regs, mword gla, mword &gpa, mword &attr, mword &error)
 {
@@ -109,7 +110,7 @@ size_t Vtlb::hwalk (mword gpa, mword &hpa, mword &attr, mword &error)
     return size;
 }
 
-Vtlb::Reason Vtlb::miss (Exc_regs *regs, mword virt, mword &error)
+Vtlb::Reason Vtlb::miss (Exc_regs *regs, mword virt, mword &error, Queue<Cow_field> *cow_fields)
 {
     mword phys, attr = TLB_U | TLB_W | TLB_P;
     Paddr host;
@@ -179,12 +180,19 @@ Vtlb::Reason Vtlb::miss (Exc_regs *regs, mword virt, mword &error)
 
             attr |= TLB_S;
         }
-        if(tlb->is_cow(virt, phys, error))
+        if((tlb->addr() == (host & ~PAGE_MASK)) && tlb->is_cow(virt, phys, error, cow_fields))
             return SUCCESS;
         Ec::check_memory(Ec::PES_VMX_EXC);
-        if(attr & TLB_W){
+        if(attr & TLB_W) {
             attr &= ~TLB_W;
-            Cow_field::set_cow(&Pd::current->Space_mem::cow_fields, phys);
+            assert(cow_fields);
+            Cow_field::set_cow(cow_fields, virt, true);
+        } else if(cow_fields){
+            trace(0, "set_cow false for %lx", virt);
+            Cow_field::set_cow(cow_fields, virt, false);            
+        }
+        if(Hip::is_mmio(host & ~PAGE_MASK)){
+            trace(0, "Vtlb is MMIO");
         }
         tlb->val = static_cast<typeof tlb->val>((host & ~((1UL << shift) - 1)) | attr | TLB_D | TLB_A);
 //        trace (TRACE_VTLB, "VTLB Miss SUCCESS CR3:%#010lx A:%#010lx P:%#010lx A:%#lx E:%#lx TLB:%#016llx GuestIP %#lx", 
@@ -244,13 +252,13 @@ void Vtlb::flush (bool full)
     Counter::print<1,16> (++Counter::vtlb_flush, Console_vga::COLOR_LIGHT_RED, SPN_VFL);
 }
 
-bool Vtlb::is_cow(mword virt, mword gpa, mword error){
+bool Vtlb::is_cow(mword virt, mword gpa, mword error, Queue<Cow_field> *cow_fields){
     if(!(error & ERR_W))
         return false;
     if((error & ERR_U) || (error & ERR_P))
         return false;
     mword tlb_attr = attr(); 
-    if(Cow_field::is_cowed(&Pd::current->Space_mem::cow_fields, gpa) && (tlb_attr & TLB_P) && !(tlb_attr & TLB_W)) {
+    if(Cow_field::is_cowed(cow_fields, virt) && (tlb_attr & TLB_P) && !(tlb_attr & TLB_W)) {
         mword hpa, ept_attr;
         size_t size = Pd::current->Space_mem::ept.lookup (gpa, hpa, ept_attr);
         char buff[STR_MAX_LENGTH + 50];

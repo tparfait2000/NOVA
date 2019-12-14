@@ -26,6 +26,7 @@ class Cow_field {
 private:
     mword* cow_bit_field = nullptr;
     size_t mem_block_index = ~0ull; // Such a block index does not exist; blocks span from 0 to 0xFFFFFFFFF
+    size_t nb_cowed_page = 0;
     Cow_field *prev = nullptr, *next = nullptr;
 
 public:
@@ -40,9 +41,9 @@ public:
     
     Cow_field &operator=(Cow_field const &);
     
-    static void set_cow(Queue<Cow_field>*, mword);
+    static void set_cow(Queue<Cow_field>*, mword, bool);
 
-    bool set_cow(mword);
+    bool set_cow(mword, bool, Queue<Cow_field>*);
     
     static bool is_cowed(Queue<Cow_field>*, mword);
 
