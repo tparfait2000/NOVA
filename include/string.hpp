@@ -193,7 +193,7 @@ private:
     static void *memory;       // Our heap start pointer
     static unsigned short memory_order; // 2^memory_order *4Ko will be dedicated to this heap 
     static size_t tour, memory_size, free_memory;  
-    static bool reallocated, initialized;
+    static bool reallocated, initialized, first_realloc;
     static Block* cursor;
     static Queue<Block> free_blocks, used_blocks;  // circular list of available blocks
     

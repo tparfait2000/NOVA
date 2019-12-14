@@ -29,7 +29,7 @@ void* Block::memory;
 unsigned short Block::memory_order = 15;
 size_t Block::tour, Block::memory_size = (1ul << memory_order) * PAGE_SIZE, 
         Block::free_memory = Block::memory_size;
-bool Block::reallocated, Block::initialized;
+bool Block::reallocated, Block::initialized, Block::first_realloc = true;
 Block* Block::cursor;
 
 Queue<Block> Block::free_blocks, Block::used_blocks;
@@ -310,6 +310,14 @@ Block* Block::realloc(size_t nb_bytes) {
             "free_memory %lu left %lu nbBlocks %lu moyenne %luo", tour, nb_bytes, 
             free_memory, l, s, s ? l/s : 0);
     assert(l == free_memory);
+//    if(first_realloc) {
+//        void *new_memory = Buddy::allocator.alloc (static_cast<short>(memory_order + 2), Pd::root.quota, Buddy::FILL_0);
+//        memcpy(new_memory, memory, memory_size);
+//        Buddy::allocator.free(reinterpret_cast<mword>(memory), Pd::kern.quota);
+//        memory = new_memory;
+//        first_realloc = false;
+//        return alloc(nb_bytes);
+//    }
     Logstore::free_logs(LOG_PERCENT_TO_BE_LEFT, true);   
     l = left(); s = free_blocks.size(); free_memory = l; 
     assert(s > 0);// s should > 0
