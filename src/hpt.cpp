@@ -129,6 +129,15 @@ void *Hpt::remap (Quota &quota, Paddr phys, bool is_cow)
     return reinterpret_cast<void *>(page + offset);
 }
 
+/**
+ * 
+ * @param quota
+ * @param proc_hpt : the process hpt
+ * @param addr
+ * @param offset
+ * @param span : the size (in byte) of the object at address addr
+ * @return : nullptr if addr was not already mapped in the page table
+ */
 void *Hpt::remap_cow(Quota &quota, Hpt proc_hpt, mword addr, uint8 offset, uint8 span) {
     Paddr phys;
     mword a;
@@ -136,29 +145,42 @@ void *Hpt::remap_cow(Quota &quota, Hpt proc_hpt, mword addr, uint8 offset, uint8
         return nullptr;
     return remap_cow(quota, phys, offset, span);
 }
-
+/**
+ * 
+ * @param quota
+ * @param phys
+ * @param offset : Where to map the current physical address. It would then be 
+ * COW_ADDR + PAGE_SIZE * offset
+ * @param span : the size of the object at address phys (or addr)
+ * @return 
+ */
 void *Hpt::remap_cow(Quota &quota, Paddr phys, uint8 offset, uint8 span) {
-    assert(span < PAGE_SIZE);
+    assert(span < PAGE_SIZE); // object at address phys should never spans on more than 
+    //2 pages because we cannot handle it now
     mword new_addr = COW_ADDR + PAGE_SIZE * offset, addr_offset = phys & PAGE_MASK;
     Hptp hpt(current());
-    hpt.replace_cow(quota, new_addr, phys, Hpt::HPT_W | Hpt::HPT_P);
     if(addr_offset > static_cast<mword>(PAGE_SIZE - span))
-        hpt.replace_cow(quota, new_addr + PAGE_SIZE, phys + PAGE_SIZE, 
-                Hpt::HPT_W | Hpt::HPT_P);
+        hpt.replace_cow(quota, new_addr, phys, Hpt::HPT_W | Hpt::HPT_P, 1);
+    else
+        hpt.replace_cow(quota, new_addr, phys, Hpt::HPT_W | Hpt::HPT_P);
     return reinterpret_cast<void *> (new_addr + addr_offset);
 }
 
-Paddr Hpt::replace_cow(Quota &quota, mword v, Paddr p, mword a) {
+Paddr Hpt::replace_cow(Quota &quota, mword v, Paddr p, mword a, mword o) {
     v &= ~PAGE_MASK; 
     p &= ~PAGE_MASK; 
     a &= ~HPT_NX;
     assert((a & ~PAGE_MASK) == 0);
-    Hpt o, *e = walk(quota, v, 0);
+    unsigned long n = 1UL << o % PTE_BPL, s = PAGE_SIZE;
+    Hpt u, *e = walk(quota, v, 0);
     assert(e);
-    p |= a;
-    do o = *e; while (o.val != p && !e->set(o.val, p));
-
-    flush(v);
+    for (unsigned long i = 0; i < n;  i++) {
+        p |= a;
+        do u = e[i]; while (u.val != p && !e[i].set(u.val, p));
+        flush(v);
+        p += s; v += s;
+    }
+    
     return e->addr();
 }
 

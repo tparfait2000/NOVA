@@ -135,7 +135,7 @@ public:
     
     void print_table(Quota &quota, mword); 
         
-    Paddr replace_cow(Quota &quota, mword, mword, mword);
+    Paddr replace_cow(Quota &quota, mword, mword, mword, mword = 0);
     static void print(char const *s, mword v);
     void cow_update(Paddr, mword, mword);
     void resolve_cow(Quota&, mword, Paddr, mword);

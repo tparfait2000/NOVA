@@ -891,6 +891,7 @@ void Ec::trace_interrupt(Exc_regs *r) {
     }
 //    trace(0, "%s", buff);
     Logstore::add_entry_in_buffer(buff);
+//    Console::print("%s", buff);    
     return;
 }
 

@@ -28,6 +28,9 @@
                             Console::panic ("Assertion \"%s\" failed at %s:%d:%s", #X, __FILE__, __LINE__, __PRETTY_FUNCTION__); \
                     } while (0)
 
+/**
+* assert_value(X, "string %s int %d", val_string, val_int)
+*/ 
 #define assert_value(X, FMT, ...)   do {                                                                                    \
                         if (EXPECT_FALSE (!(X))) {                                                          \
                             trace(0, FMT, ##__VA_ARGS__);                                                      \

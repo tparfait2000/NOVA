@@ -349,6 +349,7 @@ void Ec::ret_user_sysexit() {
     String::print(buff, "Sysreting : Run %d Ec %s Rip %lx Counter %llx", Pe::run_number, 
     current->get_name(), current->regs.ARG_IP, Lapic::read_instCounter());
     Logstore::add_entry_in_buffer(buff);
+//    Console::print("%s", buff);
     if (step_reason == SR_NIL) {
         asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : 
                     "memory");
@@ -372,10 +373,11 @@ void Ec::ret_user_iret() {
     }
     char buff[STR_MAX_LENGTH];
 //    String::print_page(buff, current->regs.REG(sp));
-    String::print(buff, "Ireting : Run %d Ec %s Rip %lx Counter %llx", Pe::run_number, 
-    current->get_name(), current->get_reg(RIP), Lapic::read_instCounter());
+    String::print(buff, "Ireting : Run %d Ec %s Rip %lx EFLAGS %lx Counter %llx", Pe::run_number, 
+    current->get_name(), current->get_reg(RIP), current->get_reg(RFLAG), Lapic::read_instCounter());
     Logstore::add_entry_in_buffer(buff);
 //  //    debug_started_trace(0, "Ireting");
+//    Console::print("%s", buff);
     asm volatile ("lea %0," EXPAND(PREG(sp); LOAD_GPR LOAD_SEG RET_USER_EXC) : : "m" (current->regs)
     : "memory");
 
