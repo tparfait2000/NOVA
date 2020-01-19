@@ -244,7 +244,7 @@ uint64 Lapic::read_instCounter() {
  */
 void Lapic::program_pmi(uint64 number) {
     start_counter = number ? perf_max_count - number : perf_max_count - MAX_INSTRUCTION;
-//    set_lvt(LAPIC_LVT_PERFM, DLV_FIXED, VEC_LVT_PERFM);
+    set_lvt(LAPIC_LVT_PERFM, DLV_FIXED, VEC_LVT_PERFM); // This is only needed on real machine, I don't know why
     Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0x0);    
     Msr::write(Msr::MSR_PERF_FIXED_CTR0, start_counter);
     Msr::write(Msr::MSR_PERF_FIXED_CTRL, 0xa);

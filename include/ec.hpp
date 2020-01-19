@@ -331,7 +331,7 @@ public:
     static uint8 launch_state, step_reason, debug_nb, debug_type, 
     replaced_int3_instruction, replaced_int3_instruction2;
     static bool hardening_started, in_rep_instruction, not_nul_cowlist, 
-    no_further_check, run_switched, keep_cow;
+    no_further_check, run_switched, keep_cow, single_stepped;
     static int run1_reason, previous_ret, nb_try;
     static const char* reg_names[24], *launches[6], *pe_stop[27];
     

@@ -44,7 +44,8 @@
 
 mword Ec::prev_rip = 0, Ec::tscp_rcx1 = 0, Ec::tscp_rcx2 = 0;
 bool Ec::hardening_started = false, Ec::in_rep_instruction = false, Ec::not_nul_cowlist = false, 
-        Ec::no_further_check = false, Ec::run_switched = false, Ec::keep_cow = false;
+        Ec::no_further_check = false, Ec::run_switched = false, Ec::keep_cow = false, 
+        Ec::single_stepped = false;
 uint64 Ec::exc_counter = 0, Ec::exc_counter1 = 0, Ec::exc_counter2 = 0, Ec::counter1 = 0, 
         Ec::counter2 = 0, Ec::debug_compteur = 0, Ec::count_je = 0, Ec::nbInstr_to_execute = 0,
         Ec::nb_inst_single_step = 0, Ec::second_run_instr_number = 0, 

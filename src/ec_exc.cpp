@@ -188,7 +188,7 @@ void Ec::handle_exc_db(Exc_regs *r) {
             case SR_MMIO:
             case SR_PIO:
             case SR_RDTSC:
-                //                        trace(0, "EXC_DB step_reason: %d", step_reason);
+                // trace(0, "EXC_DB step_reason: %d", step_reason);
                 if (not_nul_cowlist && step_reason != SR_PIO) {
                     trace(0, "cow_list not null was noticed Pd: %s", 
                             current->getPd()->get_name());
@@ -203,6 +203,7 @@ void Ec::handle_exc_db(Exc_regs *r) {
                     }
                 }
                 current->disable_step_debug();
+                single_stepped = true;
                 launch_state = UNLAUNCHED;
                 return;
             case SR_PMI:
@@ -664,6 +665,12 @@ void Ec::check_memory(PE_stopby from) {
                                 vmx_enable_single_step(SR_EQU);
                             }
                         } else {
+                            if(single_stepped) {
+                                assert(ec->utcb);
+                                prev_rip = current->regs.REG(ip);
+                                ec->enable_step_debug(SR_EQU);
+                                ret_user_iret();
+                            }
                             Console::panic("1stInstnb = 2Instnb but %s is different %lx:%lx:%lx "
                             "first_run_instr_number %llu second_run_instr_number %llu", 
                             reg_names[cmp], current->get_reg(cmp, 0), current->get_reg(cmp, 1), 
@@ -829,6 +836,7 @@ void Ec::check_exit() {
 void Ec::reset_counter() {
     exc_counter = counter1 = counter2 = exc_counter1 = exc_counter2 = nb_inst_single_step = 0;
     distance_instruction = first_run_instr_number = second_run_instr_number = second_max_instructions = 0;
+    single_stepped = false;
     Counter::cow_fault = 0;
     Counter::used_cows_in_old_cow_elts = 0;
 //    Lapic::program_pmi();
@@ -881,13 +889,18 @@ void Ec::debug_record_info() {
 void Ec::trace_interrupt(Exc_regs *r) {
     exc_counter++;
     count_interrupt(r);
-    char buff[STR_MAX_LENGTH];
+    char counter_buff[STR_MIN_LENGTH], buff[STR_MAX_LENGTH];
+    uint64 counter_value = Lapic::read_instCounter();
+    if(counter_value > Lapic::perf_max_count - MAX_INSTRUCTION)
+        String::print(counter_buff, "%#llx", counter_value);
+    else
+        String::print(counter_buff, "%llu", counter_value);
     if(r->vec == Cpu::EXC_PF) {
-        String::print(buff, "PAGE FAULT rip %lx run_num %u addr %lx Counter %llx", 
-        current->regs.REG(ip), Pe::run_number, r->cr2, Lapic::read_instCounter());
+        String::print(buff, "PAGE FAULT rip %lx run_num %u addr %lx Counter %s", 
+        current->regs.REG(ip), Pe::run_number, r->cr2, counter_buff);
     } else {
-        String::print(buff, "INTERRUPT rip %lx run_num %u vec %lu Counter %llx", current->regs.REG(ip), 
-        Pe::run_number, r->vec, Lapic::read_instCounter());
+        String::print(buff, "INTERRUPT rip %lx run_num %u vec %lu Counter %s", current->regs.REG(ip), 
+        Pe::run_number, r->vec, counter_buff);
     }
 //    trace(0, "%s", buff);
     Logstore::add_entry_in_buffer(buff);
