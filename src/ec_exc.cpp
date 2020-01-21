@@ -184,6 +184,7 @@ bool Ec::handle_exc_gp(Exc_regs *r) {
 void Ec::handle_exc_db(Exc_regs *r) {
     if (r->user()) {
         assert(step_reason);
+        single_stepped = true;
         switch (step_reason) {
             case SR_MMIO:
             case SR_PIO:
@@ -203,7 +204,6 @@ void Ec::handle_exc_db(Exc_regs *r) {
                     }
                 }
                 current->disable_step_debug();
-                single_stepped = true;
                 launch_state = UNLAUNCHED;
                 return;
             case SR_PMI:
@@ -561,11 +561,17 @@ void Ec::check_memory(PE_stopby from) {
                 assert(first_run_instr_number < Lapic::perf_max_count);
                 if (current->utcb) {
                     uint8 *ptr = reinterpret_cast<uint8 *> (Hpt::remap_cow(Pd::kern.quota, 
-                        Pd::current->Space_mem::loc[Cpu::id], current->regs.REG(ip), 3));
-                    if (ptr && (*ptr == 0xf3 || *ptr == 0xf2)) {
-                        instruction_in_hex(*(reinterpret_cast<mword *> (ptr)), buff);
-                        trace(0, "Rep prefix in Run1 %lx: %s rcx %lx", current->regs.REG(ip), 
-                            buff, current->regs.REG(cx));
+                        Pd::current->Space_mem::loc[Cpu::id], ec->regs_1.REG(ip), 3));
+                    if (ptr && (*ptr == 0xf3 || *ptr == 0xf2)) { // rep prefix
+                        // We only deal with when the two runs are stopped in rep prefix, 
+                        // There is also when one run is stopped before/after the rep prefix 
+                        // instruction and the other is stopped right in the rep prefix instruction
+                        char instr_buff[STR_MIN_LENGTH];
+                        instruction_in_hex(*(reinterpret_cast<mword *> (ptr)), instr_buff);
+                        String::print(buff, "Rep prefix in Run0 %lx: %s rcx %lx", ec->regs_1.REG(ip), 
+                            instr_buff, ec->regs_1.REG(cx));
+                        trace(0, "%s", buff);
+                        Logstore::add_entry_in_buffer(buff);
                         in_rep_instruction = true;
                         Cpu::disable_fast_string();
                     }
@@ -668,6 +674,18 @@ void Ec::check_memory(PE_stopby from) {
                             if(single_stepped) {
                                 assert(ec->utcb);
                                 prev_rip = current->regs.REG(ip);
+                                nbInstr_to_execute = 1;
+                                ec->enable_step_debug(SR_EQU);
+                                ret_user_iret();
+                            } else if(in_rep_instruction) {
+                                assert(ec->utcb);
+                                prev_rip = current->regs.REG(ip);
+                                mword rcx1 = current->get_reg(RCX, 1), rcx2 = current->get_reg(RCX);
+                                String::print(buff, "rcx %lx:%lx ", rcx1, rcx2);
+                                Logstore::add_entry_in_buffer(buff);                    
+                                nbInstr_to_execute = rcx1 > rcx2 ? rcx1 - rcx2 : rcx2 - rcx1;
+                                if(rcx1 > rcx2)
+                                    ec->restore_state1();
                                 ec->enable_step_debug(SR_EQU);
                                 ret_user_iret();
                             }

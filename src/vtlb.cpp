@@ -188,7 +188,7 @@ Vtlb::Reason Vtlb::miss (Exc_regs *regs, mword virt, mword &error, Queue<Cow_fie
             assert(cow_fields);
             Cow_field::set_cow(cow_fields, virt, true);
         } else if(cow_fields){
-            trace(0, "set_cow false for %lx", virt);
+//            trace(0, "set_cow false for %lx", virt);
             Cow_field::set_cow(cow_fields, virt, false);            
         }
         if(Hip::is_mmio(host & ~PAGE_MASK)){

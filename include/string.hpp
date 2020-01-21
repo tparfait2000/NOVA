@@ -158,13 +158,16 @@ extern "C" NONNULL
 inline void instruction_in_hex(mword instr, char *buffer ) {
     uint8* u = reinterpret_cast<uint8*>(&instr);
     int size = sizeof(mword);
+    assert(size < 9);
     char buff[3]; // 2 (each uint8 (byte) is two characters long) + 1 ('\0')
     char *p_buffer = buffer, *p_buff ;
     for(int i = 0; i<size; i++){
         to_string(*(u+i), buff);
         p_buff = buff;
+        uint8 j = 0;
         while(*p_buff){
-            *p_buffer++ = *p_buff++;
+            *p_buffer++ = *p_buff++;            
+            assert(j++ < 3);
         }
     }
     *p_buffer = '\0';
