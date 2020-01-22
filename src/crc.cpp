@@ -155,7 +155,7 @@ uint32 Crc::compute(uint32 crc, const void *buf, size_t len) {
 
     /* compute the crc for up to seven leading bytes to bring the data pointer
        to an eight-byte boundary */
-    while (len && (reinterpret_cast<const mword>(next) & 7) != 0) {
+    while (len && (reinterpret_cast<mword>(next) & 7) != 0) {
         asm volatile("crc32b\t" "(%1), %0"
                 : "=r"(crc0)
                 : "r"(next), "0"(crc0));

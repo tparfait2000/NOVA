@@ -143,8 +143,8 @@ class Fpu
             save_state(statedata_2);
             load_state(statedata_2);
             size_t  d1= 0, d2 = 0;
-            int d_diff = memcmp(fpu_1->data, fpu_2->data, d1, data_size);
-            int s_diff = memcmp(statedata_1, statedata_2, d2, state_size);
+            int d_diff = page_comp(fpu_1->data, fpu_2->data, d1, data_size);
+            int s_diff = page_comp(statedata_1, statedata_2, d2, state_size);
             bool ret = d_diff || s_diff;
             if(ret){
                 if(d_diff){
@@ -200,7 +200,7 @@ class Fpu
         
         mword data_check(){
             size_t d = 0;
-            int ret = memcmp(data, data_1, d, data_size);
+            int ret = page_comp(data, data_1, d, data_size);
             if(ret){
                 mword data_index = d/sizeof(mword);
                 mword vald1 = *reinterpret_cast<mword*> (data + data_index);

@@ -126,6 +126,10 @@ public:
 
     template <typename T>
     INIT
+    static void add_fb (Hip_mem *&, T const *);
+
+    template <typename T>
+    INIT
     static void add_systab (Hip_mem *&, T const *);
 
     template <typename T>

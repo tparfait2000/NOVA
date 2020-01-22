@@ -26,7 +26,6 @@
 
 Console *Console::list;
 Spinlock Console::lock;
-unsigned Console::count;
 bool Console::print_on = false;
 
 void Console::print_num (uint64 val, unsigned base, unsigned width, unsigned flags)
@@ -212,6 +211,7 @@ void Console::vprintf_no_newline (char const *format, va_list args)
                                 break;
                             }
                             mode = MODE_WIDTH;
+                            [[fallthrough]];
                         case MODE_WIDTH: width = width * 10 + *format - '0'; break;
                         case MODE_PRECS: precs = precs * 10 + *format - '0'; break;
                     }
@@ -263,6 +263,7 @@ void Console::vprintf_no_newline (char const *format, va_list args)
 
                 case 0:
                     format--;
+                    [[fallthrough]];
 
                 default:
                     putc (*format);

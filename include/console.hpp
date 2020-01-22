@@ -41,7 +41,6 @@ class Console
 
         static Console *list;
         static Spinlock lock;
-        static unsigned count;
 
         virtual void putc (int) = 0;
         void print_num (uint64, unsigned, unsigned, unsigned);

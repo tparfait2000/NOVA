@@ -509,7 +509,7 @@ void Ec::handle_exc(Exc_regs *r) {
 
         case Cpu::EXC_AC:
             Console::print("Alignement check exception");
-
+            break;
         // Machine check exception
         case Cpu::EXC_MC:
             Mca::vector();
@@ -828,6 +828,7 @@ void Ec::check_memory(PE_stopby from) {
                 return;
             }
         }
+        [[fallthrough]];            
         default:
             Console::panic("run_number must be 0 or 1. Current run_number is %d", Pe::run_number);
     }

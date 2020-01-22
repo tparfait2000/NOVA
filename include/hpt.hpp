@@ -67,9 +67,6 @@ public:
         PTE_N   = HPT_A | HPT_U | HPT_W | HPT_P,
     };
     
-    enum {
-        PTE_W = HPT_W,
-    };
 
     ALWAYS_INLINE
     inline Paddr addr() const
@@ -111,6 +108,8 @@ public:
     bool sync_from(Quota &quota, Hpt, mword, mword);
 
     bool sync_user (Quota &quota, Hpt, mword);
+
+    void sync_master_range (Quota &quota, mword, mword);
 
     Paddr replace(Quota &quota, mword, mword);
 

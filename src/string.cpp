@@ -137,6 +137,7 @@ void String::vprintf(void *ptr, char const *format, va_list args) {
                                 break;
                             }
                             mode = MODE_WIDTH;
+                            [[fallthrough]];
                         case MODE_WIDTH: width = width * 10 + *format - '0';
                             break;
                         case MODE_PRECS: precs = precs * 10 + *format - '0';
@@ -196,6 +197,7 @@ void String::vprintf(void *ptr, char const *format, va_list args) {
 
                 case 0:
                     format--;
+                    [[fallthrough]];
                 default:
                     vprintf_help(*format, &ptr);
                     break;

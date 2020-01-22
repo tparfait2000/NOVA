@@ -131,7 +131,7 @@ inline int strmemcmp(char const *s1, char const *s2, int &addr, int n) {
  * @return 
  */
 extern "C" NONNULL
-inline int memcmp(const void *s1, const void *s2, size_t &addr, size_t size) {
+inline int page_comp(const void *s1, const void *s2, size_t &addr, size_t size) {
     size_t len = size / 4; // cmpsl compare double word (4 bytes)
     int diff = 0;
     asm volatile (

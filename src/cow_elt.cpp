@@ -201,7 +201,7 @@ bool Cow_elt::compare() {
             // if in production, uncomment this, for not to get too many unncessary Missmatch errors because 
             // just of error in vm stack            
             size_t missmatch_addr = 0;
-            int diff = memcmp(ptr1, ptr2, missmatch_addr, PAGE_SIZE);
+            int diff = page_comp(ptr1, ptr2, missmatch_addr, PAGE_SIZE);
             assert(diff);
                 asm volatile ("" ::"m" (missmatch_addr)); // to avoid gdb "optimized out"            
                 asm volatile ("" ::"m" (c)); // to avoid gdb "optimized out"     
@@ -276,6 +276,9 @@ bool Cow_elt::compare() {
  */
 void Cow_elt::commit() {
     Cow_elt *c = cow_elts->head(), *h = c, *next = nullptr;
+    char buff[STR_MAX_LENGTH];
+    String::print(buff, "Committing PE %llu", Counter::nb_pe);
+    Logstore::add_entry_in_buffer(buff);
     size_t count = 0;
     while (c) {
         asm volatile ("" ::"m" (c)); // to avoid gdb "optimized out"                        

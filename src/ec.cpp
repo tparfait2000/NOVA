@@ -477,7 +477,6 @@ void Ec::ret_user_vmrun() {
 }
 
 void Ec::idle() {
-    Counter::dump();
     for (;;) {
 
         mword hzd = Cpu::hazard & (HZD_RCU | HZD_SCHED);
