@@ -60,6 +60,11 @@ void Ec::vmx_exception()
             ret_user_vmresume();
 
         case 0x30e:         // #PF
+            if (current->regs.nst_on) {
+                current->regs.dst_portal = 0x30e;
+                break;
+            }
+
             mword err = Vmcs::read (Vmcs::EXI_INTR_ERROR);
             mword cr2 = Vmcs::read (Vmcs::EXI_QUALIFICATION);
             
@@ -74,11 +79,14 @@ void Ec::vmx_exception()
                     Vmcs::write (Vmcs::ENT_INTR_INFO,  intr_info & ~0x1000);
                     Vmcs::write (Vmcs::ENT_INTR_ERROR, err);
 
+                    [[fallthrough]];
+
                 case Vtlb::SUCCESS:
                     ret_user_vmresume();
             }
     }
 
+    check_memory(Ec::PES_VMX_EXC);
     send_msg<ret_user_vmresume>();
 }
 
@@ -99,6 +107,7 @@ void Ec::vmx_extint()
 
 void Ec::vmx_invlpg()
 {
+    check_memory(PES_VMX_INVLPG); 
     current->regs.tlb_flush<Vmcs>(Vmcs::read (Vmcs::EXI_QUALIFICATION));
     Vmcs::adjust_rip();
     ret_user_vmresume();
@@ -235,7 +244,9 @@ void Ec::handle_vmx()
     switch (reason) {
         case Vmcs::VMX_EXC_NMI:     vmx_exception();
         case Vmcs::VMX_EXTINT:      vmx_extint();
-        case Vmcs::VMX_INVLPG:      check_memory(PES_VMX_INVLPG); vmx_invlpg();
+        case Vmcs::VMX_INVLPG:
+            if (!current->regs.nst_on) vmx_invlpg();
+            else break;
         case Vmcs::VMX_RDTSC:       
             if(Pe::run_number == 0)
                 tsc1 = rdtsc();

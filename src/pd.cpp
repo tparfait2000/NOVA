@@ -32,9 +32,9 @@ Slab_cache Pd::cache(sizeof (Pd), 32);
 
 Pd *Pd::current;
 
-INIT_PRIORITY(PRIO_BUDDY)
-ALIGNED(32) Pd Pd::kern(&Pd::kern);
-ALIGNED(32) Pd Pd::root(&Pd::root, NUM_EXC, 0x1f);
+INIT_PRIORITY (PRIO_SLAB)
+ALIGNED(32) Pd Pd::kern (&Pd::kern);
+ALIGNED(32) Pd Pd::root (&Pd::root, NUM_EXC, 0x1f);
 
 const char *Pd::unprotected_pd_names[UNPROTECTED_PD_NUM] = {"nullptr"};//Never forget to terminate this by nullptr
 
@@ -381,8 +381,9 @@ void Pd::xfer_items(Pd *src, Crd xlt, Crd del, Xfer *s, Xfer *d, unsigned long t
                 crd = *s;
                 set_as_del = 1;
 
-            case 1:
-            {
+                [[fallthrough]];
+
+            case 1: {
                 bool r = src == &root && s->flags() & 0x800;
                 del_crd(r ? &kern : src, del, crd, (s->flags() >> 8) & (r ? 7 : 3), s->hotspot());
                 if (Cpu::hazard & HZD_OOM)

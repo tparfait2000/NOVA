@@ -110,7 +110,7 @@ public:
     
     bool sync_from(Quota &quota, Hpt, mword, mword);
 
-    void sync_master_range(Quota &quota, mword, mword);
+    bool sync_user (Quota &quota, Hpt, mword);
 
     Paddr replace(Quota &quota, mword, mword);
 

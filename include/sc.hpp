@@ -35,8 +35,9 @@ class Sc : public Kobject, public Refcount
         unsigned const cpu;
         uint16   const prio;
         uint16         disable { 0 };
-        uint64 const budget;
-        uint64 time { 0 };
+        uint64   const budget;
+        uint64         time    { 0 };
+        uint64         time_m  { 0 };
 
         static unsigned const priorities = 128;
 
@@ -62,6 +63,11 @@ class Sc : public Kobject, public Refcount
             Sc * s = static_cast<Sc *>(a);
               
             if (s->del_ref()) {
+                if (s->time > s->time_m) {
+                    assert(s->cpu < sizeof(killed_time) / sizeof(killed_time[0]));
+                    Atomic::add(killed_time[s->cpu], s->time - s->time_m);
+                }
+
                 assert(Sc::current != s);
                 delete s;
             }
@@ -90,6 +96,7 @@ class Sc : public Kobject, public Refcount
         static unsigned ctr_link    CPULOCAL;
         static unsigned ctr_loop    CPULOCAL;
         static uint64   cross_time[NUM_CPU];
+        static uint64   killed_time[NUM_CPU];
 
         static unsigned const default_prio = 1;
         static unsigned const default_quantum = 10000;
@@ -113,7 +120,10 @@ class Sc : public Kobject, public Refcount
         static void schedule (bool = false, bool = true);
 
         ALWAYS_INLINE
-        static inline void *operator new (size_t, Pd &pd) { return pd.sm_cache.alloc(pd.quota); }
+        static inline void *operator new (size_t, Pd &pd) { return pd.sc_cache.alloc(pd.quota); }
 
         static void operator delete (void *ptr);
+
+        ALWAYS_INLINE
+        void inline measured() { time_m = time; }
 };

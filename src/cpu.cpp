@@ -103,11 +103,14 @@ void Cpu::check_features()
     switch (static_cast<uint8>(eax)) {
         default:
             cpuid (0x7, 0, eax, features[3], ecx, edx);
+            [[fallthrough]];
         case 0x6:
             cpuid (0x6, features[2], ebx, ecx, edx);
+            [[fallthrough]];
         case 0x4 ... 0x5:
             cpuid (0x4, 0, eax, ebx, ecx, edx);
             cpp = (eax >> 26 & 0x3f) + 1;
+            [[fallthrough]];
         case 0x1 ... 0x3:
             cpuid (0x1, eax, ebx, features[1], features[0]);
             family[Cpu::id]   = ((eax >> 8 & 0xf) + (eax >> 20 & 0xff)) & 0xff;
@@ -126,14 +129,19 @@ void Cpu::check_features()
         switch (static_cast<uint8>(eax)) {
             default:
                 cpuid (0x8000000a, Vmcb::svm_version, ebx, ecx, Vmcb::svm_feature);
+                [[fallthrough]];
             case 0x4 ... 0x9:
                 cpuid (0x80000004, name[8], name[9], name[10], name[11]);
+                [[fallthrough]];
             case 0x3:
                 cpuid (0x80000003, name[4], name[5], name[6], name[7]);
+                [[fallthrough]];
             case 0x2:
                 cpuid (0x80000002, name[0], name[1], name[2], name[3]);
+                [[fallthrough]];
             case 0x1:
                 cpuid (0x80000001, eax, ebx, features[5], features[4]);
+                [[fallthrough]];
         }
     }
 
@@ -187,7 +195,7 @@ void Cpu::setup_sysenter()
 #else
     Msr::write<mword>(Msr::IA32_STAR,  static_cast<mword>(SEL_USER_CODE) << 48 | static_cast<mword>(SEL_KERN_CODE) << 32);
     Msr::write<mword>(Msr::IA32_LSTAR, reinterpret_cast<mword>(&entry_sysenter));
-    Msr::write<mword>(Msr::IA32_FMASK, Cpu::EFL_DF | Cpu::EFL_IF);
+    Msr::write<mword>(Msr::IA32_FMASK, Cpu::EFL_DF | Cpu::EFL_IF | Cpu::EFL_NT | Cpu::EFL_TF);
 #endif
 }
 

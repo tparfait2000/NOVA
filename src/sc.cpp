@@ -32,6 +32,7 @@ Sc *        Sc::current;
 unsigned    Sc::ctr_link;
 unsigned    Sc::ctr_loop;
 uint64      Sc::cross_time[NUM_CPU];
+uint64      Sc::killed_time[NUM_CPU];
 
 Sc *Sc::list[Sc::priorities];
 
@@ -40,6 +41,8 @@ unsigned Sc::prio_top;
 Sc::Sc (Pd *own, mword sel, Ec *e) : Kobject (SC, static_cast<Space_obj *>(own), sel, 0x1, free), ec (e), cpu (static_cast<unsigned>(sel)), prio (0), budget (Lapic::freq_tsc * 1000), left (0)
 {
     trace (TRACE_SYSCALL, "SC:%p created (PD:%p Kernel)", this, own);
+
+    tsc = rdtsc();
 }
 
 Sc::Sc (Pd *own, mword sel, Ec *e, unsigned c, unsigned p, unsigned q) : Kobject (SC, static_cast<Space_obj *>(own), sel, 0x1, free, pre_free), ec (e), cpu (c), prio (static_cast<uint16>(p)), budget (Lapic::freq_tsc / 1000 * q), left (0)
@@ -211,7 +214,7 @@ void Sc::rke_handler()
 void Sc::operator delete (void *ptr)
 {
     Pd * pd = static_cast<Sc *>(ptr)->ec->pd;
-    pd->sm_cache.free (ptr, pd->quota);
+    pd->sc_cache.free (ptr, pd->quota);
 }
 
 void Sc::pre_free(Rcu_elem * a)

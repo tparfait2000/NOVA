@@ -34,7 +34,6 @@ class Fpu
 {
     private:
         static unsigned const data_size = 512, state_size = 108;
-        char data[data_size];
         static char statedata[state_size], statedata_0[state_size], statedata_1[state_size], statedata_2[state_size], data_0[data_size], data_1[data_size], data_2[data_size];
         static Slab_cache cache;
         static bool saved;
@@ -47,6 +46,20 @@ class Fpu
 
         ALWAYS_INLINE
         inline static void load_state(char *from) { asm volatile ("frstor %0" : : "m" (*from)); }
+        union {
+            char data[data_size];
+            struct {
+                uint16 fcw;
+                uint16 fsw;
+                uint8  ftw;
+                uint8  res;
+                uint16 fop;
+                uint64 fip;
+                uint64 fdp;
+                uint32 mxcsr;
+                uint32 mxcsr_mask;
+            };
+        };
 
     public:
         static Fpu *fpu_0, *fpu_1, *fpu_2;
@@ -56,8 +69,7 @@ class Fpu
         ALWAYS_INLINE
         inline void load() { asm volatile ("fxrstor %0" : : "m" (*data)); }
 
-        ALWAYS_INLINE
-        static inline void init() { asm volatile ("fninit"); }
+        static void init();
 
         ALWAYS_INLINE
         static inline void enable() { asm volatile ("clts"); Cpu::hazard |= HZD_FPU; }
@@ -70,6 +82,13 @@ class Fpu
 
         ALWAYS_INLINE
         static inline void destroy(Fpu *obj, Pd &pd) { obj->~Fpu(); pd.fpu_cache.free (obj, pd.quota); }
+
+        Fpu()
+        {
+            // Mask exceptions by default according to SysV ABI spec.
+            fcw = 0x37f;
+            mxcsr = 0x1f80;
+        }
         
         static void dwc_save(){ 
             if(get_cr0() & (Cpu::CR0_TS | Cpu::CR0_EM))

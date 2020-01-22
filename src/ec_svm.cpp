@@ -57,9 +57,14 @@ void Ec::svm_exception(mword reason) {
             handle_exc_nm();
             ret_user_vmrun();
 
-        case 0x4e: // #PF
-            mword err = static_cast<mword> (current->regs.vmcb->exitinfo1);
-            mword cr2 = static_cast<mword> (current->regs.vmcb->exitinfo2);
+        case 0x4e:          // #PF
+            if (current->regs.nst_on) {
+                current->regs.dst_portal = reason;
+                break;
+            }
+
+            mword err = static_cast<mword>(current->regs.vmcb->exitinfo1);
+            mword cr2 = static_cast<mword>(current->regs.vmcb->exitinfo2);
 
             switch (Vtlb::miss(&current->regs, cr2, err)) {
 
@@ -71,6 +76,8 @@ void Ec::svm_exception(mword reason) {
                 case Vtlb::GLA_GPA:
                     current->regs.vmcb->cr2 = cr2;
                     current->regs.vmcb->inj_control = static_cast<uint64>(err) << 32 | 0x80000b0e;
+
+                    [[fallthrough]];
 
                 case Vtlb::SUCCESS:
                     ret_user_vmrun();
@@ -140,6 +147,7 @@ void Ec::svm_cr(mword const reason)
                 current->regs.dst_portal = reason;
                 send_msg<ret_user_vmrun>();
             }
+            [[fallthrough]];
         }
         default:
             die("SVM decode failure");
@@ -170,17 +178,20 @@ void Ec::handle_svm() {
     switch (reason) {
 
         case 0x0 ... 0x1f:      // CR Access
-            svm_cr (reason);
+            if (!current->regs.nst_on) svm_cr (reason);
+            else break;
 
-        case 0x40 ... 0x5f: // Exception
-            svm_exception(reason);
+        case 0x40 ... 0x5f:     // Exception
+            svm_exception (reason);
+            break;
 
         case 0x60:              // EXTINT
             asm volatile ("sti; nop; cli" : : : "memory");
             ret_user_vmrun();
 
         case 0x79:              // INVLPG
-            svm_invlpg();
+            if (!current->regs.nst_on) svm_invlpg();
+            else break;
     }
 
     current->regs.dst_portal = reason;

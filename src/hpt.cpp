@@ -31,14 +31,14 @@
 #include "log.hpp"
 #include "pe.hpp"
 
-//void Hpt::print_table(Quota &quota, mword o) {
-//    for (mword v = 0; v <= o; v = v + PAGE_SIZE) {
-//        mword l = (bit_scan_reverse(v ^ o) - PAGE_BITS) / bpl();
-//        print_walk(quota, v, l);
-//    }
-//}
-bool Hpt::sync_from(Quota &quota, Hpt src, mword v, mword o) {
-    mword l = (bit_scan_reverse(v ^ o) - PAGE_BITS) / bpl();
+bool Hpt::sync_user (Quota &quota, Hpt src, mword v)
+{
+    return Hpt::sync_from (quota, src, v, CANONICAL_ADDR);
+}
+
+bool Hpt::sync_from (Quota &quota, Hpt src, mword v, mword o)
+{
+    mword l = (bit_scan_reverse (v ^ o) - PAGE_BITS) / bpl();
 
     Hpt *s = static_cast<Hpt *> (src.walk(quota, v, l, false));
     if (!s)

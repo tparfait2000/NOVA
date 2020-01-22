@@ -44,15 +44,15 @@ class Hip_cpu
 
 class Hip_mem
 {
-    public:
+public:
     enum {
-        AVAILABLE   =  1u,
         HYPERVISOR  = -1u,
         MB_MODULE   = -2u,
         ACPI_RSDT   = -3u,
         ACPI_XSDT   = -4u,
         MB2_FB      = -5u,
-        HYP_LOG     = -6u
+        HYP_LOG     = -6u,
+        SYSTAB      = -7u
     };
 
     uint64 addr;
@@ -126,7 +126,7 @@ public:
 
     template <typename T>
     INIT
-    static void add_fb (Hip_mem *&, T const *);
+    static void add_systab (Hip_mem *&, T const *);
 
     template <typename T>
     INIT
@@ -137,7 +137,26 @@ public:
     static void add_mod (Hip_mem *&, T const *, uint32);
 
     INIT
-    static void add_buddy (Hip_mem *&, Hip *);
+    static void add_buddy (Hip_mem *&, Hip *, uint64 const, uint64 &, bool);
+
+    INIT
+    static void _add_buddy (Hip_mem *&, Hip *, uint64 const, uint64 &, Hip_mem const &);
+
+    template <typename T>
+    INIT
+    static void for_each (Hip &hip, T const fn)
+    {
+        mword const mhv_cnt = (reinterpret_cast<mword>(&hip) + hip.length - reinterpret_cast<mword>(hip.mem_desc)) / sizeof(Hip_mem);
+
+        for (unsigned i = 0; i < mhv_cnt; i++) {
+            Hip_mem * m = hip.mem_desc + i;
+
+            fn(*m);
+        }
+    }
+
+    INIT
+    static uint64 system_memory (Hip &);
 
     INIT
     static void add_mhv(Hip_mem *&);
