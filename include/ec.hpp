@@ -232,7 +232,8 @@ private:
 public:
     static Ec *current CPULOCAL_HOT;
     static Ec *fpowner CPULOCAL;
-
+    static bool debug_started;
+    
     static Fpu *fpu_0, *fpu_1, *fpu_2;
     int previous_reason = 0, nb_extint = 0;
     mword io_addr = {}, io_attr = {};

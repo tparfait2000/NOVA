@@ -67,6 +67,8 @@ const char* Ec::pe_stop[27] = {"NUL", "PMI", "PAGE_FAULT", "SYS_ENTER", "VMX_EXI
 const char* Ec::launches[6] = {"UNLAUNCHED", "SYSEXIT", "IRET", "VMRESUME", "VMRUN", "EXT_INT"};
 
 Ec *Ec::current, *Ec::fpowner;
+bool Ec::debug_started;
+
 // Constructors
 
 Cpu_regs Ec::regs_0, Ec::regs_1, Ec::regs_2;
@@ -346,6 +348,8 @@ void Ec::ret_user_sysexit() {
         current->save_state0();
         launch_state = Ec::SYSEXIT;
     }
+    debug_started_trace(0, "Sysreting Pd %s Ec %s PE %llu", current->getPd()->get_name(), current->name, Counter::nb_pe++);
+    asm volatile ("lea %0," EXPAND (PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : "memory");
     char buff[STR_MAX_LENGTH];
 //    String::print_page(buff, current->regs.REG(sp));
     String::print(buff, "Sysreting : Run %d Ec %s Rip %lx Counter %llx", Pe::run_number, 
