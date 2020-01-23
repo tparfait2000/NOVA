@@ -26,6 +26,7 @@
 #include "svm.hpp"
 #include "vmx.hpp"
 #include "x86.hpp"
+#include "stdio.hpp"
 
 bool Utcb::load_exc (Cpu_regs *regs)
 {
@@ -156,6 +157,7 @@ bool Utcb::load_vmx (Cpu_regs *regs)
     if (m & Mtd::RIP_LEN) {
         rip      = Vmcs::read (Vmcs::GUEST_RIP);
         inst_len = Vmcs::read (Vmcs::EXI_INST_LEN);
+        trace(0, "load_vmx %lx", rip);
     }
 
     if (m & Mtd::RFLAGS)
@@ -304,6 +306,7 @@ bool Utcb::save_vmx (Cpu_regs *regs)
         Vmcs::write (Vmcs::GUEST_RSP, rsp);
 
     if (mtd & Mtd::RIP_LEN) {
+        trace(0, "save_vmx %lx", rip);        
         Vmcs::write (Vmcs::GUEST_RIP, rip);
         Vmcs::write (Vmcs::ENT_INST_LEN, inst_len);
     }

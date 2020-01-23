@@ -215,8 +215,10 @@ void Ec::recv_kern()
 
     if (ec->cont == ret_user_iret)
         fpu = current->utcb->load_exc (&ec->regs);
-    else if (ec->cont == ret_user_vmresume)
+    else if (ec->cont == ret_user_vmresume){
+        trace(0, "current %s ec %s", current->name, ec->name);
         fpu = current->utcb->load_vmx (&ec->regs);
+    }
     else if (ec->cont == ret_user_vmrun)
         fpu = current->utcb->load_svm (&ec->regs);
 
