@@ -39,6 +39,7 @@ class Counter
         static unsigned schedule        CPULOCAL;
         static unsigned helping         CPULOCAL;
         static uint64   cycles_idle     CPULOCAL;
+        static uint64   nb_pe     CPULOCAL;
 
         static void dump();
 

@@ -31,6 +31,8 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
 {
     private:
         static Slab_cache cache;
+        char name[STR_MAX_LENGTH];
+        bool debug = false;
 
         WARN_UNUSED_RESULT
         mword clamp (mword,   mword &, mword, mword);
@@ -106,7 +108,7 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
         Pd (Pd *);
         ~Pd();
 
-        Pd (Pd *own, mword sel, mword a);
+        Pd (Pd *own, mword sel, mword a, char const *s = "Unknown");
 
         ALWAYS_INLINE HOT
         inline void make_current()
@@ -181,4 +183,7 @@ class Pd : public Kobject, public Refcount, public Space_mem, public Space_pio, 
 
             cache.free (ptr, pd_to->quota);
         }
+        char *get_name() {return name;}  
+        bool is_debug() { return debug;}  
+        void set_debug(bool db) { debug = db;}
 };

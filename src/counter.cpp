@@ -33,6 +33,7 @@ unsigned    Counter::vtlb_fill;
 unsigned    Counter::vtlb_flush;
 unsigned    Counter::schedule;
 unsigned    Counter::helping;
+uint64      Counter::nb_pe;
 uint64      Counter::cycles_idle;
 
 void Counter::dump()
