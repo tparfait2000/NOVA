@@ -217,7 +217,7 @@ void Ec::recv_kern()
         fpu = current->utcb->load_exc (&ec->regs);
     else if (ec->cont == ret_user_vmresume){
         if(!debug_started) {
-            Console::print_on = true;
+            Logstore::log_on = true;
             debug_started = true;
         }
         debug_started_trace(0, "current %s ec %s", current->name, ec->name);
@@ -324,7 +324,7 @@ void Ec::sys_reply()
         else if (ec->cont == ret_user_vmresume){
             debug_started_trace(0, "current %s ec %s", current->name, ec->name);            
             fpu = src->save_vmx (&ec->regs);
-            Console::print_on = false;
+            Logstore::log_on = false;
         }
         else if (ec->cont == ret_user_vmrun)
             fpu = src->save_svm (&ec->regs);

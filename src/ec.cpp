@@ -348,7 +348,6 @@ void Ec::ret_user_sysexit() {
         current->save_state0();
         launch_state = Ec::SYSEXIT;
     }
-    debug_started_trace(0, "Sysreting Pd %s Ec %s PE %llu", current->getPd()->get_name(), current->name, Counter::nb_pe++);
     asm volatile ("lea %0," EXPAND (PREG(sp); LOAD_GPR RET_USER_HYP) : : "m" (current->regs) : "memory");
     char buff[STR_MAX_LENGTH];
 //    String::print_page(buff, current->regs.REG(sp));
